@@ -7,6 +7,11 @@
   "t2_max_iterations": 100,
   "t2_convergence_tolerance": 1e-7,
   "t2_low_history_threshold": 6,
+  "t3_rho_lower_bound": -0.19,
+  "t3_rho_upper_bound": 0.035,
+  "t3_rho_penalty": 25.0,
+  "t3_max_iterations": 200,
+  "t3_convergence_tolerance": 1e-4,
   "recency_half_life_days": 365,
   "min_expected_goals": 0.05,
   "max_expected_goals": 5.0,
@@ -19,6 +24,7 @@
   "model_families": {
     "T0_LEAGUE_HOME_AWAY": "lambda_home=training mean home goals; lambda_away=training mean away goals",
     "T1_SHRUNK_ROLLING_TEAM_RATE": "side-specific recent team scoring and conceding rates, shrunk toward league home/away rates, averaged for attack and opponent defence",
-    "T2_REGULARIZED_ATTACK_DEFENCE": "weighted ridge-penalized Poisson attack-defence model with log(lambda_home)=intercept+home_advantage+attack[home]+defence[away] and log(lambda_away)=intercept+attack[away]+defence[home]; higher defence means weaker defence"
+    "T2_REGULARIZED_ATTACK_DEFENCE": "weighted ridge-penalized Poisson attack-defence model with log(lambda_home)=intercept+home_advantage+attack[home]+defence[away] and log(lambda_away)=intercept+attack[away]+defence[home]; higher defence means weaker defence",
+    "T3_DIXON_COLES": "T2 attack-defence structure plus a weighted Dixon-Coles low-score dependence parameter rho fitted from training results only"
   }
 }

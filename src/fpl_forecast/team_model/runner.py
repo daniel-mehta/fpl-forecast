@@ -118,7 +118,18 @@ def run_team_backtest(
                 run_dir / "clean_sheet_calibration.csv",
             ),
             "outcome": _write_frame(tables.outcome, run_dir / "metrics_match_outcome.csv"),
+            "joint_score": _write_frame(tables.joint_score, run_dir / "metrics_joint_score.csv"),
+            "joint_score_by_season": _write_frame(
+                tables.joint_score_by_season,
+                run_dir / "metrics_joint_score_by_season.csv",
+            ),
+            "low_score": _write_frame(tables.low_score, run_dir / "metrics_low_score.csv"),
+            "low_score_by_season": _write_frame(
+                tables.low_score_by_season,
+                run_dir / "metrics_low_score_by_season.csv",
+            ),
             "bootstrap": _write_frame(tables.bootstrap, run_dir / "bootstrap_goal_mae_differences.csv"),
+            "bootstrap_t3_vs_t2": _write_frame(tables.bootstrap_t3_vs_t2, run_dir / "bootstrap_t3_vs_t2.csv"),
         }
     manifest_path = run_dir / "manifest.json"
     manifest_path.write_text(
@@ -163,7 +174,13 @@ def forecast_team_fixtures(
         current = current.loc[pd.to_numeric(current["gameweek"], errors="coerce") == gameweek].copy()
     if current.empty:
         raise ValueError("No forecastable future fixtures match the requested filters.")
-    predicted, ratings, diagnostics = fit_predict_models(train, current, cutoff=as_of_ts, config=config)
+    predicted, ratings, diagnostics = fit_predict_models(
+        train,
+        current,
+        cutoff=as_of_ts,
+        config=config,
+        models=["T2_REGULARIZED_ATTACK_DEFENCE"],
+    )
     frozen = add_probability_columns(predicted, config)
     assert_frozen_predictions_target_free(frozen)
     run_id = run_id or f"phase4_team_forecast_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
@@ -250,6 +267,7 @@ def compare_team_models(*, run_id: str, reports_dir: Path | str = TEAM_REPORTS_D
     goals = pd.read_csv(run_dir / "metrics_expected_goals.csv")
     clean = pd.read_csv(run_dir / "metrics_clean_sheet.csv")
     outcome = pd.read_csv(run_dir / "metrics_match_outcome.csv")
+    joint = pd.read_csv(run_dir / "metrics_joint_score.csv")
     lines = [f"run_id={run_id}", "expected_goal_metrics:"]
     lines.extend(
         f"{row.model_name}: fixtures={int(row.fixtures)} goal_mae={row.goal_mae:.4f} "
@@ -265,8 +283,15 @@ def compare_team_models(*, run_id: str, reports_dir: Path | str = TEAM_REPORTS_D
     lines.append("match_outcome_metrics:")
     lines.extend(
         f"{row.model_name}: log_loss={row.multiclass_log_loss:.4f} "
-        f"brier={row.multiclass_brier:.4f} accuracy={row.accuracy:.4f}"
+        f"brier={row.multiclass_brier:.4f} draw_brier={row.draw_brier:.4f} "
+        f"accuracy={row.accuracy:.4f}"
         for row in outcome.sort_values("multiclass_log_loss").itertuples(index=False)
+    )
+    lines.append("joint_score_metrics:")
+    lines.extend(
+        f"{row.model_name}: joint_score_nll={row.joint_score_nll:.4f} "
+        f"exact_score_accuracy={row.exact_score_accuracy:.4f}"
+        for row in joint.sort_values("joint_score_nll").itertuples(index=False)
     )
     return lines
 

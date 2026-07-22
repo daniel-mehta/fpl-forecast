@@ -7,6 +7,10 @@ import numpy as np
 import pandas as pd
 
 from fpl_forecast.team_model.config import TeamModelConfig
+from fpl_forecast.team_model.probabilities import (
+    dixon_coles_joint_distribution,
+    dixon_coles_score_probability,
+)
 
 
 @dataclass(frozen=True)
@@ -19,7 +23,12 @@ class TeamMetricTables:
     clean_sheet: pd.DataFrame
     clean_sheet_calibration: pd.DataFrame
     outcome: pd.DataFrame
+    joint_score: pd.DataFrame
+    joint_score_by_season: pd.DataFrame
+    low_score: pd.DataFrame
+    low_score_by_season: pd.DataFrame
     bootstrap: pd.DataFrame
+    bootstrap_t3_vs_t2: pd.DataFrame
 
 
 def score_fixture_predictions(predictions: pd.DataFrame, outcomes: pd.DataFrame, config: TeamModelConfig) -> pd.DataFrame:
@@ -59,6 +68,17 @@ def score_fixture_predictions(predictions: pd.DataFrame, outcomes: pd.DataFrame,
             "away_win_probability": "A",
         }
     )
+    scored["draw_actual"] = scored["match_outcome_actual"].eq("D").astype(int)
+    scored["draw_error"] = scored["draw_probability"] - scored["draw_actual"]
+    scored["scoreline_actual"] = scored["home_goals"].astype(str) + "-" + scored["away_goals"].astype(str)
+    scored["joint_score_probability_actual"] = scored.apply(_actual_score_probability, axis=1).clip(
+        config.log_loss_epsilon,
+        1.0,
+    )
+    scored["joint_score_nll"] = -np.log(scored["joint_score_probability_actual"])
+    predicted_score = scored.apply(lambda row: _most_likely_scoreline(row, config), axis=1)
+    scored["scoreline_prediction"] = predicted_score
+    scored["exact_score_hit"] = scored["scoreline_prediction"].eq(scored["scoreline_actual"]).astype(int)
     return scored
 
 
@@ -80,7 +100,12 @@ def team_metric_tables(scored: pd.DataFrame, config: TeamModelConfig) -> TeamMet
         clean_sheet=_clean_sheet_metrics(scored, ["model_name"], config),
         clean_sheet_calibration=_clean_sheet_calibration(scored),
         outcome=_outcome_metrics(scored, ["model_name"], config),
+        joint_score=_joint_score_metrics(scored, ["model_name"]),
+        joint_score_by_season=_joint_score_metrics(scored, ["season", "model_name"]),
+        low_score=_low_score_metrics(scored, ["model_name"]),
+        low_score_by_season=_low_score_metrics(scored, ["season", "model_name"]),
         bootstrap=_block_bootstrap(scored, reference_model=config.reference_model, config=config),
+        bootstrap_t3_vs_t2=_block_bootstrap_t3_vs_t2(scored, config=config),
     )
 
 
@@ -217,9 +242,67 @@ def _outcome_metrics(frame: pd.DataFrame, groups: list[str], config: TeamModelCo
                 "multiclass_log_loss": float(-np.log(selected).mean()),
                 "multiclass_brier": float(((probs.to_numpy() - actual.to_numpy()) ** 2).sum(axis=1).mean()),
                 "accuracy": float(group["match_outcome_prediction"].eq(group["match_outcome_actual"]).mean()),
+                "draw_brier": float(((group["draw_probability"] - group["draw_actual"]) ** 2).mean()),
+                "draw_predicted_rate": float(group["draw_probability"].mean()),
+                "draw_observed_rate": float(group["draw_actual"].mean()),
+                "exact_score_accuracy": float(group["exact_score_hit"].mean()),
             }
         )
     return pd.DataFrame(rows).sort_values(groups).reset_index(drop=True)
+
+
+def _joint_score_metrics(frame: pd.DataFrame, groups: list[str]) -> pd.DataFrame:
+    rows = []
+    for key, group in frame.groupby(groups, dropna=False):
+        key_values = key if isinstance(key, tuple) else (key,)
+        rows.append(
+            {
+                **dict(zip(groups, key_values, strict=False)),
+                "fixtures": int(len(group)),
+                "joint_score_nll": float(group["joint_score_nll"].mean()),
+                "exact_score_accuracy": float(group["exact_score_hit"].mean()),
+            }
+        )
+    return pd.DataFrame(rows).sort_values(groups).reset_index(drop=True)
+
+
+def _low_score_metrics(frame: pd.DataFrame, groups: list[str]) -> pd.DataFrame:
+    rows = []
+    low_scores = {
+        "0-0": "joint_prob_0_0",
+        "0-1": "joint_prob_0_1",
+        "1-0": "joint_prob_1_0",
+        "1-1": "joint_prob_1_1",
+    }
+    for key, group in frame.groupby(groups, dropna=False):
+        key_values = key if isinstance(key, tuple) else (key,)
+        base = dict(zip(groups, key_values, strict=False))
+        for scoreline, probability_column in low_scores.items():
+            predicted = group[probability_column]
+            observed = group["scoreline_actual"].eq(scoreline).astype(int)
+            rows.append(
+                {
+                    **base,
+                    "scoreline": scoreline,
+                    "fixtures": int(len(group)),
+                    "predicted_frequency": float(predicted.mean()),
+                    "observed_frequency": float(observed.mean()),
+                    "calibration_gap": float(observed.mean() - predicted.mean()),
+                }
+            )
+        predicted = group[list(low_scores.values())].sum(axis=1)
+        observed = group["scoreline_actual"].isin(low_scores).astype(int)
+        rows.append(
+            {
+                **base,
+                "scoreline": "low_score_corner",
+                "fixtures": int(len(group)),
+                "predicted_frequency": float(predicted.mean()),
+                "observed_frequency": float(observed.mean()),
+                "calibration_gap": float(observed.mean() - predicted.mean()),
+            }
+        )
+    return pd.DataFrame(rows).sort_values(groups + ["scoreline"]).reset_index(drop=True)
 
 
 def _block_bootstrap(scored: pd.DataFrame, *, reference_model: str, config: TeamModelConfig) -> pd.DataFrame:
@@ -256,7 +339,94 @@ def _block_bootstrap(scored: pd.DataFrame, *, reference_model: str, config: Team
     return pd.DataFrame(rows)
 
 
+def _block_bootstrap_t3_vs_t2(scored: pd.DataFrame, *, config: TeamModelConfig) -> pd.DataFrame:
+    metrics = _block_metric_values(scored)
+    if metrics.empty:
+        return pd.DataFrame()
+    rows = []
+    sampler = pd.Series(range(len(metrics))).sample
+    for metric in ("joint_score_nll", "multiclass_log_loss", "draw_brier"):
+        t3 = metrics[f"T3_DIXON_COLES:{metric}"]
+        t2 = metrics[f"T2_REGULARIZED_ATTACK_DEFENCE:{metric}"]
+        diffs = t3 - t2
+        sampled = [
+            float(diffs.iloc[sampler(n=len(diffs), replace=True, random_state=config.bootstrap_seed + i).to_numpy()].mean())
+            for i in range(config.bootstrap_samples)
+        ]
+        series = pd.Series(sampled)
+        rows.append(
+            {
+                "comparison": "T3_DIXON_COLES_minus_T2_REGULARIZED_ATTACK_DEFENCE",
+                "metric": metric,
+                "evaluated_gameweeks": int(len(diffs)),
+                "mean_difference": float(diffs.mean()),
+                "ci_lower": float(series.quantile(0.025)),
+                "ci_upper": float(series.quantile(0.975)),
+                "bootstrap_samples": config.bootstrap_samples,
+                "bootstrap_seed": config.bootstrap_seed,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _block_metric_values(scored: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    for (season, gameweek, model_name), group in scored.groupby(["season", "gameweek", "model_name"]):
+        probs = group[["home_win_probability", "draw_probability", "away_win_probability"]].clip(1e-12, 1 - 1e-12)
+        selected = np.select(
+            [group["match_outcome_actual"].eq("H"), group["match_outcome_actual"].eq("D")],
+            [probs["home_win_probability"], probs["draw_probability"]],
+            default=probs["away_win_probability"],
+        )
+        rows.append(
+            {
+                "season": season,
+                "gameweek": gameweek,
+                "model_name": model_name,
+                "joint_score_nll": float(group["joint_score_nll"].mean()),
+                "multiclass_log_loss": float(-np.log(selected).mean()),
+                "draw_brier": float(((group["draw_probability"] - group["draw_actual"]) ** 2).mean()),
+            }
+        )
+    pivot = pd.DataFrame(rows).pivot(index=["season", "gameweek"], columns="model_name")
+    required = [
+        ("joint_score_nll", "T2_REGULARIZED_ATTACK_DEFENCE"),
+        ("joint_score_nll", "T3_DIXON_COLES"),
+        ("multiclass_log_loss", "T2_REGULARIZED_ATTACK_DEFENCE"),
+        ("multiclass_log_loss", "T3_DIXON_COLES"),
+        ("draw_brier", "T2_REGULARIZED_ATTACK_DEFENCE"),
+        ("draw_brier", "T3_DIXON_COLES"),
+    ]
+    if pivot.empty or any(column not in pivot.columns for column in required):
+        return pd.DataFrame()
+    flattened = pivot[required].dropna()
+    flattened.columns = [f"{model_name}:{metric}" for metric, model_name in flattened.columns]
+    return flattened
+
+
 def _poisson_nll(actual: pd.Series, predicted: pd.Series) -> pd.Series:
     y = pd.to_numeric(actual, errors="coerce").astype(float)
     lam = pd.to_numeric(predicted, errors="coerce").astype(float).clip(lower=1e-12)
     return lam - y * np.log(lam) + y.map(lambda value: math.lgamma(value + 1))
+
+
+def _actual_score_probability(row: pd.Series) -> float:
+    return dixon_coles_score_probability(
+        int(row["home_goals"]),
+        int(row["away_goals"]),
+        float(row["expected_home_goals"]),
+        float(row["expected_away_goals"]),
+        float(row.get("dixon_coles_rho", 0.0) or 0.0),
+    )
+
+
+def _most_likely_scoreline(row: pd.Series, config: TeamModelConfig) -> str:
+    joint = dixon_coles_joint_distribution(
+        float(row["expected_home_goals"]),
+        float(row["expected_away_goals"]),
+        float(row.get("dixon_coles_rho", 0.0) or 0.0),
+        max_goals=config.probability_max_goals,
+    )
+    finite = joint[:-1, :-1]
+    home_goals, away_goals = np.unravel_index(np.argmax(finite), finite.shape)
+    return f"{int(home_goals)}-{int(away_goals)}"

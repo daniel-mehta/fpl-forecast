@@ -326,3 +326,31 @@ This command fails clearly when the normalized current snapshot is season-mismat
 historical relative to `as_of`, or contains teams that cannot be mapped to stable identities. A new
 promoted team can be used by adding a stable `dim_team` identity and alias; if it has no historical
 fixtures, the model uses the neutral no-history fallback and records the promoted/unseen flag.
+
+## Phase 4.1 Dixon-Coles Challenger
+
+Phase 4.1 evaluates `T3_DIXON_COLES`, a Dixon-Coles low-score dependence challenger
+for fixture score probabilities. It is tested as an experiment against the Phase 4
+T2 independent-Poisson benchmark and does not replace expected-minutes or player
+expected-points modeling.
+
+T2 remains the default team probability model. The Phase 4.1 decision is
+`RETAIN AS EXPERIMENTAL CHALLENGER`: T3 is valid and leakage-safe, but the
+chronological scoring evidence is mixed and too small to promote for MVP use.
+
+```bash
+uv run fpl backtest-team-model \
+  --seasons 2022-23,2023-24,2024-25 \
+  --test-seasons 2023-24,2024-25 \
+  --mode rolling \
+  --run-id phase4_1_dixon_coles_rolling
+
+uv run fpl backtest-team-model \
+  --seasons 2022-23,2023-24,2024-25 \
+  --test-seasons 2023-24,2024-25 \
+  --mode gw1 \
+  --run-id phase4_1_dixon_coles_gw1
+
+uv run fpl compare-team-models --run-id phase4_1_dixon_coles_rolling
+uv run fpl compare-team-models --run-id phase4_1_dixon_coles_gw1
+```

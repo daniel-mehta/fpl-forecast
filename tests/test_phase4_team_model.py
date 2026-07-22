@@ -260,6 +260,7 @@ def test_target_outcomes_do_not_appear_in_frozen_predictions_and_metrics_work(tm
         "T0_LEAGUE_HOME_AWAY",
         "T1_SHRUNK_ROLLING_TEAM_RATE",
         "T2_REGULARIZED_ATTACK_DEFENCE",
+        "T3_DIXON_COLES",
     }
 
 

@@ -21,6 +21,11 @@ class TeamModelConfig:
     t2_max_iterations: int
     t2_convergence_tolerance: float
     t2_low_history_threshold: int
+    t3_rho_lower_bound: float
+    t3_rho_upper_bound: float
+    t3_rho_penalty: float
+    t3_max_iterations: int
+    t3_convergence_tolerance: float
     recency_half_life_days: int
     min_expected_goals: float
     max_expected_goals: float
@@ -44,6 +49,11 @@ def load_team_model_config(path: Path = CONFIG_PATH) -> TeamModelConfig:
         t2_max_iterations=int(raw["t2_max_iterations"]),
         t2_convergence_tolerance=float(raw["t2_convergence_tolerance"]),
         t2_low_history_threshold=int(raw["t2_low_history_threshold"]),
+        t3_rho_lower_bound=float(raw["t3_rho_lower_bound"]),
+        t3_rho_upper_bound=float(raw["t3_rho_upper_bound"]),
+        t3_rho_penalty=float(raw["t3_rho_penalty"]),
+        t3_max_iterations=int(raw["t3_max_iterations"]),
+        t3_convergence_tolerance=float(raw["t3_convergence_tolerance"]),
         recency_half_life_days=int(raw["recency_half_life_days"]),
         min_expected_goals=float(raw["min_expected_goals"]),
         max_expected_goals=float(raw["max_expected_goals"]),
