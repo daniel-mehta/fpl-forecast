@@ -2,14 +2,16 @@
 
 Real-data foundation for a Fantasy Premier League forecasting system.
 
-This repository currently implements Phase 1 and Phase 2. Phase 1 covers ingestion, immutable raw
+This repository currently implements Phase 1, Phase 2, and Phase 3. Phase 1 covers ingestion, immutable raw
 snapshots, normalization to Parquet, validation, a command-line interface, tests, and documentation.
 Phase 2 adds multi-season historical coverage, cross-season team and player identities, a canonical
 player-fixture panel, deadline-safe feature primitives, feature lineage, and leakage auditing.
+Phase 3 adds rolling-origin baseline backtests, dedicated GW1 cold-start validation, frozen
+prediction outputs, metrics, and baseline comparisons.
 
-It does not implement forecasting models, expected-minutes models, team-strength models,
-simulations, backtests, expected-points projections, squad optimization, transfer planning, or
-predictive performance reporting.
+It does not implement production player forecasting models, expected-minutes models,
+player expected-points projections, simulations, squad optimization, transfer planning, scheduling,
+dashboard work, or production forecasting.
 
 ## Data Boundaries
 
@@ -25,6 +27,9 @@ data/
 
 outputs/
 └── synthetic_demo/
+
+reports/
+└── backtests/
 ```
 
 Only externally retrieved source bytes belong in `data/raw`. Only tables derived from those real
@@ -77,7 +82,7 @@ uv run fpl snapshot-current --season 2025-26 --offline
 
 uv run fpl ingest-historical --season 2024-25
 uv run fpl ingest-historical --season 2024-25 --refresh
-uv run fpl ingest-historical --season 2024-25 --revision <git-sha>
+uv run fpl ingest-historical --season 2024-25 --revision REVISION_SHA
 
 uv run fpl normalize-current --season 2025-26
 uv run fpl normalize-historical --season 2024-25
@@ -110,6 +115,7 @@ The client also has reusable support for:
 - `data/<season>/players_raw.csv`
 
 When possible, the Vaastav source is fetched by exact Git revision rather than a moving branch URL.
+Replace `REVISION_SHA` with a real Vaastav repository commit before running that example command.
 
 ## Normalized Tables
 
@@ -231,3 +237,28 @@ statistics were known.
 
 The fact and feature tables include `entity_type`, distinguishing standard football players from
 assistant managers. Standard player modeling panels can filter `entity_type == "player"`.
+
+## Phase 3 Baseline Backtesting Workflow
+
+Phase 3 produces honest baseline comparisons over the audited Phase 2 panel. The predictions are
+baseline outputs for historical validation only; they are not production forecasts.
+
+```bash
+uv run fpl backtest-baselines \
+  --seasons 2022-23,2023-24,2024-25 \
+  --test-seasons 2023-24,2024-25 \
+  --mode rolling \
+  --run-id phase3_rolling_hardened
+
+uv run fpl backtest-baselines \
+  --seasons 2022-23,2023-24,2024-25 \
+  --test-seasons 2023-24,2024-25 \
+  --mode gw1 \
+  --run-id phase3_gw1_hardened
+
+uv run fpl compare-baselines --run-id phase3_rolling_hardened
+uv run fpl inspect-backtest --run-id phase3_rolling_hardened
+```
+
+Generated Phase 3 outputs are written under `reports/backtests/<run_id>/` and ignored by Git.
+`PHASE3_REPORT.md` records the real-data baseline results and limitations.

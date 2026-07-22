@@ -12,10 +12,13 @@ __pycache__/
 data/raw/**
 data/normalized/**
 data/review/**
+reports/backtests/**
 !data/raw/
 !data/raw/fpl_api/
 !data/raw/vaastav/
 !data/normalized/
 !data/manual/
 !data/review/
+!reports/
+!reports/backtests/
 !data/**/.gitkeep

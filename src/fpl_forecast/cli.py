@@ -13,6 +13,11 @@ from fpl_forecast.config import (
     RAW_VAASTAV_DIR,
     ensure_data_directories,
 )
+from fpl_forecast.backtest.runner import (
+    compare_baselines as compare_baseline_run,
+    inspect_backtest_run,
+    run_baseline_backtest,
+)
 from fpl_forecast.ingest.fpl_api import FPLApiClient, FPLApiError
 from fpl_forecast.ingest.vaastav import VaastavDataError, VaastavIngestor
 from fpl_forecast.normalize.current import normalize_current as normalize_current_tables
@@ -255,6 +260,76 @@ def inspect_panel(
         console.print(f"[red]Panel inspection failed:[/red] {exc}")
         raise typer.Exit(1) from exc
     for line in result.lines:
+        console.print(line)
+
+
+@app.command("backtest-baselines")
+def backtest_baselines(
+    seasons: Annotated[
+        str,
+        typer.Option(help="Comma-separated seasons available for training and testing."),
+    ],
+    test_seasons: Annotated[
+        str,
+        typer.Option(help="Comma-separated seasons to score out of sample."),
+    ],
+    mode: Annotated[str, typer.Option(help="Backtest mode: rolling or gw1.")] = "rolling",
+    normalized_dir: Annotated[
+        Path,
+        typer.Option(help="Normalized data directory."),
+    ] = NORMALIZED_DIR,
+    run_id: Annotated[str | None, typer.Option(help="Optional deterministic run id.")] = None,
+    bootstrap_samples: Annotated[
+        int | None,
+        typer.Option(help="Override bootstrap sample count."),
+    ] = None,
+    seed: Annotated[int | None, typer.Option(help="Override bootstrap random seed.")] = None,
+) -> None:
+    try:
+        result = run_baseline_backtest(
+            seasons=seasons,
+            test_seasons=test_seasons,
+            mode=mode,
+            normalized_dir=normalized_dir,
+            run_id=run_id,
+            bootstrap_samples=bootstrap_samples,
+            seed=seed,
+        )
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Baseline backtest failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    console.print(f"run_id={result.run_id}")
+    console.print(f"run_dir={result.run_dir}")
+    console.print(f"folds={len(result.folds)}")
+    console.print(f"frozen_predictions={result.frozen_predictions_path}")
+    console.print(f"scored_fixture_predictions={result.scored_fixture_path}")
+    console.print(f"scored_player_gameweek_predictions={result.player_gameweek_path}")
+    console.print(f"manifest={result.manifest_path}")
+
+
+@app.command("compare-baselines")
+def compare_baselines(
+    run_id: Annotated[str, typer.Option(help="Backtest run id to compare.")],
+) -> None:
+    try:
+        lines = compare_baseline_run(run_id=run_id)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Baseline comparison failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    for line in lines:
+        console.print(line)
+
+
+@app.command("inspect-backtest")
+def inspect_backtest(
+    run_id: Annotated[str, typer.Option(help="Backtest run id to inspect.")],
+) -> None:
+    try:
+        lines = inspect_backtest_run(run_id=run_id)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Backtest inspection failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    for line in lines:
         console.print(line)
 
 

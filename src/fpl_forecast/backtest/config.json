@@ -1,0 +1,20 @@
+{
+  "version": "phase3_baselines_v1",
+  "rolling_windows": [3, 5],
+  "points_per_90_prior_matches": 5,
+  "minutes_cap": 90,
+  "missing_history_fallback": "training_global_mean",
+  "candidate_pool_rule": "in-season: prev5_minutes_sum > 0 or season_to_date_appearances > 0 before cutoff; GW1: prior_season_minutes > 0 or prior_season_appearances > 0; otherwise cold_start_no_history when no lagged or prior history exists",
+  "population_rules": {
+    "all_observed_standard_players": "all standard-player rows observed in the audited Phase 2 player-fixture panel",
+    "pre_deadline_history_active": "decision-relevant rows identified only from lagged history before information_cutoff",
+    "cold_start_no_history": "standard-player rows with no same-season lagged activity and no prior-season minutes or appearances",
+    "actual_appearances_diagnostic": "retrospective diagnostic subset with target player-gameweek minutes greater than zero"
+  },
+  "b6_formula": "previous-season shrunk points-per-90 rate times previous-season average minutes per appearance capped at minutes_cap; no-history fallback is the training global mean",
+  "bootstrap_samples": 300,
+  "bootstrap_seed": 20260722,
+  "minimum_training_rows": 1,
+  "reference_baseline": "B1_GLOBAL_MEAN",
+  "forbidden_fields": ["xP", "expected_points", "ep_next", "ep_this", "form", "selected_by_percent", "price_tenths"]
+}
