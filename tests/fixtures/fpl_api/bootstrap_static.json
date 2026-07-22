@@ -1,0 +1,62 @@
+{
+  "events": [
+    {
+      "id": 1,
+      "name": "Gameweek 1",
+      "finished": false
+    }
+  ],
+  "game_settings": {},
+  "phases": [],
+  "teams": [
+    {
+      "id": 1,
+      "code": 1,
+      "name": "Arsenal",
+      "short_name": "ARS",
+      "strength": 4
+    },
+    {
+      "id": 2,
+      "code": 2,
+      "name": "Chelsea",
+      "short_name": "CHE",
+      "strength": 4
+    }
+  ],
+  "total_players": 1,
+  "elements": [
+    {
+      "id": 11,
+      "code": 1001,
+      "first_name": "Real",
+      "second_name": "Player",
+      "web_name": "R Player",
+      "team": 1,
+      "element_type": 3,
+      "now_cost": 75,
+      "status": "a",
+      "minutes": 90,
+      "total_points": 10
+    }
+  ],
+  "element_stats": [],
+  "element_types": [
+    {
+      "id": 1,
+      "singular_name_short": "GKP"
+    },
+    {
+      "id": 2,
+      "singular_name_short": "DEF"
+    },
+    {
+      "id": 3,
+      "singular_name_short": "MID"
+    },
+    {
+      "id": 4,
+      "singular_name_short": "FWD"
+    }
+  ]
+}
