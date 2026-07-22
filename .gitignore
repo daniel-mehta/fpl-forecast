@@ -1,0 +1,3 @@
+outputs/*
+!outputs/synthetic_demo/
+!outputs/synthetic_demo/**
