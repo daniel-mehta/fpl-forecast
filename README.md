@@ -2,12 +2,15 @@
 
 Real-data foundation for a Fantasy Premier League forecasting system.
 
-This repository currently implements Phase 1, Phase 2, and Phase 3. Phase 1 covers ingestion, immutable raw
+This repository currently implements Phase 1, Phase 2, Phase 3, and Phase 4. Phase 1 covers ingestion, immutable raw
 snapshots, normalization to Parquet, validation, a command-line interface, tests, and documentation.
 Phase 2 adds multi-season historical coverage, cross-season team and player identities, a canonical
 player-fixture panel, deadline-safe feature primitives, feature lineage, and leakage auditing.
 Phase 3 adds rolling-origin baseline backtests, dedicated GW1 cold-start validation, frozen
 prediction outputs, metrics, and baseline comparisons.
+Phase 4 adds leakage-safe team-fixture strength baselines, opponent-adjusted goal probabilities,
+clean-sheet and match-outcome diagnostics, and official future-fixture inference with strict
+season and team-identity checks.
 
 It does not implement production player forecasting models, expected-minutes models,
 player expected-points projections, simulations, squad optimization, transfer planning, scheduling,
@@ -29,7 +32,8 @@ outputs/
 └── synthetic_demo/
 
 reports/
-└── backtests/
+├── backtests/
+└── team_backtests/
 ```
 
 Only externally retrieved source bytes belong in `data/raw`. Only tables derived from those real
@@ -262,3 +266,63 @@ uv run fpl inspect-backtest --run-id phase3_rolling_hardened
 
 Generated Phase 3 outputs are written under `reports/backtests/<run_id>/` and ignored by Git.
 `PHASE3_REPORT.md` records the real-data baseline results and limitations.
+
+## Phase 4 Team-Model Workflow
+
+Phase 4 models fixture-level team goals and probabilities. It is not a player expected-points
+model and must not be compared directly to Phase 3 player-point metrics.
+
+```bash
+uv run fpl backtest-team-model \
+  --seasons 2022-23,2023-24,2024-25 \
+  --test-seasons 2023-24,2024-25 \
+  --mode rolling \
+  --run-id phase4_team_rolling_poisson_v2
+
+uv run fpl backtest-team-model \
+  --seasons 2022-23,2023-24,2024-25 \
+  --test-seasons 2023-24,2024-25 \
+  --mode gw1 \
+  --run-id phase4_team_gw1_poisson_v2
+
+uv run fpl compare-team-models --run-id phase4_team_rolling_poisson_v2
+uv run fpl inspect-team-model --run-id phase4_team_rolling_poisson_v2
+```
+
+Team-model configuration lives in `src/fpl_forecast/team_model/config.json`. Generated Phase 4
+outputs are written under `reports/team_backtests/<run_id>/` and ignored by Git.
+
+The model families are:
+
+- `T0_LEAGUE_HOME_AWAY`: league-average home and away Poisson rates.
+- `T1_SHRUNK_ROLLING_TEAM_RATE`: recent team scoring and conceding rates shrunk toward league rates.
+- `T2_REGULARIZED_ATTACK_DEFENCE`: weighted ridge-penalized Poisson attack and
+  defensive-weakness effects with `sum(attack) = 0` and `sum(defence) = 0`
+  identifiability constraints. Higher attack means stronger scoring; higher defence means the team
+  concedes more and is defensively weaker.
+
+Historical backtests restrict result labels by `source_available_time < information_cutoff`, but the
+historical fixture schedule is reconstructed from retrospective Vaastav files. This is
+result-leakage-safe, but it may know final postponed or rearranged fixture assignments that were not
+known at the original historical deadline. Prospective operation should use archived pre-deadline FPL
+fixture snapshots.
+
+Official current FPL price is preserved as integer `price_tenths` with snapshot provenance, but Phase
+4 does not use price. Launch and pre-deadline price snapshots, integer-tenths budget arithmetic,
+personal purchase and selling prices, and any price-as-feature audit belong in a later optimizer or
+decision phase.
+
+Future fixture inference:
+
+```bash
+uv run fpl forecast-team-fixtures \
+  --season TARGET_SEASON \
+  --gameweek 1 \
+  --as-of AS_OF_TIMESTAMP \
+  --run-id RUN_ID
+```
+
+This command fails clearly when the normalized current snapshot is season-mismatched, missing, fully
+historical relative to `as_of`, or contains teams that cannot be mapped to stable identities. A new
+promoted team can be used by adding a stable `dim_team` identity and alias; if it has no historical
+fixtures, the model uses the neutral no-history fallback and records the promoted/unseen flag.

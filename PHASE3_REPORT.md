@@ -5,7 +5,7 @@
 Phase 3 implements an honest rolling-origin backtesting framework and simple baseline
 forecast families. It does not implement predictive models, team-strength models,
 expected-minutes ML, component models, Monte Carlo simulation, a scoring engine,
-squad optimization, transfer planning, a dashboard, or a scheduler.
+squad optimization, transfer planning, a dashboard, a scheduler, or Phase 4.
 
 The audited seasons are `2022-23`, `2023-24`, and `2024-25`. Seasons `2023-24` and
 `2024-25` are historical validation seasons, not an untouched final test set.
@@ -294,3 +294,19 @@ uv run fpl compare-baselines --run-id phase3_gw1_hardened
 uv run fpl inspect-backtest --run-id phase3_rolling_hardened
 uv run fpl inspect-backtest --run-id phase3_gw1_hardened
 ```
+
+## 16. What Phase 4 Models Must Beat
+
+The rolling baseline frontier is split across metrics:
+
+- `B5_EB_POINTS_PER90`: MAE 1.0060.
+- `B4_RECENT_MINUTES_P3`: RMSE 2.0511.
+- `B4_RECENT_MINUTES_P3`: Spearman 0.6944.
+- `B5_EB_POINTS_PER90`: top-15 actual points 67.66.
+
+B5 should not be described as best on every metric. For GW1, zero has slightly
+lower MAE because many rows are inactive, but it has no ranking value and carries a
+large negative bias. B6 is the more useful operational GW1 baseline because it ranks
+returning, transferred, and position-change players using stable identity and prior
+season evidence. Phase 4 should improve B6's RMSE, ranking, top-k selection, and
+calibration without introducing major bias.

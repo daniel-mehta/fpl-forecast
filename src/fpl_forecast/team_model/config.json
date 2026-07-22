@@ -1,0 +1,24 @@
+{
+  "version": "phase4_team_strength_v1",
+  "t0_min_training_fixtures": 1,
+  "t1_recent_window": 8,
+  "t1_shrink_matches": 6,
+  "t2_ridge_penalty": 10.0,
+  "t2_max_iterations": 100,
+  "t2_convergence_tolerance": 1e-7,
+  "t2_low_history_threshold": 6,
+  "recency_half_life_days": 365,
+  "min_expected_goals": 0.05,
+  "max_expected_goals": 5.0,
+  "probability_max_goals": 8,
+  "outcome_grid_max_goals": 20,
+  "log_loss_epsilon": 1e-12,
+  "bootstrap_samples": 300,
+  "bootstrap_seed": 20260722,
+  "reference_model": "T0_LEAGUE_HOME_AWAY",
+  "model_families": {
+    "T0_LEAGUE_HOME_AWAY": "lambda_home=training mean home goals; lambda_away=training mean away goals",
+    "T1_SHRUNK_ROLLING_TEAM_RATE": "side-specific recent team scoring and conceding rates, shrunk toward league home/away rates, averaged for attack and opponent defence",
+    "T2_REGULARIZED_ATTACK_DEFENCE": "weighted ridge-penalized Poisson attack-defence model with log(lambda_home)=intercept+home_advantage+attack[home]+defence[away] and log(lambda_away)=intercept+attack[away]+defence[home]; higher defence means weaker defence"
+  }
+}

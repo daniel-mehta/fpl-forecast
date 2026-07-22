@@ -13,6 +13,7 @@ data/raw/**
 data/normalized/**
 data/review/**
 reports/backtests/**
+reports/team_backtests/**
 !data/raw/
 !data/raw/fpl_api/
 !data/raw/vaastav/
@@ -21,4 +22,5 @@ reports/backtests/**
 !data/review/
 !reports/
 !reports/backtests/
+!reports/team_backtests/
 !data/**/.gitkeep

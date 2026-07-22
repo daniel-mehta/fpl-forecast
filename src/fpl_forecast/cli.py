@@ -18,6 +18,12 @@ from fpl_forecast.backtest.runner import (
     inspect_backtest_run,
     run_baseline_backtest,
 )
+from fpl_forecast.team_model.runner import (
+    compare_team_models,
+    forecast_team_fixtures as forecast_team_fixtures_run,
+    inspect_team_run,
+    run_team_backtest,
+)
 from fpl_forecast.ingest.fpl_api import FPLApiClient, FPLApiError
 from fpl_forecast.ingest.vaastav import VaastavDataError, VaastavIngestor
 from fpl_forecast.normalize.current import normalize_current as normalize_current_tables
@@ -331,6 +337,98 @@ def inspect_backtest(
         raise typer.Exit(1) from exc
     for line in lines:
         console.print(line)
+
+
+@app.command("backtest-team-model")
+def backtest_team_model(
+    seasons: Annotated[
+        str,
+        typer.Option(help="Comma-separated historical seasons available for training and testing."),
+    ],
+    test_seasons: Annotated[
+        str,
+        typer.Option(help="Comma-separated seasons to score out of sample."),
+    ],
+    mode: Annotated[str, typer.Option(help="Backtest mode: rolling or gw1.")] = "rolling",
+    normalized_dir: Annotated[
+        Path,
+        typer.Option(help="Normalized data directory."),
+    ] = NORMALIZED_DIR,
+    run_id: Annotated[str | None, typer.Option(help="Optional deterministic run id.")] = None,
+) -> None:
+    try:
+        result = run_team_backtest(
+            seasons=seasons,
+            test_seasons=test_seasons,
+            mode=mode,
+            normalized_dir=normalized_dir,
+            run_id=run_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Team-model backtest failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    console.print(f"run_id={result.run_id}")
+    console.print(f"run_dir={result.run_dir}")
+    console.print(f"folds={len(result.folds)}")
+    console.print(f"frozen_predictions={result.frozen_predictions_path}")
+    console.print(f"scored_predictions={result.scored_predictions_path}")
+    console.print(f"manifest={result.manifest_path}")
+
+
+@app.command("compare-team-models")
+def compare_team_model_runs(
+    run_id: Annotated[str, typer.Option(help="Team-model run id to compare.")],
+) -> None:
+    try:
+        lines = compare_team_models(run_id=run_id)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Team-model comparison failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    for line in lines:
+        console.print(line)
+
+
+@app.command("inspect-team-model")
+def inspect_team_model(
+    run_id: Annotated[str, typer.Option(help="Team-model run id to inspect.")],
+) -> None:
+    try:
+        lines = inspect_team_run(run_id=run_id)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Team-model inspection failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    for line in lines:
+        console.print(line)
+
+
+@app.command("forecast-team-fixtures")
+def forecast_team_fixtures(
+    season: Annotated[str, typer.Option(help="Official current season to forecast.")],
+    as_of: Annotated[str, typer.Option(help="UTC cutoff timestamp for the forecast.")],
+    gameweek: Annotated[int | None, typer.Option(help="Optional FPL gameweek/event filter.")] = None,
+    seasons: Annotated[
+        str,
+        typer.Option(help="Historical seasons to train from."),
+    ] = "2022-23,2023-24,2024-25",
+    normalized_dir: Annotated[
+        Path,
+        typer.Option(help="Normalized data directory."),
+    ] = NORMALIZED_DIR,
+    run_id: Annotated[str | None, typer.Option(help="Optional deterministic run id.")] = None,
+) -> None:
+    try:
+        path = forecast_team_fixtures_run(
+            season=season,
+            gameweek=gameweek,
+            as_of=as_of,
+            seasons=seasons,
+            normalized_dir=normalized_dir,
+            run_id=run_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Team-fixture forecast failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    console.print(f"future_fixture_predictions={path}")
 
 
 def _print_records(title: str, records) -> None:
