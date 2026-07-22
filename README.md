@@ -2,10 +2,14 @@
 
 Real-data foundation for a Fantasy Premier League forecasting system.
 
-This repository currently implements Phase 1 only: ingestion, immutable raw snapshots,
-normalization to Parquet, validation, a command-line interface, tests, and documentation. It does
-not implement forecasting, expected-minutes modeling, team-strength modeling, simulation,
-backtesting, squad optimization, transfer planning, or predictive performance reporting.
+This repository currently implements Phase 1 and Phase 2. Phase 1 covers ingestion, immutable raw
+snapshots, normalization to Parquet, validation, a command-line interface, tests, and documentation.
+Phase 2 adds multi-season historical coverage, cross-season team and player identities, a canonical
+player-fixture panel, deadline-safe feature primitives, feature lineage, and leakage auditing.
+
+It does not implement forecasting models, expected-minutes models, team-strength models,
+simulations, backtests, expected-points projections, squad optimization, transfer planning, or
+predictive performance reporting.
 
 ## Data Boundaries
 
@@ -164,9 +168,16 @@ exclude or handle them.
 
 ## Identity Mapping
 
-Cross-season identity resolution is not complete in Phase 1. Future manual mapping work belongs in
-`data/manual/`, with source notes and review status. Do not infer target-season positions, prices,
-or identities from synthetic examples or prior-season rows.
+Phase 2 implements cross-season player identity mapping using unique FPL player codes. In the
+audited `2022-23`, `2023-24`, and `2024-25` data, every player-season record mapped automatically
+through a unique, non-null FPL code.
+
+Team identities are season-aware and use tracked aliases in `data/manual/team_aliases.csv`.
+Manual player overrides are supported in `data/manual/player_identity_overrides.csv`, and unresolved
+or ambiguous review candidates are written to ignored outputs under `data/review/`.
+
+Future seasons may still require manual review or overrides. Current-season positions, prices, and
+team assignments remain season-specific.
 
 ## Verification
 
@@ -176,3 +187,47 @@ Run the offline verification suite:
 uv run pytest -q
 uv run ruff check .
 ```
+
+## Phase 2 Panel Workflow
+
+Phase 2 builds identity-aware, leakage-audited player-fixture panel tables. It still does not train
+models or produce projections.
+
+```bash
+uv run fpl ingest-historical --season 2022-23
+uv run fpl ingest-historical --season 2023-24
+uv run fpl ingest-historical --season 2024-25
+
+uv run fpl normalize-historical --season 2022-23
+uv run fpl normalize-historical --season 2023-24
+uv run fpl normalize-historical --season 2024-25
+
+uv run fpl build-identities --seasons 2022-23,2023-24,2024-25
+uv run fpl build-panel --seasons 2022-23,2023-24,2024-25
+uv run fpl audit-leakage --seasons 2022-23,2023-24,2024-25
+uv run fpl inspect-panel --seasons 2022-23,2023-24,2024-25
+```
+
+Generated Phase 2 tables are written under `data/normalized/phase2/` and ignored by Git.
+Generated identity review candidates are written under `data/review/` and ignored by Git. Manual
+inputs under `data/manual/` are version-controlled templates.
+
+Phase 2 outputs:
+
+- `dim_team.parquet`
+- `team_season_map.parquet`
+- `dim_player.parquet`
+- `player_season_map.parquet`
+- `dim_fixture.parquet`
+- `fact_player_fixture.parquet`
+- `features_player_fixture.parquet`
+
+Feature definitions live in `src/fpl_forecast/features/registry.json`, and the leakage auditor
+checks that produced feature columns are registered, shifted, and backed by source availability
+lineage strictly before each row's information cutoff. When exact historical match-completion times
+are unavailable, Phase 2 uses the conservative rule `source_available_time = kickoff_time + 3h` for
+match-derived results; source kickoff alone is not treated as sufficient evidence that final match
+statistics were known.
+
+The fact and feature tables include `entity_type`, distinguishing standard football players from
+assistant managers. Standard player modeling panels can filter `entity_type == "player"`.

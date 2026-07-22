@@ -11,9 +11,11 @@ __pycache__/
 
 data/raw/**
 data/normalized/**
+data/review/**
 !data/raw/
 !data/raw/fpl_api/
 !data/raw/vaastav/
 !data/normalized/
 !data/manual/
+!data/review/
 !data/**/.gitkeep

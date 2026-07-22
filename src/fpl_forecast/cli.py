@@ -17,6 +17,11 @@ from fpl_forecast.ingest.fpl_api import FPLApiClient, FPLApiError
 from fpl_forecast.ingest.vaastav import VaastavDataError, VaastavIngestor
 from fpl_forecast.normalize.current import normalize_current as normalize_current_tables
 from fpl_forecast.normalize.historical import normalize_historical as normalize_historical_tables
+from fpl_forecast.features.leakage import audit_leakage as audit_leakage_tables
+from fpl_forecast.panel.build import build_identities as build_identity_tables
+from fpl_forecast.panel.build import build_panel as build_panel_tables
+from fpl_forecast.panel.common import parse_seasons
+from fpl_forecast.panel.inspect import inspect_panel as inspect_panel_tables
 from fpl_forecast.validation.data_quality import ERROR, validate_all
 
 
@@ -152,6 +157,107 @@ def validate_data(
         console.print(f"[yellow]{len(result.warnings)} warning(s), 0 errors.[/yellow]")
 
 
+@app.command("build-identities")
+def build_identities(
+    seasons: Annotated[
+        str,
+        typer.Option(help="Comma-separated historical seasons, for example 2022-23,2023-24,2024-25."),
+    ],
+    normalized_dir: Annotated[
+        Path,
+        typer.Option(help="Normalized data directory."),
+    ] = NORMALIZED_DIR,
+) -> None:
+    try:
+        result = build_identity_tables(seasons=seasons, normalized_dir=normalized_dir)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Identity build failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    _print_paths(
+        "Identity tables",
+        [
+            result.teams.dim_team_path,
+            result.teams.team_season_map_path,
+            result.players.dim_player_path,
+            result.players.player_season_map_path,
+            result.players.review_path,
+        ],
+    )
+    _print_identity_counts(result.players.player_season_map)
+
+
+@app.command("build-panel")
+def build_panel(
+    seasons: Annotated[
+        str,
+        typer.Option(help="Comma-separated historical seasons, for example 2022-23,2023-24,2024-25."),
+    ],
+    normalized_dir: Annotated[
+        Path,
+        typer.Option(help="Normalized data directory."),
+    ] = NORMALIZED_DIR,
+) -> None:
+    try:
+        result = build_panel_tables(seasons=seasons, normalized_dir=normalized_dir)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Panel build failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    _print_paths(
+        "Panel tables",
+        [result.fixtures.fixture_path, result.facts.fact_path, result.features.feature_path],
+    )
+
+
+@app.command("audit-leakage")
+def audit_leakage(
+    seasons: Annotated[
+        str,
+        typer.Option(help="Comma-separated historical seasons, for example 2022-23,2023-24,2024-25."),
+    ],
+    normalized_dir: Annotated[
+        Path,
+        typer.Option(help="Normalized data directory."),
+    ] = NORMALIZED_DIR,
+) -> None:
+    season_list = parse_seasons(seasons)
+    result = audit_leakage_tables(seasons=season_list, normalized_dir=normalized_dir)
+    if not result.issues:
+        console.print("[green]Leakage audit passed.[/green]")
+        return
+    table = Table(title="Leakage audit issues")
+    table.add_column("Severity")
+    table.add_column("Message")
+    for issue in result.issues:
+        style = "red" if issue.severity == "error" else "yellow"
+        table.add_row(f"[{style}]{issue.severity}[/{style}]", issue.message)
+    console.print(table)
+    if result.errors:
+        raise typer.Exit(1)
+
+
+@app.command("inspect-panel")
+def inspect_panel(
+    seasons: Annotated[
+        str,
+        typer.Option(help="Comma-separated historical seasons, for example 2022-23,2023-24,2024-25."),
+    ],
+    normalized_dir: Annotated[
+        Path,
+        typer.Option(help="Normalized data directory."),
+    ] = NORMALIZED_DIR,
+) -> None:
+    try:
+        result = inspect_panel_tables(
+            seasons=parse_seasons(seasons),
+            normalized_dir=normalized_dir,
+        )
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Panel inspection failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    for line in result.lines:
+        console.print(line)
+
+
 def _print_records(title: str, records) -> None:
     table = Table(title=title)
     table.add_column("Endpoint")
@@ -175,4 +281,15 @@ def _print_paths(title: str, paths: list[Path]) -> None:
     table.add_column("Path")
     for path in paths:
         table.add_row(str(path))
+    console.print(table)
+
+
+def _print_identity_counts(player_season_map) -> None:
+    table = Table(title="Player identity counts")
+    table.add_column("Season")
+    table.add_column("Method")
+    table.add_column("Count", justify="right")
+    counts = player_season_map.groupby(["season", "match_method"]).size().reset_index(name="count")
+    for row in counts.itertuples(index=False):
+        table.add_row(str(row.season), str(row.match_method), str(row.count))
     console.print(table)

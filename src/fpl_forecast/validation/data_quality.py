@@ -80,7 +80,7 @@ def _load_tables(normalized_dir: Path) -> dict[Path, pd.DataFrame]:
     return {
         path: pd.read_parquet(path)
         for path in sorted(normalized_dir.glob("**/*.parquet"))
-        if "outputs" not in path.parts
+        if "outputs" not in path.parts and "phase2" not in path.parts
     }
 
 

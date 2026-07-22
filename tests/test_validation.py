@@ -154,6 +154,38 @@ def test_cli_smoke_validate_data_reports_error_for_empty_directory(tmp_path):
     assert "No normalized Parquet tables found" in result.output
 
 
+def test_phase1_validation_ignores_phase2_outputs(tmp_path):
+    phase2_dir = tmp_path / "normalized" / "phase2"
+    phase2_dir.mkdir(parents=True)
+    pd.DataFrame([{"team_uid": "team_a", "canonical_name": "Team A"}]).to_parquet(
+        phase2_dir / "dim_team.parquet",
+        index=False,
+    )
+    season_dir = tmp_path / "normalized" / "2026-27"
+    season_dir.mkdir()
+    pd.DataFrame(
+        [
+            {
+                "team_id": 1,
+                "team_code": 1,
+                "team_name": "Team A",
+                "source": "fpl_api",
+                "source_version": "sha",
+                "retrieved_at": "2026-07-22T12:00:00Z",
+                "season": "2026-27",
+                "raw_snapshot_path": "/tmp/raw.json",
+            }
+        ]
+    ).to_parquet(season_dir / "current_teams.parquet", index=False)
+
+    result = validate_all(
+        normalized_dir=tmp_path / "normalized",
+        raw_vaastav_dir=tmp_path / "raw" / "vaastav",
+    )
+
+    assert result.ok
+
+
 def _history_row(*, player_id: int, fixture_id: int, minutes: int) -> dict[str, object]:
     return {
         "player_id": player_id,

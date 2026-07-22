@@ -121,6 +121,8 @@ def _historical_player_fixtures_frame(
         "red_cards",
         "saves",
         "starts",
+        "team_a_score",
+        "team_h_score",
         "yellow_cards",
         "mng_clean_sheets",
         "mng_draw",

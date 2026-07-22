@@ -12,6 +12,7 @@ RAW_FPL_API_DIR = RAW_DIR / "fpl_api"
 RAW_VAASTAV_DIR = RAW_DIR / "vaastav"
 NORMALIZED_DIR = DATA_DIR / "normalized"
 MANUAL_DIR = DATA_DIR / "manual"
+REVIEW_DIR = DATA_DIR / "review"
 OUTPUTS_DIR = PROJECT_ROOT / "outputs"
 SYNTHETIC_DEMO_DIR = OUTPUTS_DIR / "synthetic_demo"
 
@@ -40,6 +41,7 @@ class RuntimePaths(BaseModel):
     raw_vaastav_dir: Path = RAW_VAASTAV_DIR
     normalized_dir: Path = NORMALIZED_DIR
     manual_dir: Path = MANUAL_DIR
+    review_dir: Path = REVIEW_DIR
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -58,6 +60,7 @@ def ensure_data_directories(paths: RuntimePaths | None = None) -> None:
         paths.raw_vaastav_dir,
         paths.normalized_dir,
         paths.manual_dir,
+        paths.review_dir,
         SYNTHETIC_DEMO_DIR,
     ):
         directory.mkdir(parents=True, exist_ok=True)
