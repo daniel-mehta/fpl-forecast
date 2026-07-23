@@ -24,6 +24,12 @@ from fpl_forecast.team_model.runner import (
     inspect_team_run,
     run_team_backtest,
 )
+from fpl_forecast.minutes_model.runner import (
+    compare_minutes_models,
+    forecast_minutes as forecast_minutes_run,
+    inspect_minutes_run,
+    run_minutes_backtest,
+)
 from fpl_forecast.ingest.fpl_api import FPLApiClient, FPLApiError
 from fpl_forecast.ingest.vaastav import VaastavDataError, VaastavIngestor
 from fpl_forecast.normalize.current import normalize_current as normalize_current_tables
@@ -429,6 +435,98 @@ def forecast_team_fixtures(
         console.print(f"[red]Team-fixture forecast failed:[/red] {exc}")
         raise typer.Exit(1) from exc
     console.print(f"future_fixture_predictions={path}")
+
+
+@app.command("backtest-minutes")
+def backtest_minutes(
+    seasons: Annotated[
+        str,
+        typer.Option(help="Comma-separated historical seasons available for training and testing."),
+    ],
+    test_seasons: Annotated[
+        str,
+        typer.Option(help="Comma-separated seasons to score out of sample."),
+    ],
+    mode: Annotated[str, typer.Option(help="Backtest mode: rolling or gw1.")] = "rolling",
+    normalized_dir: Annotated[
+        Path,
+        typer.Option(help="Normalized data directory."),
+    ] = NORMALIZED_DIR,
+    run_id: Annotated[str | None, typer.Option(help="Optional deterministic run id.")] = None,
+    bootstrap_samples: Annotated[
+        int | None,
+        typer.Option(help="Override bootstrap sample count."),
+    ] = None,
+    seed: Annotated[int | None, typer.Option(help="Override bootstrap random seed.")] = None,
+) -> None:
+    try:
+        result = run_minutes_backtest(
+            seasons=seasons,
+            test_seasons=test_seasons,
+            mode=mode,
+            normalized_dir=normalized_dir,
+            run_id=run_id,
+            bootstrap_samples=bootstrap_samples,
+            seed=seed,
+        )
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Minutes backtest failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    console.print(f"run_id={result.run_id}")
+    console.print(f"run_dir={result.run_dir}")
+    console.print(f"folds={len(result.folds)}")
+    console.print(f"frozen_predictions={result.frozen_predictions_path}")
+    console.print(f"scored_predictions={result.scored_predictions_path}")
+    console.print(f"manifest={result.manifest_path}")
+
+
+@app.command("compare-minutes")
+def compare_minutes(
+    run_id: Annotated[str, typer.Option(help="Minutes run id to compare.")],
+) -> None:
+    try:
+        lines = compare_minutes_models(run_id=run_id)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Minutes comparison failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    for line in lines:
+        console.print(line)
+
+
+@app.command("inspect-minutes")
+def inspect_minutes(
+    run_id: Annotated[str, typer.Option(help="Minutes run id to inspect.")],
+) -> None:
+    try:
+        lines = inspect_minutes_run(run_id=run_id)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Minutes inspection failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    for line in lines:
+        console.print(line)
+
+
+@app.command("forecast-minutes")
+def forecast_minutes(
+    season: Annotated[str, typer.Option(help="Official current season to forecast.")],
+    as_of: Annotated[str, typer.Option(help="UTC cutoff timestamp for the forecast.")],
+    gameweek: Annotated[int | None, typer.Option(help="Optional FPL gameweek/event filter.")] = None,
+    normalized_dir: Annotated[
+        Path,
+        typer.Option(help="Normalized data directory."),
+    ] = NORMALIZED_DIR,
+) -> None:
+    try:
+        path = forecast_minutes_run(
+            season=season,
+            gameweek=gameweek,
+            as_of=as_of,
+            normalized_dir=normalized_dir,
+        )
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Minutes forecast failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    console.print(f"future_minutes_predictions={path}")
 
 
 def _print_records(title: str, records) -> None:

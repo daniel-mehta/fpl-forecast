@@ -2,8 +2,9 @@
 
 Real-data foundation for a Fantasy Premier League forecasting system.
 
-This repository currently implements Phase 1, Phase 2, Phase 3, and Phase 4. Phase 1 covers ingestion, immutable raw
-snapshots, normalization to Parquet, validation, a command-line interface, tests, and documentation.
+This repository currently implements Phase 1, Phase 2, Phase 3, Phase 4, Phase 4.1, and Phase 5.
+Phase 1 covers ingestion, immutable raw snapshots, normalization to Parquet, validation, a
+command-line interface, tests, and documentation.
 Phase 2 adds multi-season historical coverage, cross-season team and player identities, a canonical
 player-fixture panel, deadline-safe feature primitives, feature lineage, and leakage auditing.
 Phase 3 adds rolling-origin baseline backtests, dedicated GW1 cold-start validation, frozen
@@ -11,10 +12,13 @@ prediction outputs, metrics, and baseline comparisons.
 Phase 4 adds leakage-safe team-fixture strength baselines, opponent-adjusted goal probabilities,
 clean-sheet and match-outcome diagnostics, and official future-fixture inference with strict
 season and team-identity checks.
+Phase 4.1 adds an experimental Dixon-Coles low-score dependence challenger.
+Phase 5 adds leakage-safe player expected-minutes and appearance-probability backtests, role-duration
+state modeling, lineup-start diagnostics, and guarded current-season input validation.
 
-It does not implement production player forecasting models, expected-minutes models,
-player expected-points projections, simulations, squad optimization, transfer planning, scheduling,
-dashboard work, or production forecasting.
+It does not implement production player expected-points models, player expected-points projections,
+simulations, squad optimization, transfer planning, scheduling, dashboard work, or production
+forecasting.
 
 ## Data Boundaries
 
@@ -33,7 +37,8 @@ outputs/
 
 reports/
 ├── backtests/
-└── team_backtests/
+├── team_backtests/
+└── minutes_backtests/
 ```
 
 Only externally retrieved source bytes belong in `data/raw`. Only tables derived from those real
@@ -354,3 +359,49 @@ uv run fpl backtest-team-model \
 uv run fpl compare-team-models --run-id phase4_1_dixon_coles_rolling
 uv run fpl compare-team-models --run-id phase4_1_dixon_coles_gw1
 ```
+
+## Phase 5 Expected-Minutes Workflow
+
+Phase 5 models player-fixture minutes, appearance probability, start probability, 60-plus
+probability, 90-minute probability, and exact-start role-duration states. It uses only Phase 2
+player rows with `entity_type == "player"` and keeps assistant-manager rows preserved upstream but
+deterministically excluded from standard player minutes panels.
+
+```bash
+uv run fpl backtest-minutes \
+  --seasons 2022-23,2023-24,2024-25 \
+  --test-seasons 2023-24,2024-25 \
+  --mode rolling \
+  --run-id phase5_minutes_rolling_real
+
+uv run fpl backtest-minutes \
+  --seasons 2022-23,2023-24,2024-25 \
+  --test-seasons 2023-24,2024-25 \
+  --mode gw1 \
+  --run-id phase5_minutes_gw1_real
+
+uv run fpl compare-minutes --run-id phase5_minutes_rolling_real
+uv run fpl inspect-minutes --run-id phase5_minutes_rolling_real
+```
+
+Generated Phase 5 outputs are written under `reports/minutes_backtests/<run_id>/` and ignored by
+Git. Frozen predictions exclude target minutes, actual starts, role-duration labels, target points,
+lineup status, price, and other post-deadline fields.
+
+The versioned candidate-population rule lives in
+`src/fpl_forecast/minutes_model/config.json`. All observed player rows remain the primary
+data-quality population. Decision-relevant evaluation is reported separately for
+`pre_deadline_history_active`, and rows with no prior or in-season history are reported as
+`cold_start_no_history`.
+
+Current expected-minutes inference is deliberately guarded:
+
+```bash
+uv run fpl forecast-minutes \
+  --season TARGET_SEASON \
+  --gameweek 1 \
+  --as-of AS_OF_TIMESTAMP
+```
+
+The command validates official future fixture and player snapshots first and fails clearly when the
+current snapshot is missing, stale, season-mismatched, or not genuinely forecastable.

@@ -1,0 +1,61 @@
+{
+  "model_names": [
+    "M0_ZERO_MINUTES",
+    "M1_RECENT_MEAN_P3",
+    "M2_RECENT_MEAN_P5",
+    "M3_EWMA_MINUTES",
+    "M4_PREVIOUS_SEASON_ROLE_GW1",
+    "M5_REGULARIZED_STATE_SOFTMAX",
+    "M6_NONLINEAR_RECENCY_ENSEMBLE"
+  ],
+  "reference_model": "M2_RECENT_MEAN_P5",
+  "state_order": [
+    "DNP",
+    "SUB_UNDER_60",
+    "SUB_60_PLUS",
+    "START_UNDER_60",
+    "START_60_TO_89",
+    "START_90"
+  ],
+  "state_minutes": {
+    "DNP": 0.0,
+    "SUB_UNDER_60": 22.0,
+    "SUB_60_PLUS": 65.0,
+    "START_UNDER_60": 45.0,
+    "START_60_TO_89": 75.0,
+    "START_90": 90.0
+  },
+  "ewma_alpha": 0.45,
+  "shrink_matches": 4.0,
+  "softmax_l2": 0.002,
+  "softmax_learning_rate": 0.08,
+  "softmax_iterations": 35,
+  "max_model_training_rows": 5000,
+  "ensemble_min_leaf": 18,
+  "candidate_rule": {
+    "in_season": "history_active when previous-five available fixtures include positive minutes or season-to-date appearances before cutoff are positive",
+    "gw1": "history_active when prior-season appearances or minutes are positive",
+    "cold_start": "rows with no in-season or prior-season appearance/minute history before cutoff"
+  },
+  "calibration_bins": [0, 1, 15, 30, 45, 60, 75, 90],
+  "bootstrap_samples": 100,
+  "bootstrap_seed": 5050,
+  "lineup_adjustment_min_candidates": 15,
+  "forbidden_frozen_columns": [
+    "actual_minutes",
+    "actual_appearance",
+    "actual_start",
+    "actual_reached_60",
+    "actual_played_90",
+    "actual_state",
+    "target_total_points",
+    "total_points",
+    "points",
+    "xP",
+    "selected",
+    "transfers_in",
+    "transfers_out",
+    "lineup_status",
+    "price_tenths"
+  ]
+}
