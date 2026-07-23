@@ -17,6 +17,9 @@ reports/team_backtests/**
 reports/minutes_backtests/**
 reports/xpoints_backtests/**
 reports/decision_backtests/**
+reports/operational/**
+outputs/operational/**
+logs/operational/**
 !data/raw/
 !data/raw/fpl_api/
 !data/raw/vaastav/
@@ -29,4 +32,5 @@ reports/decision_backtests/**
 !reports/minutes_backtests/
 !reports/xpoints_backtests/
 !reports/decision_backtests/
+!reports/operational/
 !data/**/.gitkeep

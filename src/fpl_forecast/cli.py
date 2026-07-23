@@ -45,6 +45,13 @@ from fpl_forecast.decision.runner import (
     run_transfer_demo,
     validate_decision_rules as validate_decision_rules_run,
 )
+from fpl_forecast.dashboard.app import run_dashboard
+from fpl_forecast.operations.launch import check_season_launch as check_season_launch_run
+from fpl_forecast.operations.orchestrator import (
+    operational_status_lines,
+    refresh_operational as refresh_operational_run,
+    verify_operational_readiness as verify_operational_readiness_run,
+)
 from fpl_forecast.ingest.fpl_api import FPLApiClient, FPLApiError
 from fpl_forecast.ingest.vaastav import VaastavDataError, VaastavIngestor
 from fpl_forecast.normalize.current import normalize_current as normalize_current_tables
@@ -748,6 +755,75 @@ def forecast_decisions(
     except Exception as exc:  # noqa: BLE001
         console.print(f"[red]Decision forecast failed:[/red] {exc}")
         raise typer.Exit(1) from exc
+
+
+@app.command("check-season-launch")
+def check_season_launch(
+    season: Annotated[str, typer.Option(help="Target season to check.")],
+    offline: Annotated[bool, typer.Option(help="Use cached official snapshots only.")] = True,
+    refresh: Annotated[bool, typer.Option(help="Fetch fresh official snapshots when needed.")] = False,
+    raw_dir: Annotated[Path, typer.Option(help="Raw FPL API directory.")] = RAW_FPL_API_DIR,
+) -> None:
+    result = check_season_launch_run(season=season, raw_dir=raw_dir, offline=offline, refresh=refresh)
+    status = result.status
+    console.print(f"state={status.state.value}")
+    console.print(f"target_season={status.target_season}")
+    console.print(f"inferred_official_season={status.inferred_official_season}")
+    console.print(f"latest_official_deadline={status.latest_official_deadline}")
+    console.print(f"latest_completed_gameweek={status.latest_completed_gameweek}")
+    console.print(f"latest_completed_fixture={status.latest_completed_fixture}")
+    console.print(f"reason={status.reason}")
+    if result.rule_diff.get("material_changes"):
+        console.print(f"rule_diff={result.rule_diff['material_changes']}")
+
+
+@app.command("refresh-operational")
+def refresh_operational(
+    season: Annotated[str, typer.Option(help="Target operational season.")],
+    offline: Annotated[bool, typer.Option(help="Use cached official snapshots only.")] = True,
+    mock_launch: Annotated[bool, typer.Option(help="Use representative target-season launch fixtures for tests.")] = False,
+    force: Annotated[bool, typer.Option(help="Force rerun even when fingerprints are unchanged.")] = False,
+    status_only: Annotated[bool, typer.Option(help="Only update/check operational status.")] = False,
+    run_id: Annotated[str | None, typer.Option(help="Optional deterministic run id.")] = None,
+    fail_stage: Annotated[str | None, typer.Option(help="Inject failure at ingestion, modeling, optimization or publication.")] = None,
+) -> None:
+    result = refresh_operational_run(
+        season=season,
+        offline=offline,
+        mock_launch=mock_launch,
+        force=force,
+        run_id=run_id,
+        fail_stage=fail_stage,
+        status_only=status_only,
+    )
+    console.print(f"state={result.status.state.value}")
+    console.print(f"run_id={result.run_id}")
+    console.print(f"run_dir={result.run_dir}")
+    console.print(f"manifest={result.manifest_path}")
+    console.print(f"no_op={result.no_op}")
+    console.print(f"reason={result.status.reason}")
+
+
+@app.command("operational-status")
+def operational_status() -> None:
+    for line in operational_status_lines():
+        console.print(line)
+
+
+@app.command("verify-operational-readiness")
+def verify_operational_readiness() -> None:
+    for line in verify_operational_readiness_run():
+        console.print(line)
+
+
+@app.command("dashboard")
+def dashboard(
+    smoke: Annotated[bool, typer.Option(help="Build dashboard HTML and exit without serving.")] = False,
+    host: Annotated[str, typer.Option(help="Dashboard host.")] = "127.0.0.1",
+    port: Annotated[int, typer.Option(help="Dashboard port.")] = 8501,
+) -> None:
+    path = run_dashboard(host=host, port=port, smoke=smoke)
+    console.print(f"dashboard_html={path}")
 
 
 def _print_records(title: str, records) -> None:

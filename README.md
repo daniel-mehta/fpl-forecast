@@ -3,8 +3,8 @@
 Real-data foundation for a Fantasy Premier League forecasting system.
 
 This repository currently implements Phase 1, Phase 2, Phase 3, Phase 4, Phase 4.1, Phase 5,
-Phase 6, and Phase 7. Phase 1 covers ingestion, immutable raw snapshots, normalization to Parquet,
-validation, a command-line interface, tests, and documentation.
+Phase 6, Phase 7, and Phase 8. Phase 1 covers ingestion, immutable raw snapshots, normalization to
+Parquet, validation, a command-line interface, tests, and documentation.
 Phase 2 adds multi-season historical coverage, cross-season team and player identities, a canonical
 player-fixture panel, deadline-safe feature primitives, feature lineage, and leakage auditing.
 Phase 3 adds rolling-origin baseline backtests, dedicated GW1 cold-start validation, frozen
@@ -22,8 +22,12 @@ Phase 7 adds integer-tenths price handling, official squad/lineup rule validatio
 MILP weekly-reset squad optimization, captain/vice-captain/bench selection, autosub scoring,
 exhaustive small-case no-chip multi-gameweek transfer planning, and guarded current decision input
 validation.
+Phase 8 adds launch detection, operational locking, atomic latest-successful publication, a local
+dashboard contract, and a mocked target-season run that executes the real team, minutes, xPoints,
+and exact decision chain from official-shaped target-season inputs plus eligible prior-season
+history.
 
-It does not implement chips, scheduling, dashboard work, deployment, or production forecasting.
+It does not implement chips, hosted scheduling, deployment, or proven genuine 2026-27 operation.
 
 ## Data Boundaries
 
@@ -503,3 +507,56 @@ uv run fpl forecast-decisions \
 
 The command fails before writing outputs when current snapshots are stale, season-mismatched, or
 missing prerequisite current xPoints artifacts.
+
+## Phase 8 Operational Workflow
+
+Phase 8 adds a local operational shell around the existing model stack. It can check whether the
+requested season has launched, keep a machine-readable waiting state, run the current team,
+minutes, xPoints and exact decision chain for a mocked official-shaped target season, publish
+validated frontend-ready artifacts atomically, preserve the last successful output after failures,
+and render a functional local Python dashboard.
+
+Real `2026-27` operation remains blocked until the official public FPL payload genuinely identifies
+as `2026-27`. A waiting state is normal and safe:
+
+```bash
+uv run fpl check-season-launch --season 2026-27
+uv run fpl refresh-operational --season 2026-27 --status-only
+uv run fpl operational-status
+```
+
+Representative target-season operation can be tested without claiming real 2026-27 data. The mocked
+launch path builds target-season fixtures, player/team assignments and prices, combines them with
+prior-season history, runs T2 team forecasts, M3/M5 minutes forecasts, X2-M3/X2-M5 xPoints, and
+the full-candidate MILP squad/lineup/captain optimizer, then publishes those generated outputs:
+
+```bash
+uv run fpl refresh-operational \
+  --season 2026-27 \
+  --mock-launch \
+  --run-id phase8_mock_transition \
+  --force
+
+uv run fpl verify-operational-readiness
+uv run fpl dashboard --smoke
+```
+
+Generated Phase 8 outputs are written under `outputs/operational/`, `reports/operational/`, and
+`logs/operational/` and are ignored by Git. The published run includes model lineage proving the
+team, minutes, xPoints and decision run IDs that generated the frontend artifacts. The dashboard
+reads only the published frontend data contract, not internal model objects or historical Phase 7
+backtest artifacts. Run without `--smoke` to serve the local dashboard:
+
+```bash
+uv run fpl dashboard
+```
+
+The dashboard shows operational status, data freshness, player projections, model comparison,
+recommended squad, lineup and captaincy, and methodology/limitations. Transfer management remains
+limited to small exhaustive no-chip proof cases until manager-specific bank, purchase prices, free
+transfers and transfer history are available.
+
+The public `event/{gameweek}/live/` endpoint was reachable for `event/38/live/` on July 23, 2026
+and was archived under `data/raw/fpl_api/2025-26/event_live_38/`, then normalized at player-fixture
+grain. The returned payload did not reconstruct as a completed 2025-26 result, so genuine completed
+live-result ingestion remains unproven; this does not block mocked GW1 operational readiness.
