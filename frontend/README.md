@@ -32,7 +32,12 @@ seven frontend contract artifacts into `public/data/`. The generated data files,
 and `dist/` are ignored by Git. Original operational outputs are never modified.
 
 The current operational publication uses representative mocked target-season data, so the UI
-displays a prominent `DEMO DATA` warning. GitHub Pages and public deployment are not configured.
+displays a prominent `DEMO DATA` warning. When generated artifacts are absent, including on the
+initial GitHub Pages build, the UI displays a safe waiting state instead of forecast recommendations.
+
+The manual Pages workflow builds the frontend without running `sync-data`, so locally synchronized
+demo artifacts are never included in the public artifact. See `docs/deployment/github-pages.md`
+from the repository root for setup and deployment steps.
 
 The repository documentation link defaults to the repository URL found in Git configuration. It
 can be changed at build time with `VITE_REPOSITORY_URL`.

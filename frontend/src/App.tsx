@@ -28,15 +28,13 @@ function isDemoData(data: FrontendData): boolean {
 
 function App() {
   const [data, setData] = useState<FrontendData | null>(null);
-  const [error, setError] = useState("");
+  const [waiting, setWaiting] = useState(false);
   const [search, setSearch] = useState("");
   const [position, setPosition] = useState("ALL");
   const [descending, setDescending] = useState(true);
 
   useEffect(() => {
-    loadFrontendData().then(setData).catch((reason: unknown) => {
-      setError(reason instanceof Error ? reason.message : "Unable to load frontend data.");
-    });
+    loadFrontendData().then(setData).catch(() => setWaiting(true));
   }, []);
 
   const projections = useMemo(() => {
@@ -56,14 +54,22 @@ function App() {
       });
   }, [data, descending, position, search]);
 
-  if (error) {
+  if (waiting) {
     return (
-      <main className="page-shell">
-        <section className="load-state" role="alert">
-          <h1>FPL Forecast</h1>
-          <p>{error}</p>
-        </section>
-      </main>
+      <>
+        <main className="page-shell">
+          <section className="load-state" role="status">
+            <p className="eyebrow">Upcoming season</p>
+            <h1>FPL Forecast</h1>
+            <p>The forecast dashboard is preparing for the upcoming season.</p>
+            <p>
+              Projections will appear after official season data are available and validated. This
+              project remains experimental.
+            </p>
+          </section>
+        </main>
+        <SiteFooter />
+      </>
     );
   }
 
@@ -316,25 +322,31 @@ function App() {
         </section>
       </main>
 
-      <footer>
-        <div className="page-shell footer-inner">
-          <span>Built by Daniel Mehta</span>
-          <a
-            className="github-link"
-            href={repositoryUrl}
-            aria-label="View FPL Forecast on GitHub"
-            title="View repository on GitHub"
-          >
-            <svg aria-hidden="true" viewBox="0 0 24 24">
-              <path
-                fill="currentColor"
-                d="M12 2C6.48 2 2 6.59 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49v-1.91c-2.78.62-3.37-1.21-3.37-1.21-.45-1.18-1.11-1.49-1.11-1.49-.91-.64.07-.63.07-.63 1 .08 1.53 1.06 1.53 1.06.89 1.57 2.34 1.12 2.91.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.31.1-2.72 0 0 .84-.28 2.75 1.05A9.3 9.3 0 0 1 12 6.99a9.3 9.3 0 0 1 2.5.34c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.46.1 2.72.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.07.36.32.68.94.68 1.9v2.76c0 .27.18.59.69.49A10.26 10.26 0 0 0 22 12.25C22 6.59 17.52 2 12 2Z"
-              />
-            </svg>
-          </a>
-        </div>
-      </footer>
+      <SiteFooter />
     </>
+  );
+}
+
+function SiteFooter() {
+  return (
+    <footer>
+      <div className="page-shell footer-inner">
+        <span>Built by Daniel Mehta</span>
+        <a
+          className="github-link"
+          href={repositoryUrl}
+          aria-label="View FPL Forecast on GitHub"
+          title="View repository on GitHub"
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path
+              fill="currentColor"
+              d="M12 2C6.48 2 2 6.59 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49v-1.91c-2.78.62-3.37-1.21-3.37-1.21-.45-1.18-1.11-1.49-1.11-1.49-.91-.64.07-.63.07-.63 1 .08 1.53 1.06 1.53 1.06.89 1.57 2.34 1.12 2.91.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.31.1-2.72 0 0 .84-.28 2.75 1.05A9.3 9.3 0 0 1 12 6.99a9.3 9.3 0 0 1 2.5.34c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.46.1 2.72.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.07.36.32.68.94.68 1.9v2.76c0 .27.18.59.69.49A10.26 10.26 0 0 0 22 12.25C22 6.59 17.52 2 12 2Z"
+            />
+          </svg>
+        </a>
+      </div>
+    </footer>
   );
 }
 

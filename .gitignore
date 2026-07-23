@@ -3,11 +3,26 @@ outputs/*
 !outputs/synthetic_demo/**
 
 .venv/
+venv/
+env/
 __pycache__/
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+.tox/
+.nox/
 *.pyc
+.coverage
+coverage.xml
+htmlcov/
 .DS_Store
+.env
+.env.*
+!.env.example
+*.tmp
+*.swp
+*~
+npm-debug.log*
 
 data/raw/**
 data/normalized/**

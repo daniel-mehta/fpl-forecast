@@ -2,4 +2,5 @@
 
 Run `npm run sync-data` from `frontend/` to copy the seven public
 `phase8_frontend_v1` artifacts from the latest successful operational run. Generated files in this
-directory are ignored by Git.
+directory are ignored by Git. The public Pages build does not run this command; absent artifacts
+produce the frontend's safe waiting state.
