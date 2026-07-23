@@ -35,8 +35,9 @@ Inspected cached official payloads:
 - `fixtures/`: fixture IDs, event/gameweek, teams, kickoff time, started, finished,
   `finished_provisional`, scores and fixture stats.
 
-Before this pass, no cached `event/{gameweek}/live/` payload existed in the repository. A real
-network fetch was attempted for `https://fantasy.premierleague.com/api/event/38/live/` and archived:
+Before the original Phase 8 pass, no cached `event/{gameweek}/live/` payload existed in the
+repository. A real network fetch was attempted for
+`https://fantasy.premierleague.com/api/event/38/live/` and archived:
 
 ```text
 snapshot data/raw/fpl_api/2025-26/event_live_38/20260723T040041063444Z.json
@@ -46,9 +47,16 @@ fixtures 10
 players 841
 ```
 
-The endpoint was reachable, but the normalized payload did not reconstruct as a completed 2025-26
-result. Joining to the cached official bootstrap positions and running scoring reconstruction
-produced nonzero mismatch counts:
+The endpoint response has two related structures:
+
+- top-level `stats` is a dictionary of player event/gameweek totals;
+- `explain` is a list of fixture blocks, each containing scoring components with `identifier`,
+  `value`, awarded `points`, and `points_modification`.
+
+The original audit treated partial raw `explain` values as if they were a complete raw-stat source
+and did not use the official awarded component points. That confused raw statistic values with FPL
+points, missed the 2025-26 `defensive_contribution` scoring component, and left many players
+under-reconstructed. The previously observed mismatch distribution was:
 
 ```text
 point_difference  rows
@@ -67,10 +75,39 @@ point_difference  rows
               12     1
 ```
 
-Phase 8 therefore preserves the official-shaped live fixture test as the completed-live proof and
-labels genuine completed live-result ingestion as still unproven. This does not block GW1
-operational readiness because GW1 projections do not require completed target-season event-live
-data.
+This closure pass corrected the normalizer and audit. The canonical event-live output is
+player-fixture grain keyed by `season, fixture_id, player_uid`. It stores fixture ID, player ID,
+stable player UID, team/opponent context, home/away, kickoff time, retrieval/source availability,
+entity type, FPL position, starts/minutes, raw component values where fixture-assignable, official
+component points, reconstructed fixture total points, event total points for validation only, and
+source provenance. Double gameweeks keep one row per represented fixture; event totals are never
+copied onto each fixture row.
+
+Corrected real GW38 reconciliation:
+
+```text
+raw_element_count=841
+normalized_player_fixture_rows=841
+represented_fixtures=10
+duplicate_key_count=0
+exact_match_count=841
+exact_match_pct=1.0
+unresolved_count=0
+excluded_assistant_manager_count=0
+corrected_difference_counts={0: 841}
+safe_to_use_for_subsequent_forecasting=True
+```
+
+Concrete corrected examples:
+
+```text
+player_id player_name fpl_position fixture_ids official reconstructed key correction
+18        Madueke     MID          373         11       11            goal/CS/bonus awarded points
+50        Buendia     MID          376          6        6            defensive_contribution points included
+64        Watkins     FWD          376         13       13            two FWD goals use awarded points
+101       Kelleher    GKP          375          6        6            saves and bonus reconciled
+119       Mbeumo      MID          371          9        9            goal/CS/bonus reconciled
+```
 
 ## State Machine
 
@@ -124,6 +161,13 @@ source_available_time < information_cutoff
 Repeated rebuilds are idempotent by `season, player_id, fixture_id`, and assistant managers are
 excluded from standard player modeling panels.
 
+The publication safety gate rejects completed-result inputs with duplicate player-fixture keys,
+unresolved fixture IDs, invalid timestamps, source availability at or after the forecast cutoff,
+unexplained eligible-player scoring mismatches, repeated event totals on multiple fixture rows,
+incomplete fixtures treated as final, unresolved source limitations, or forbidden outcome columns in
+pre-deadline feature inputs. Failure occurs before atomic publication, so the latest successful
+pointer remains unchanged.
+
 ## Identity And Cold Starts
 
 Phase 8 preserves the Phase 2 identity rules: stable player codes are preferred, season-specific
@@ -175,6 +219,38 @@ Unchanged input no-op is reported through status with `no_op=True`.
 The mocked launch path no longer copies Phase 7 historical decision backtest predictions into
 operational outputs. It writes generated model-chain outputs under each run's `model_chain/`
 directory and publishes only frontend-ready CSV/JSON views derived from the same run.
+
+## In-Season GW1-To-GW2 Boundary
+
+Phase 8 now includes a mocked in-season transition command:
+
+```bash
+uv run fpl mock-gw1-to-gw2-operational-transition \
+  --season 2026-27 \
+  --run-id phase8_gw1_to_gw2_final
+```
+
+The transition proof:
+
+1. freezes GW1 forecasts before kickoff;
+2. creates completed GW1 player-fixture and team-fixture rows after final source availability;
+3. validates those completed rows before publication;
+4. appends them to the available history for a GW2 model-chain refresh;
+5. keeps GW2 targets absent from the inputs;
+6. publishes GW2 projections and an optimized squad;
+7. verifies a repeated unchanged run is a no-op;
+8. verifies an injected late-source completed-result failure preserves last-known-good.
+
+Representative output:
+
+```text
+completed_rows_entered_gw2_history=294
+gw2_projection_rows=294
+gw2_optimized_squad_rows=15
+repeated_unchanged_run_no_op=True
+injected_validation_failure_state=FAILED_USING_LAST_SUCCESS
+failure_preserved_latest=True
+```
 
 ## Model Chain Adapter
 
@@ -276,16 +352,22 @@ Added tests cover:
 - target fixture/opponent changes moving team and player forecasts;
 - price-only changes moving the optimized squad while leaving performance forecasts unchanged;
 - new-player, transferred-player, position-change and promoted-team neutral fallback cases through
-  the full model chain.
+  the full model chain;
+- real official-shaped event-live parsing, awarded points versus raw values, exact reconstruction,
+  DNP/substitute/clean-sheet/goals-conceded/save/bonus/card scoring, double-gameweek fixture rows,
+  duplicate components, assistant-manager exclusion, incomplete fixtures, late source availability,
+  idempotent re-ingestion, revised snapshots, last-known-good preservation and GW1-to-GW2 transition.
 
 ## Limitations
 
 - Genuine 2026-27 operation remains blocked until the official API truly identifies as 2026-27.
-- A real `event/38/live/` payload was archived, normalized and joined to bootstrap positions for
-  scoring reconstruction, but it did not behave like a completed 2025-26 result. Genuine completed
-  live-result ingestion is therefore still unproven.
+- A real `event/38/live/` payload was archived, normalized and joined to bootstrap/fixture context.
+  Corrected fixture-level reconstruction reconciles 841/841 player events exactly for the cached
+  GW38 payload.
 - The mocked operational forecast now runs the real model and optimization chain, but it is still
   based on representative official-shaped target-season inputs rather than a live 2026-27 launch.
+- The cached real GW38 payload is a single-fixture-per-player gameweek; double-gameweek handling is
+  proven with official-shaped tests rather than a real cached double-gameweek event-live payload.
 - Current team/minutes/xPoints/decision commands remain guarded for real stale or mismatched current
   data.
 - Full transfer management is still not proven for live manager state because bank, purchase prices,

@@ -49,16 +49,33 @@ def run_operational_model_chain(
     normalized_dir: Path | str = NORMALIZED_DIR,
     fixture_variant: str = "base",
     price_variant: str = "base",
+    target_gameweek: int = 1,
+    as_of: pd.Timestamp | None = None,
+    completed_player_fixtures: pd.DataFrame | None = None,
+    completed_team_fixtures: pd.DataFrame | None = None,
 ) -> OperationalModelChainResult:
-    as_of = pd.Timestamp(f"{season[:4]}-08-01T10:00:00Z")
-    target_gameweek = 1
-    target_fixtures = _target_fixtures(season, as_of=as_of, variant=fixture_variant, normalized_dir=normalized_dir)
+    as_of = as_of or _default_information_cutoff(season, target_gameweek=target_gameweek)
+    as_of = as_of.tz_localize("UTC") if as_of.tzinfo is None else as_of.tz_convert("UTC")
+    _validate_completed_inputs(
+        completed_player_fixtures=completed_player_fixtures,
+        completed_team_fixtures=completed_team_fixtures,
+        information_cutoff=as_of,
+    )
+    target_fixtures = _target_fixtures(
+        season,
+        as_of=as_of,
+        variant=fixture_variant,
+        normalized_dir=normalized_dir,
+        target_gameweek=target_gameweek,
+    )
     target_players = _target_players(season, variant=price_variant, normalized_dir=normalized_dir)
     target_rows = _target_player_fixture_rows(target_fixtures, target_players, as_of=as_of)
 
     team_config = load_team_model_config()
     team_train = load_historical_team_fixtures(seasons=["2022-23", "2023-24", "2024-25"], normalized_dir=normalized_dir)
     team_train = team_train.loc[team_train["result_valid"].astype(bool)].copy()
+    if completed_team_fixtures is not None and not completed_team_fixtures.empty:
+        team_train = pd.concat([team_train, _completed_team_training_frame(completed_team_fixtures)], ignore_index=True)
     team_predictions, team_ratings, team_diagnostics = fit_predict_models(
         team_train,
         target_fixtures,
@@ -70,6 +87,11 @@ def run_operational_model_chain(
 
     minutes_config = load_minutes_config()
     minutes_train = load_minutes_frame(seasons=["2022-23", "2023-24", "2024-25"], normalized_dir=normalized_dir)
+    if completed_player_fixtures is not None and not completed_player_fixtures.empty:
+        minutes_train = pd.concat(
+            [minutes_train, _completed_minutes_training_frame(completed_player_fixtures)],
+            ignore_index=True,
+        )
     target_minutes_frame = _target_minutes_frame(target_rows, minutes_train)
     minutes_predictions, minutes_diagnostics = fit_predict_minutes_models(
         minutes_train,
@@ -83,6 +105,8 @@ def run_operational_model_chain(
 
     xpoints_config = load_xpoints_config()
     xpoints_train = load_xpoints_frame(seasons=["2022-23", "2023-24", "2024-25"], normalized_dir=normalized_dir)
+    if completed_player_fixtures is not None and not completed_player_fixtures.empty:
+        xpoints_train = pd.concat([xpoints_train, _completed_xpoints_training_frame(completed_player_fixtures)], ignore_index=True)
     xpoints_test = _target_xpoints_frame(target_rows)
     phase3_reference = pd.DataFrame(columns=["season", "stable_fixture_uid", "player_uid", "expected_points"])
     xpoints_predictions, draws, conservation = predict_xpoints_models(
@@ -139,6 +163,9 @@ def run_operational_model_chain(
         "target_deadline": as_of.isoformat(),
         "fixture_variant": fixture_variant,
         "price_variant": price_variant,
+        "completed_player_fixture_rows_used": int(0 if completed_player_fixtures is None else len(completed_player_fixtures)),
+        "completed_team_fixture_rows_used": int(0 if completed_team_fixtures is None else len(completed_team_fixtures)),
+        "max_completed_source_available_time": _max_source_available_time(completed_player_fixtures),
         "team_diagnostics": team_diagnostics,
         "minutes_diagnostics": [diagnostic.__dict__ for diagnostic in minutes_diagnostics],
         "team_ratings_rows": int(len(team_ratings)),
@@ -169,7 +196,14 @@ def run_operational_model_chain(
     )
 
 
-def _target_fixtures(season: str, *, as_of: pd.Timestamp, variant: str, normalized_dir: Path | str) -> pd.DataFrame:
+def _target_fixtures(
+    season: str,
+    *,
+    as_of: pd.Timestamp,
+    variant: str,
+    normalized_dir: Path | str,
+    target_gameweek: int,
+) -> pd.DataFrame:
     teams = pd.read_parquet(phase2_dir(normalized_dir) / "dim_team.parquet")
     known = sorted(teams["team_uid"].dropna().astype(str).unique())[:20]
     if len(known) < 20:
@@ -184,17 +218,19 @@ def _target_fixtures(season: str, *, as_of: pd.Timestamp, variant: str, normaliz
         rows.append(
             {
                 "season": season,
-                "gameweek": 1,
-                "stable_fixture_uid": f"{season}:mock_gw1_{index + 1}",
-                "fixture_key": f"{season}:mock_gw1_{index + 1}",
-                "source_fixture_id": index + 1,
+                "gameweek": target_gameweek,
+                "stable_fixture_uid": f"{season}:mock_gw{target_gameweek}_{index + 1}",
+                "fixture_key": f"{season}:mock_gw{target_gameweek}_{index + 1}",
+                "source_fixture_id": (target_gameweek - 1) * 10 + index + 1,
                 "home_team_uid": home,
                 "away_team_uid": away,
                 "source_home_team_id": index * 2 + 1,
                 "source_away_team_id": index * 2 + 2,
                 "home_team_name": home,
                 "away_team_name": away,
-                "kickoff_time": pd.Timestamp(f"{season[:4]}-08-{15 + index // 5:02d}T15:00:00Z"),
+                "kickoff_time": pd.Timestamp(
+                    f"{season[:4]}-08-{15 + (target_gameweek - 1) * 7 + index // 5:02d}T15:00:00Z"
+                ),
                 "information_cutoff": as_of,
                 "source_available_time": pd.NaT,
                 "source_available_method": "future_fixture_no_result",
@@ -205,6 +241,13 @@ def _target_fixtures(season: str, *, as_of: pd.Timestamp, variant: str, normaliz
             }
         )
     return pd.DataFrame(rows)
+
+
+def _default_information_cutoff(season: str, *, target_gameweek: int) -> pd.Timestamp:
+    if target_gameweek <= 1:
+        return pd.Timestamp(f"{season[:4]}-08-01T10:00:00Z")
+    day = 15 + (target_gameweek - 1) * 7 - 1
+    return pd.Timestamp(f"{season[:4]}-08-{day:02d}T10:00:00Z")
 
 
 def _target_players(season: str, *, variant: str, normalized_dir: Path | str) -> pd.DataFrame:
@@ -481,3 +524,125 @@ def _write_chain_outputs(output_dir: Path, **frames) -> None:
                 value.to_csv(chain_dir / f"{name}.csv", index=False)
         else:
             (chain_dir / f"{name}.json").write_text(json.dumps(value, indent=2, sort_keys=True, default=str), encoding="utf-8")
+
+
+def _validate_completed_inputs(
+    *,
+    completed_player_fixtures: pd.DataFrame | None,
+    completed_team_fixtures: pd.DataFrame | None,
+    information_cutoff: pd.Timestamp,
+) -> None:
+    for name, frame, key in (
+        ("completed player fixtures", completed_player_fixtures, ["season", "fixture_id", "player_uid"]),
+        ("completed team fixtures", completed_team_fixtures, ["season", "stable_fixture_uid"]),
+    ):
+        if frame is None or frame.empty:
+            continue
+        missing = set(key + ["source_available_time"]).difference(frame.columns)
+        if missing:
+            raise ValueError(f"{name} missing required columns: {', '.join(sorted(missing))}")
+        if frame.duplicated(key).any():
+            raise ValueError(f"{name} contain duplicate keys.")
+        available = pd.to_datetime(frame["source_available_time"], utc=True, errors="coerce")
+        if available.isna().any():
+            raise ValueError(f"{name} contain invalid source availability timestamps.")
+        if available.ge(information_cutoff).any():
+            raise ValueError(f"{name} include rows unavailable at the forecast cutoff.")
+        if "fixture_completed" in frame.columns and (~frame["fixture_completed"].astype(bool)).any():
+            raise ValueError(f"{name} include incomplete fixtures.")
+        if "unresolved_source_limitation" in frame.columns and frame["unresolved_source_limitation"].astype(bool).any():
+            raise ValueError(f"{name} include unresolved source limitations.")
+
+
+def _completed_minutes_training_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    output = frame.copy()
+    output["player_team_uid"] = output.get("player_team_uid", output.get("team_uid"))
+    output["opponent_team_uid"] = output.get("opponent_team_uid", output.get("opponent_uid"))
+    output["stable_fixture_uid"] = output.get("stable_fixture_uid", output["season"].astype(str) + ":fixture_" + output["fixture_id"].astype(str))
+    output["fixture_key"] = output.get("fixture_key", output["stable_fixture_uid"])
+    output["player_name"] = output.get("player_name", output["player_uid"])
+    output["information_cutoff"] = pd.to_datetime(output.get("information_cutoff", output["kickoff_time"]), utc=True)
+    output["source_available_time"] = pd.to_datetime(output["source_available_time"], utc=True)
+    output["actual_minutes"] = pd.to_numeric(output["minutes"], errors="coerce").fillna(0).astype(int)
+    output["starts_exact_available"] = output["starts"].notna()
+    output["actual_start"] = pd.to_numeric(output["starts"], errors="coerce").fillna(0).astype(int)
+    output["actual_appearance"] = output["actual_minutes"].gt(0).astype(int)
+    output["actual_reached_60"] = output["actual_minutes"].ge(60).astype(int)
+    output["actual_played_90"] = output["actual_minutes"].ge(90).astype(int)
+    output["actual_state"] = np.select(
+        [
+            output["actual_minutes"].eq(0),
+            output["actual_start"].eq(0),
+            output["actual_minutes"].lt(60),
+            output["actual_minutes"].lt(90),
+        ],
+        ["DNP", "SUB_60_PLUS", "START_UNDER_60", "START_60_TO_89"],
+        default="START_90",
+    )
+    for column in [
+        "lag1_minutes_mean",
+        "lag3_minutes_mean",
+        "lag5_minutes_mean",
+        "lag10_minutes_mean",
+        "lag1_appearance_rate",
+        "lag3_appearance_rate",
+        "lag5_appearance_rate",
+        "lag10_appearance_rate",
+        "lag1_start_rate",
+        "lag3_start_rate",
+        "lag5_start_rate",
+        "lag10_start_rate",
+        "season_appearance_before",
+        "season_minutes_before",
+        "season_starts_before",
+        "prior_season_minutes",
+        "prior_season_appearances",
+        "days_since_last_source",
+    ]:
+        output[column] = 0.0
+    output["lag_source_available_time"] = pd.NaT
+    output["prior_seen_before"] = False
+    output["max_feature_source_available_time"] = pd.Timestamp("1900-01-01T00:00:00Z")
+    output["transferred_player"] = output.get("lineage_note", "").eq("transferred_player")
+    output["position_change"] = output.get("lineage_note", "").eq("position_change")
+    output["pre_deadline_history_active"] = output["actual_appearance"].astype(bool)
+    output["cold_start_no_history"] = False
+    output["actual_appearances_diagnostic"] = output["actual_appearance"].astype(bool)
+    output["evaluation_population"] = np.where(output["actual_appearance"].astype(bool), "pre_deadline_history_active", "cold_start_no_history")
+    output["primary_data_quality_population"] = "all_observed_players"
+    output["source_available_method"] = output.get("source_available_method", "official_event_live_retrieved_after_fixture_final")
+    output["source_version"] = output.get("source_version", "event_live")
+    output["raw_snapshot_path"] = output.get("raw_snapshot_path", "")
+    return output
+
+
+def _completed_xpoints_training_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    output = frame.copy()
+    output["player_team_uid"] = output.get("player_team_uid", output.get("team_uid"))
+    output["opponent_team_uid"] = output.get("opponent_team_uid", output.get("opponent_uid"))
+    output["stable_fixture_uid"] = output.get("stable_fixture_uid", output["season"].astype(str) + ":fixture_" + output["fixture_id"].astype(str))
+    output["fixture_key"] = output.get("fixture_key", output["stable_fixture_uid"])
+    output["target_total_points"] = pd.to_numeric(output["total_points"], errors="coerce").fillna(0).astype(int)
+    output["actual_total_points"] = output["target_total_points"]
+    output["pre_deadline_population"] = "post_match_completed_result"
+    for column in ["price_tenths", "team_a_score", "team_h_score"]:
+        if column not in output.columns:
+            output[column] = 0
+    return output
+
+
+def _completed_team_training_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    output = frame.copy()
+    output["information_cutoff"] = pd.to_datetime(output.get("information_cutoff", output["kickoff_time"]), utc=True)
+    output["source_available_time"] = pd.to_datetime(output["source_available_time"], utc=True)
+    output["finished"] = True
+    output["result_valid"] = True
+    output["source_version"] = output.get("source_version", "event_live")
+    output["raw_snapshot_path"] = output.get("raw_snapshot_path", "")
+    return output
+
+
+def _max_source_available_time(frame: pd.DataFrame | None) -> str | None:
+    if frame is None or frame.empty or "source_available_time" not in frame.columns:
+        return None
+    return pd.to_datetime(frame["source_available_time"], utc=True).max().isoformat()

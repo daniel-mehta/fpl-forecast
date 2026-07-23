@@ -46,12 +46,14 @@ from fpl_forecast.decision.runner import (
     validate_decision_rules as validate_decision_rules_run,
 )
 from fpl_forecast.dashboard.app import run_dashboard
+from fpl_forecast.operations.event_live_audit import audit_cached_event_live
 from fpl_forecast.operations.launch import check_season_launch as check_season_launch_run
 from fpl_forecast.operations.orchestrator import (
     operational_status_lines,
     refresh_operational as refresh_operational_run,
     verify_operational_readiness as verify_operational_readiness_run,
 )
+from fpl_forecast.operations.transition import run_mock_gw1_to_gw2_transition
 from fpl_forecast.ingest.fpl_api import FPLApiClient, FPLApiError
 from fpl_forecast.ingest.vaastav import VaastavDataError, VaastavIngestor
 from fpl_forecast.normalize.current import normalize_current as normalize_current_tables
@@ -571,6 +573,20 @@ def validate_scoring(
     _print_paths("Scoring reconstruction audit", list(outputs.values()))
 
 
+@app.command("audit-event-live")
+def audit_event_live(
+    season: Annotated[str, typer.Option(help="Season containing cached official event-live payload.")],
+    gameweek: Annotated[int, typer.Option(help="FPL event/gameweek to audit.")],
+    run_id: Annotated[str | None, typer.Option(help="Optional deterministic audit run id.")] = None,
+) -> None:
+    try:
+        outputs = audit_cached_event_live(season=season, gameweek=gameweek, run_id=run_id)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Event-live audit failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    _print_paths("Event-live scoring audit", list(outputs.values()))
+
+
 @app.command("backtest-xpoints")
 def backtest_xpoints(
     seasons: Annotated[
@@ -814,6 +830,23 @@ def operational_status() -> None:
 def verify_operational_readiness() -> None:
     for line in verify_operational_readiness_run():
         console.print(line)
+
+
+@app.command("mock-gw1-to-gw2-operational-transition")
+def mock_gw1_to_gw2_operational_transition(
+    season: Annotated[str, typer.Option(help="Target mocked operational season.")],
+    run_id: Annotated[str, typer.Option(help="Deterministic transition run id.")] = "phase8_gw1_to_gw2",
+) -> None:
+    try:
+        result = run_mock_gw1_to_gw2_transition(season=season, run_id=run_id)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]GW1-to-GW2 transition failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    console.print(f"transition_run_dir={result.run_dir}")
+    console.print(f"summary={result.summary_path}")
+    console.print(f"gw2_run_id={result.gw2_run_id}")
+    console.print(f"no_op={result.no_op}")
+    console.print(f"failure_preserved_latest={result.failure_preserved_latest}")
 
 
 @app.command("dashboard")

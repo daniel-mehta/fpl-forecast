@@ -558,5 +558,39 @@ transfers and transfer history are available.
 
 The public `event/{gameweek}/live/` endpoint was reachable for `event/38/live/` on July 23, 2026
 and was archived under `data/raw/fpl_api/2025-26/event_live_38/`, then normalized at player-fixture
-grain. The returned payload did not reconstruct as a completed 2025-26 result, so genuine completed
-live-result ingestion remains unproven; this does not block mocked GW1 operational readiness.
+grain. The response has two related structures: top-level `stats` are player gameweek totals, while
+`explain` contains fixture-specific scoring components with awarded FPL points. Phase 8 normalizes
+from `explain` at player-fixture grain and uses top-level `stats.total_points` only as a post-match
+validation target, never as a pre-deadline feature.
+
+The original GW38 mismatch was caused by treating partial raw `explain` values as if they were a
+complete scoring source and by missing awarded component points such as 2025-26 defensive
+contribution. The corrected event-live audit reconciles 841/841 cached GW38 player events exactly,
+with 0 duplicate keys and 0 unresolved rows:
+
+```bash
+uv run fpl audit-event-live \
+  --season 2025-26 \
+  --gameweek 38 \
+  --run-id phase8_real_gw38_event_live_corrected
+```
+
+Completed current-season rows can now be safety-gated before operational publication. The gate
+rejects duplicate player-fixture keys, unresolved fixtures, invalid timestamps, late source
+availability, incomplete fixtures treated as final, unresolved scoring mismatches, repeated event
+totals across double-gameweek fixture rows, and forbidden outcome columns in pre-deadline features.
+
+The mocked in-season transition proof freezes GW1 forecasts, appends completed GW1 rows only after
+their source availability, produces GW2 projections and an optimized squad, confirms unchanged
+reruns are no-ops, and confirms an injected completed-result validation failure preserves the latest
+successful publication:
+
+```bash
+uv run fpl mock-gw1-to-gw2-operational-transition \
+  --season 2026-27 \
+  --run-id phase8_gw1_to_gw2_final
+```
+
+This supports local GW1 launch readiness and mocked GW2-and-later refresh readiness. Genuine
+2026-27 operation still remains unproven until the official target-season payload launches. Public
+deployment remains Phase 9 scope.

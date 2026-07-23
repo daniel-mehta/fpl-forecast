@@ -22,6 +22,7 @@ from fpl_forecast.operations.config import (
 )
 from fpl_forecast.operations.launch import LaunchCheck, check_season_launch
 from fpl_forecast.operations.locking import RefreshLock, RefreshLockError
+from fpl_forecast.operations.live_results import validate_event_live_for_forecast
 from fpl_forecast.operations.model_chain import run_operational_model_chain
 from fpl_forecast.operations.publication import latest_successful, publish_failure, publish_success
 from fpl_forecast.operations.state import OperationalStateName, OperationalStatus, now_utc, write_status
@@ -45,6 +46,9 @@ def refresh_operational(
     run_id: str | None = None,
     fail_stage: str | None = None,
     status_only: bool = False,
+    target_gameweek: int = 1,
+    completed_player_fixtures: pd.DataFrame | None = None,
+    completed_team_fixtures: pd.DataFrame | None = None,
 ) -> RefreshResult:
     _ensure_dirs()
     config = load_operational_config()
@@ -60,7 +64,13 @@ def refresh_operational(
                 status = _with_latest(launch.status, latest)
                 write_status(status)
                 return RefreshResult(status, None, None, None, no_op=False)
-            fingerprint = _input_fingerprint(launch, mock_launch=mock_launch)
+            fingerprint = _input_fingerprint(
+                launch,
+                mock_launch=mock_launch,
+                target_gameweek=target_gameweek,
+                completed_player_fixtures=completed_player_fixtures,
+                completed_team_fixtures=completed_team_fixtures,
+            )
             if latest and latest.get("input_fingerprint") == fingerprint and not force:
                 status = OperationalStatus(
                     state=OperationalStateName.SUCCEEDED,
@@ -87,7 +97,15 @@ def refresh_operational(
                 _maybe_fail("ingestion", fail_stage)
                 stages.append("launch_checked")
                 _maybe_fail("modeling", fail_stage)
-                frontend = _build_frontend_artifacts(temp_dir, season=season, run_id=run_id, config=config)
+                frontend = _build_frontend_artifacts(
+                    temp_dir,
+                    season=season,
+                    run_id=run_id,
+                    config=config,
+                    target_gameweek=target_gameweek,
+                    completed_player_fixtures=completed_player_fixtures,
+                    completed_team_fixtures=completed_team_fixtures,
+                )
                 stages.append("frontend_artifacts_built")
                 _validate_frontend_artifacts(frontend)
                 _maybe_fail("optimization", fail_stage)
@@ -98,6 +116,7 @@ def refresh_operational(
                     "frontend_schema_version": config.frontend_schema_version,
                     "run_id": run_id,
                     "target_season": season,
+                    "target_gameweek": target_gameweek,
                     "inferred_official_season": launch.status.inferred_official_season,
                     "launch_state": launch.status.state.value,
                     "created_at": completed_at,
@@ -212,9 +231,30 @@ def verify_operational_readiness() -> list[str]:
     ]
 
 
-def _build_frontend_artifacts(temp_dir: Path, *, season: str, run_id: str, config) -> dict[str, Path]:
+def _build_frontend_artifacts(
+    temp_dir: Path,
+    *,
+    season: str,
+    run_id: str,
+    config,
+    target_gameweek: int = 1,
+    completed_player_fixtures: pd.DataFrame | None = None,
+    completed_team_fixtures: pd.DataFrame | None = None,
+) -> dict[str, Path]:
     selected_model = config.default_models["xpoints"]
-    result = run_operational_model_chain(season=season, run_id=run_id, output_dir=temp_dir)
+    if completed_player_fixtures is not None and "official_event_total_points" in completed_player_fixtures.columns:
+        cutoff = _default_information_cutoff(season, target_gameweek=target_gameweek)
+        issues = validate_event_live_for_forecast(completed_player_fixtures, information_cutoff=cutoff)
+        if issues:
+            raise ValueError(f"Completed-result publication safety gate failed: {', '.join(issues)}")
+    result = run_operational_model_chain(
+        season=season,
+        run_id=run_id,
+        output_dir=temp_dir,
+        target_gameweek=target_gameweek,
+        completed_player_fixtures=completed_player_fixtures,
+        completed_team_fixtures=completed_team_fixtures,
+    )
 
     projections = result.decision_candidates.loc[result.decision_candidates["model_name"].eq(selected_model)].copy()
     projections = projections.rename(
@@ -308,6 +348,7 @@ def _build_frontend_artifacts(temp_dir: Path, *, season: str, run_id: str, confi
                 "schema_version": config.frontend_schema_version,
                 "state": OperationalStateName.SUCCEEDED.value,
                 "target_season": season,
+                "target_gameweek": target_gameweek,
                 "run_id": run_id,
                 "reason": "Operational refresh published genuinely generated target-season projections.",
                 "warning": "Representative mocked target-season run; real 2026-27 remains unproven.",
@@ -368,11 +409,22 @@ def _mock_launch_check(season: str) -> LaunchCheck:
     )
 
 
-def _input_fingerprint(launch: LaunchCheck, *, mock_launch: bool) -> str:
+def _input_fingerprint(
+    launch: LaunchCheck,
+    *,
+    mock_launch: bool,
+    target_gameweek: int = 1,
+    completed_player_fixtures: pd.DataFrame | None = None,
+    completed_team_fixtures: pd.DataFrame | None = None,
+) -> str:
     digest = hashlib.sha256()
     digest.update(json.dumps(load_operational_config().__dict__, sort_keys=True, default=str).encode())
     digest.update(_git(["rev-parse", "HEAD"]).encode())
     digest.update(str(mock_launch).encode())
+    digest.update(str(target_gameweek).encode())
+    for frame in (completed_player_fixtures, completed_team_fixtures):
+        if frame is not None and not frame.empty:
+            digest.update(pd.util.hash_pandas_object(frame.sort_index(axis=1), index=True).values.tobytes())
     for path in (launch.bootstrap_path, launch.fixtures_path):
         if path and path.exists():
             digest.update(path.read_bytes())
@@ -402,3 +454,10 @@ def _maybe_fail(stage: str, fail_stage: str | None) -> None:
 def _git(args: list[str]) -> str:
     result = subprocess.run(["git", *args], cwd=PROJECT_ROOT, check=False, capture_output=True, text=True)
     return result.stdout.strip()
+
+
+def _default_information_cutoff(season: str, *, target_gameweek: int) -> pd.Timestamp:
+    if target_gameweek <= 1:
+        return pd.Timestamp(f"{season[:4]}-08-01T10:00:00Z")
+    day = 15 + (target_gameweek - 1) * 7 - 1
+    return pd.Timestamp(f"{season[:4]}-08-{day:02d}T10:00:00Z")

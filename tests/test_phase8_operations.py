@@ -11,11 +11,17 @@ from fpl_forecast.ingest.snapshots import write_raw_snapshot
 from fpl_forecast.operations.config import LATEST_SUCCESSFUL_PATH, LOCK_PATH, STATUS_PATH
 from fpl_forecast.operations.current_panel import build_current_player_fixture_history
 from fpl_forecast.operations.launch import check_season_launch
-from fpl_forecast.operations.live_results import finalized_fixture_ids, normalize_event_live
+from fpl_forecast.operations.live_results import (
+    audit_event_live_scoring,
+    finalized_fixture_ids,
+    normalize_event_live,
+    validate_event_live_for_forecast,
+)
 from fpl_forecast.operations.locking import RefreshLock
 from fpl_forecast.operations.model_chain import run_operational_model_chain
 from fpl_forecast.operations.orchestrator import refresh_operational
 from fpl_forecast.operations.state import OperationalStateName
+from fpl_forecast.operations.transition import run_mock_gw1_to_gw2_transition
 
 
 def test_old_season_payload_returns_waiting_and_target_payload_transitions(tmp_path) -> None:
@@ -43,30 +49,18 @@ def test_changed_rules_enter_review_state(tmp_path) -> None:
 
 
 def test_live_result_normalization_preserves_fixture_grain_and_unknown_start() -> None:
-    payload = {
-        "elements": [
-            {
-                "id": 7,
-                "explain": [
-                    {
-                        "fixture": 11,
-                        "stats": [
-                            {"identifier": "minutes", "value": 90, "points": 2},
-                            {"identifier": "goals_scored", "value": 1, "points": 5},
-                            {"identifier": "total_points", "value": 8, "points": 8},
-                        ],
-                    },
-                    {
-                        "fixture": 12,
-                        "stats": [
-                            {"identifier": "minutes", "value": 30, "points": 1},
-                            {"identifier": "total_points", "value": 1, "points": 1},
-                        ],
-                    },
+    payload = _event_live_payload(
+        [
+            _element(
+                7,
+                total=8,
+                explain=[
+                    _fixture_explain(11, [("minutes", 90, 2), ("goals_scored", 1, 5)]),
+                    _fixture_explain(12, [("minutes", 30, 1)]),
                 ],
-            }
+            )
         ]
-    }
+    )
 
     frame = normalize_event_live(
         season="2026-27",
@@ -74,12 +68,165 @@ def test_live_result_normalization_preserves_fixture_grain_and_unknown_start() -
         payload=payload,
         retrieved_at="2026-08-16T20:00:00Z",
         raw_snapshot_path="mock/event_live.json",
+        bootstrap_payload=_bootstrap_payload("2026-27", budget=1000),
+        fixtures_payload=_fixtures_payload("2026-27")[:20],
     )
 
     assert len(frame) == 2
     assert set(frame["fixture_id"]) == {11, 12}
-    assert frame["exact_start"].isna().all()
-    assert int(frame.loc[frame["fixture_id"].eq(11), "total_points"].iloc[0]) == 8
+    assert int(frame.loc[frame["fixture_id"].eq(11), "total_points"].iloc[0]) == 7
+    assert int(frame.loc[frame["fixture_id"].eq(12), "total_points"].iloc[0]) == 1
+    assert frame.loc[frame["fixture_id"].eq(11), "official_event_total_points"].iloc[0] == 8
+
+
+def test_event_live_uses_awarded_points_not_raw_values() -> None:
+    payload = _event_live_payload(
+        [_element(7, total=7, explain=[_fixture_explain(11, [("minutes", 83, 2), ("goals_scored", 1, 5)])])]
+    )
+
+    frame = _normalize_test_live(payload)
+
+    row = frame.iloc[0]
+    assert row["goals_scored"] == 1
+    assert row["points_goals_scored"] == 5
+    assert row["reconstructed_points"] == 7
+    assert audit_event_live_scoring(frame)["status_counts"].set_index("audit_status").loc["exact_match", "rows"] == 1
+
+
+def test_event_live_reconstructs_dnp_sub_clean_sheet_gc_saves_bonus_and_cards() -> None:
+    payload = _event_live_payload(
+        [
+            _element(7, total=0, minutes=0, explain=[_fixture_explain(11, [("minutes", 0, 0)])]),
+            _element(8, total=1, minutes=30, explain=[_fixture_explain(11, [("minutes", 30, 1)])]),
+            _element(9, total=2, minutes=59, explain=[_fixture_explain(11, [("minutes", 59, 1), ("clean_sheets", 1, 0), ("yellow_cards", 1, -1), ("bonus", 2, 2)])]),
+            _element(10, total=1, minutes=90, explain=[_fixture_explain(11, [("minutes", 90, 2), ("goals_conceded", 2, -1)])]),
+            _element(11, total=3, minutes=90, explain=[_fixture_explain(11, [("minutes", 90, 2), ("saves", 5, 1)])]),
+        ]
+    )
+
+    frame = _normalize_test_live(payload)
+    audit = audit_event_live_scoring(frame)["player_event_reconciliation"]
+
+    assert set(audit["audit_status"]) == {"exact_match"}
+    assert int(frame.loc[frame["player_id"].eq(8), "starts"].iloc[0]) == 0
+    assert int(frame.loc[frame["player_id"].eq(9), "points_clean_sheets"].iloc[0]) == 0
+    assert int(frame.loc[frame["player_id"].eq(10), "points_goals_conceded"].iloc[0]) == -1
+    assert int(frame.loc[frame["player_id"].eq(11), "points_saves"].iloc[0]) == 1
+
+
+def test_event_live_double_gameweek_does_not_repeat_event_totals() -> None:
+    payload = _event_live_payload(
+        [
+            _element(
+                7,
+                total=9,
+                explain=[
+                    _fixture_explain(11, [("minutes", 90, 2), ("goals_scored", 1, 5)]),
+                    _fixture_explain(12, [("minutes", 30, 1), ("bonus", 1, 1)]),
+                ],
+            )
+        ]
+    )
+
+    frame = _normalize_test_live(payload)
+    audit = audit_event_live_scoring(frame)["player_event_reconciliation"].iloc[0]
+
+    assert list(frame.sort_values("fixture_id")["total_points"]) == [7, 2]
+    assert not frame["total_points"].eq(9).any()
+    assert audit["reconstructed_points"] == 9
+    assert audit["difference"] == 0
+
+
+def test_event_live_duplicate_components_and_unfinished_fixtures_fail_safety_gate() -> None:
+    payload = _event_live_payload(
+        [_element(7, total=4, explain=[_fixture_explain(11, [("minutes", 90, 2), ("minutes", 90, 2)])])]
+    )
+    fixtures = _fixtures_payload("2026-27")[:20]
+    fixtures[10]["finished"] = False
+    fixtures[10]["finished_provisional"] = False
+    frame = normalize_event_live(
+        season="2026-27",
+        gameweek=1,
+        payload=payload,
+        retrieved_at="2026-08-16T20:00:00Z",
+        raw_snapshot_path="mock/event_live.json",
+        bootstrap_payload=_bootstrap_payload("2026-27", budget=1000),
+        fixtures_payload=fixtures,
+    )
+
+    issues = validate_event_live_for_forecast(frame, information_cutoff="2026-08-17T10:00:00Z")
+
+    assert frame["unresolved_source_limitation"].astype(bool).any()
+    assert "incomplete fixture is being treated as final" in issues
+    assert "unresolved source limitation rows cannot enter model training" in issues
+
+
+def test_event_live_source_after_cutoff_and_duplicate_keys_fail_safety_gate() -> None:
+    frame = _normalize_test_live(
+        _event_live_payload([_element(7, total=2, explain=[_fixture_explain(11, [("minutes", 90, 2)])])])
+    )
+    duplicated = pd.concat([frame, frame], ignore_index=True)
+
+    issues = validate_event_live_for_forecast(duplicated, information_cutoff="2026-08-16T19:00:00Z")
+
+    assert "duplicate player-fixture keys" in issues
+    assert "source availability is after the forecast cutoff" in issues
+
+
+def test_event_live_preserves_assistant_managers_but_excludes_them_from_player_audit() -> None:
+    bootstrap = _bootstrap_payload("2026-27", budget=1000)
+    bootstrap["elements"].append({"id": 99, "code": 9900, "web_name": "Assistant", "team": 1, "element_type": 5})
+    payload = _event_live_payload(
+        [
+            _element(7, total=2, explain=[_fixture_explain(11, [("minutes", 90, 2)])]),
+            _element(99, total=6, explain=[_fixture_explain(11, [("minutes", 90, 2), ("bonus", 4, 4)])]),
+        ]
+    )
+
+    frame = normalize_event_live(
+        season="2026-27",
+        gameweek=1,
+        payload=payload,
+        retrieved_at="2026-08-16T20:00:00Z",
+        raw_snapshot_path="mock/event_live.json",
+        bootstrap_payload=bootstrap,
+        fixtures_payload=_fixtures_payload("2026-27")[:20],
+    )
+    reconciliation = audit_event_live_scoring(frame)["player_event_reconciliation"]
+
+    assert frame.loc[frame["player_id"].eq(99), "entity_type"].iloc[0] == "assistant_manager"
+    assert set(reconciliation["player_id"]) == {7}
+
+
+def test_event_live_reingestion_is_idempotent_and_revised_snapshot_replaces_by_key() -> None:
+    first = _normalize_test_live(
+        _event_live_payload([_element(7, total=2, explain=[_fixture_explain(11, [("minutes", 90, 2)])])])
+    )
+    second = _normalize_test_live(
+        _event_live_payload([_element(7, total=3, explain=[_fixture_explain(11, [("minutes", 90, 2), ("bonus", 1, 1)])])]),
+        retrieved_at="2026-08-16T21:00:00Z",
+    )
+
+    assert first.equals(_normalize_test_live(_event_live_payload([_element(7, total=2, explain=[_fixture_explain(11, [("minutes", 90, 2)])])])))
+    revised = (
+        pd.concat([first, second], ignore_index=True)
+        .sort_values("source_available_time")
+        .drop_duplicates(["season", "fixture_id", "player_uid"], keep="last")
+    )
+    assert len(revised) == 1
+    assert int(revised.iloc[0]["total_points"]) == 3
+
+
+def test_mock_gw1_to_gw2_transition_publishes_and_preserves_latest_on_failure() -> None:
+    result = run_mock_gw1_to_gw2_transition(season="2026-27", run_id="phase8_transition_test")
+    summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
+
+    assert result.no_op
+    assert result.failure_preserved_latest
+    assert summary["completed_rows_entered_gw2_history"] > 0
+    assert summary["gw2_projection_rows"] > 0
+    assert summary["gw2_optimized_squad_rows"] == 15
+    assert summary["gw2_targets_absent_from_inputs"]
 
 
 def test_finalized_fixture_policy_requires_finished_and_provisional() -> None:
@@ -298,8 +445,14 @@ def _bootstrap_payload(season: str, *, budget: int) -> dict:
         },
         "phases": [],
         "teams": [{"id": team, "code": team, "name": f"Team {team}", "short_name": f"T{team}", "strength": 3} for team in range(1, 21)],
-        "total_players": 1,
-        "elements": [],
+        "total_players": 6,
+        "elements": [
+            {"id": 7, "code": 700, "web_name": "Player 7", "team": 1, "element_type": 3},
+            {"id": 8, "code": 800, "web_name": "Player 8", "team": 1, "element_type": 3},
+            {"id": 9, "code": 900, "web_name": "Player 9", "team": 1, "element_type": 3},
+            {"id": 10, "code": 1000, "web_name": "Player 10", "team": 1, "element_type": 2},
+            {"id": 11, "code": 1100, "web_name": "Player 11", "team": 1, "element_type": 1},
+        ],
         "element_stats": [],
         "element_types": [
             {"id": 1, "singular_name_short": "GKP", "squad_select": 2, "squad_min_play": 1, "squad_max_play": 1},
@@ -325,3 +478,72 @@ def _fixtures_payload(season: str) -> list[dict]:
         }
         for fixture in range(1, 381)
     ]
+
+
+def _event_live_payload(elements: list[dict]) -> dict:
+    return {"elements": elements}
+
+
+def _element(
+    player_id: int,
+    *,
+    total: int,
+    explain: list[dict],
+    minutes: int | None = None,
+) -> dict:
+    stats = {
+        "minutes": minutes if minutes is not None else sum(_stat_value(block, "minutes") for block in explain),
+        "goals_scored": sum(_stat_value(block, "goals_scored") for block in explain),
+        "assists": sum(_stat_value(block, "assists") for block in explain),
+        "clean_sheets": sum(_stat_value(block, "clean_sheets") for block in explain),
+        "goals_conceded": sum(_stat_value(block, "goals_conceded") for block in explain),
+        "own_goals": sum(_stat_value(block, "own_goals") for block in explain),
+        "penalties_saved": sum(_stat_value(block, "penalties_saved") for block in explain),
+        "penalties_missed": sum(_stat_value(block, "penalties_missed") for block in explain),
+        "yellow_cards": sum(_stat_value(block, "yellow_cards") for block in explain),
+        "red_cards": sum(_stat_value(block, "red_cards") for block in explain),
+        "saves": sum(_stat_value(block, "saves") for block in explain),
+        "bonus": sum(_stat_value(block, "bonus") for block in explain),
+        "bps": 0,
+        "defensive_contribution": sum(_stat_value(block, "defensive_contribution") for block in explain),
+        "starts": int((minutes if minutes is not None else sum(_stat_value(block, "minutes") for block in explain)) >= 60),
+        "total_points": total,
+        "played": total > 0,
+        "in_dreamteam": False,
+    }
+    return {"id": player_id, "stats": stats, "explain": explain, "modified": False}
+
+
+def _fixture_explain(fixture_id: int, stats: list[tuple[str, int, int]]) -> dict:
+    return {
+        "fixture": fixture_id,
+        "stats": [
+            {"identifier": identifier, "value": value, "points": points, "points_modification": 0}
+            for identifier, value, points in stats
+        ],
+    }
+
+
+def _stat_value(block: dict, identifier: str) -> int:
+    return sum(int(stat.get("value", 0)) for stat in block.get("stats", []) if stat.get("identifier") == identifier)
+
+
+def _normalize_test_live(payload: dict, *, retrieved_at: str = "2026-08-16T20:00:00Z") -> pd.DataFrame:
+    bootstrap = _bootstrap_payload("2026-27", budget=1000)
+    fixtures = _fixtures_payload("2026-27")
+    for fixture in fixtures:
+        if fixture["id"] in {11, 12}:
+            fixture["event"] = 1
+            fixture["team_h"] = 1
+            fixture["team_a"] = 2
+            fixture["finished"] = True
+            fixture["finished_provisional"] = True
+    return normalize_event_live(
+        season="2026-27",
+        gameweek=1,
+        payload=payload,
+        retrieved_at=retrieved_at,
+        raw_snapshot_path="mock/event_live.json",
+        bootstrap_payload=bootstrap,
+        fixtures_payload=fixtures,
+    )
