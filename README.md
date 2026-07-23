@@ -1,523 +1,195 @@
-# fpl-forecast
+# FPL Forecast
 
-Real-data foundation for a Fantasy Premier League forecasting system.
+FPL Forecast is an end-to-end, time-aware Fantasy Premier League forecasting and
+decision system. It combines data engineering, statistical football modelling,
+probabilistic FPL point simulation, backtesting, operational publication, and exact squad
+optimization in one reproducible `uv` workspace.
 
-This repository currently implements Phase 1, Phase 2, Phase 3, Phase 4, Phase 4.1, Phase 5,
-Phase 6, Phase 7, and Phase 8. Phase 1 covers ingestion, immutable raw snapshots, normalization to
-Parquet, validation, a command-line interface, tests, and documentation.
-Phase 2 adds multi-season historical coverage, cross-season team and player identities, a canonical
-player-fixture panel, deadline-safe feature primitives, feature lineage, and leakage auditing.
-Phase 3 adds rolling-origin baseline backtests, dedicated GW1 cold-start validation, frozen
-prediction outputs, metrics, and baseline comparisons.
-Phase 4 adds leakage-safe team-fixture strength baselines, opponent-adjusted goal probabilities,
-clean-sheet and match-outcome diagnostics, and official future-fixture inference with strict
-season and team-identity checks.
-Phase 4.1 adds an experimental Dixon-Coles low-score dependence challenger.
-Phase 5 adds leakage-safe player expected-minutes and appearance-probability backtests, role-duration
-state modeling, lineup-start diagnostics, and guarded current-season input validation.
-Phase 6 adds deterministic FPL scoring reconstruction, component-based player xPoints backtests,
-team-constrained goal allocation, simulated point distributions, and guarded current xPoints input
-validation.
-Phase 7 adds integer-tenths price handling, official squad/lineup rule validation, full-candidate
-MILP weekly-reset squad optimization, captain/vice-captain/bench selection, autosub scoring,
-exhaustive small-case no-chip multi-gameweek transfer planning, and guarded current decision input
-validation.
-Phase 8 adds launch detection, operational locking, atomic latest-successful publication, a local
-dashboard contract, and a mocked target-season run that executes the real team, minutes, xPoints,
-and exact decision chain from official-shaped target-season inputs plus eligible prior-season
-history.
+The project is also a technical foundation for later football performance forecasting and player
+valuation work: the current FPL xPoints stack establishes the data lineage, modelling interfaces,
+simulation machinery, and decision constraints needed before moving beyond FPL scoring.
 
-It does not implement chips, hosted scheduling, deployment, or proven genuine 2026-27 operation.
+Unofficial project. Not affiliated with, endorsed by, or associated with the Premier League or
+Fantasy Premier League.
 
-## Data Boundaries
+## Current Status
 
-Generated real-data artifacts are ignored by Git:
+Phases 1 through 8 are implemented and covered by offline tests and phase reports. The repository is
+locally operational and prepared for static GitHub Pages publication through the Vite frontend.
+Genuine 2026-27 operation is still guarded until the official FPL payload identifies the target
+season and passes the launch, rule, identity, and model checks. The project should not be described
+as production proven or as evidence of sustained live-season FPL performance.
 
-```text
-data/
-├── raw/
-│   ├── fpl_api/
-│   └── vaastav/
-├── normalized/
-└── manual/
+The latest public frontend preparation deliberately supports a waiting state. GitHub Pages hosts
+only static frontend assets; it does not run the Python forecasting pipeline in the browser.
 
-outputs/
-└── synthetic_demo/
+## What The System Does
 
-reports/
-├── backtests/
-├── team_backtests/
-├── minutes_backtests/
-├── xpoints_backtests/
-└── decision_backtests/
+- Archives immutable raw snapshots from official FPL endpoints and Vaastav historical files.
+- Normalizes source data into player-fixture and fixture-grain Parquet tables with provenance.
+- Builds stable cross-season team and player identities without trusting numeric IDs across seasons.
+- Enforces source-availability lineage and leakage audits before model training.
+- Evaluates baselines and model families with rolling-origin and Gameweek 1 backtests.
+- Estimates team fixture probabilities, player minutes, component xPoints, and point distributions.
+- Selects legal FPL squads, lineups, captaincy, vice-captaincy, and bench order with exact MILP
+  optimization.
+- Publishes validated frontend-ready artifacts atomically and preserves the last successful
+  publication after failures.
+
+## What Makes The Framework Different
+
+### Time-Aware Lineage And Backtesting
+
+Unlike approaches that train on retroactively aggregated season data, this framework treats
+information availability as a first-class constraint. Historical match-derived features carry a
+conservative `source_available_time`, normally `kickoff_time + 3 hours`, and are eligible only when
+`source_available_time < information_cutoff`. The `+3h` rule is a conservative proxy when exact
+completion or publication timestamps are unavailable; it reduces look-ahead inflation but is not a
+mathematical guarantee against every possible leakage mode.
+
+Rolling-origin and Gameweek 1 backtests reproduce the information that would reasonably have been
+available before each forecast. Same gameweek/deadline-block results are excluded from training.
+
+### Separation Of Team State And Player Expectation
+
+The system separates team-level match expectations from player-level opportunity. Opponent-adjusted
+Poisson models estimate fixture score distributions, clean-sheet probabilities, and outcome
+probabilities. A Dixon-Coles low-score dependence model is retained as an experimental challenger
+because audited backtests showed only marginal, mixed differences versus the independent Poisson
+default. Separate expected-minutes models estimate appearance and role duration. The component
+simulation combines team context, minutes, position, and player event rates into discrete FPL point
+distributions.
+
+### Closed-Loop Execution
+
+This is an operational engine rather than a standalone notebook. A uniform `uv` workspace connects
+versioned ingestion, normalization, identity resolution, data-quality validation, leakage audits,
+rolling backtests, probabilistic forecasting, full-candidate MILP squad optimization, atomic
+publication, failure recovery, and frontend-ready artifacts. The MILP layer uses SciPy's
+HiGHS-backed solver and records solver status, objective bounds, gaps, runtimes, and diagnostics.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  A["Official FPL API<br/>bootstrap-static, fixtures, event live"] --> B["Immutable raw snapshots"]
+  C["Vaastav historical FPL data"] --> B
+  B --> D["Normalized player-fixture<br/>and fixture tables"]
+  D --> E["Identity, feature, cutoff,<br/>and leakage-audit layer"]
+  E --> F["Team probabilities<br/>T0/T1/T2 and T3 challenger"]
+  E --> G["Expected-minutes models<br/>M0-M6"]
+  F --> H["Component xPoints simulation<br/>X0/X1/X2"]
+  G --> H
+  H --> I["MILP decision layer<br/>squad, lineup, captain, bench"]
+  I --> J["Operational publication<br/>atomic latest-successful artifacts"]
+  J --> K["Static Vite dashboard<br/>React, TypeScript, CSS"]
 ```
 
-Only externally retrieved source bytes belong in `data/raw`. Only tables derived from those real
-raw inputs belong in `data/normalized`.
+## Models And Decision System
 
-`outputs/synthetic_demo/` is a quarantine for four pre-existing synthetic demo artifacts. Those
-files are not real FPL data, are not evidence of predictive accuracy, and must not be consumed by
-application code or tests.
+Default model chain used by the current operational adapter:
 
-## Setup
+- `T2_REGULARIZED_ATTACK_DEFENCE`: weighted ridge-penalized independent Poisson team model.
+- `M3_EWMA_MINUTES`: deterministic expected-minutes baseline with strong rolling performance.
+- `X2_TEAM_CONSTRAINED_SIM_M3`: team-goal-constrained xPoints simulation using M3 minutes.
+- SciPy HiGHS MILP: full-candidate weekly squad, lineup, captain, vice-captain, and bench
+  optimization.
 
-Target environment:
+Experimental challengers:
 
-- Apple Silicon macOS
+- `T3_DIXON_COLES`: low-score dependence correction, retained for research but not promoted over T2.
+- `M5_REGULARIZED_STATE_SOFTMAX` and `M6_NONLINEAR_RECENCY_ENSEMBLE`: learned minutes/state
+  challengers.
+- `X2_TEAM_CONSTRAINED_SIM_M5`: xPoints challenger with M5 state probabilities.
+
+Diagnostic baselines:
+
+- Phase 3 point baselines such as global mean, position mean, recent form, recent minutes, and
+  empirical-Bayes points per 90.
+- Phase 4 team baselines `T0_LEAGUE_HOME_AWAY` and `T1_SHRUNK_ROLLING_TEAM_RATE`.
+- Phase 7 `D0_PRICE_VALUE_BASELINE` for market-price comparison in decision backtests.
+
+Operational safeguards:
+
+- Launch detection rejects stale current-season payloads.
+- Rule drift enters review instead of silently running changed FPL rules.
+- Team/player identity ambiguity enters review.
+- Publication is atomic and preserves the last-known-good output on failure.
+- Frontend artifacts use a stable `phase8_frontend_v1` contract.
+
+## Backtesting And Selected Results
+
+Detailed evidence is in the phase reports. These validation seasons are not an untouched final
+holdout; they were used during iterative development. Gameweek 1 results contain only two folds and
+therefore have high uncertainty.
+
+| Layer | Seasons / Mode | Population Or Grain | Selected Evidence |
+| --- | --- | --- | --- |
+| Team goals | `2023-24`, `2024-25`; rolling; fixture goal sides | T2 improved goal MAE to `0.9489` versus T1 `0.9847` and T0 `1.0269`; block-bootstrap T2 minus T0 goal-MAE difference `-0.0754`, 95% CI `[-0.0967, -0.0538]`. |
+| Team probabilities | `2023-24`, `2024-25`; rolling; fixture/team-fixture | T2 clean-sheet Brier `0.1643` versus T1 `0.1675` and T0 `0.1727`; match-outcome log loss `0.9679` versus T1 `1.0118` and T0 `1.0696`. |
+| Dixon-Coles challenger | `2023-24`, `2024-25`; rolling; fixture | T3 changed scores only marginally: outcome log loss `0.9677` versus T2 `0.9679`, but joint scoreline NLL worsened to `3.0332` versus T2 `3.0324`; T2 remains default. |
+| xPoints | `2023-24`, `2024-25`; rolling; all observed player rows | Default X2-M3 MAE `0.9060`, RMSE `1.9543`, Spearman `0.7044`; Phase 3 B5 reference MAE `0.9824`, RMSE `2.0295`, Spearman `0.6501`. |
+| xPoints distribution | `2023-24`, `2024-25`; rolling; player rows | X2-M3 conserved expected team goals with max absolute error `4.44e-16`; X2-M5 had better 5+ point Brier and zero-rate calibration but was not selected as the default MAE frontier. |
+| Decision optimization | `2023-24`, `2024-25`; rolling weekly-reset benchmark | 380 MILP decisions solved with status `optimal`, max gap `2.96e-16`, mean runtime `0.0892s`; all squads legal. X2-M3 had the highest realized rolling weekly-reset score in this pass, but paired intervals versus X2-M5 crossed zero. |
+| Operations | Mocked 2026-27 launch and GW1-to-GW2 transition | Mocked target-season runs execute the real T2, minutes, xPoints, and MILP chain; injected failures preserve latest-successful artifacts. Genuine 2026-27 production evidence is still pending. |
+
+## Frontend And Dashboard
+
+The frontend in `frontend/` is Vite, React, TypeScript, and ordinary CSS. It reads static copies of
+the latest `phase8_frontend_v1` artifacts from `frontend/public/data/`. It does not execute Python,
+fetch live FPL data, run optimization, or modify operational outputs.
+
+The manual GitHub Pages workflow builds the frontend without `npm run sync-data`, so the initial
+public deployment can show a safe waiting state instead of local mocked recommendations. Mocked data
+must remain visibly labelled when synchronized for local review. Forecast publication automation
+remains separate from static hosting.
+
+Local Python dashboard support from Phase 8 still exists:
+
+```bash
+uv run fpl dashboard --smoke
+uv run fpl dashboard
+```
+
+## Quick Start
+
+Requirements:
+
 - Python 3.12 or newer
 - `uv`
-- CPU only
+- Node.js 20 or newer for the frontend
+- CPU-only execution is sufficient
 
-Install dependencies:
+Install and verify the Python workspace:
 
 ```bash
 uv sync
-```
-
-## Canonical Phase 1 Workflow
-
-Use the season label that matches the live FPL API payload. The command validates that label by
-parsing event deadlines and fixture kickoff times before writing a current snapshot. In the cached
-audit run on July 22, 2026, the API payload was inferred as `2025-26`, with deadlines and fixtures
-from August 2025 through May 2026.
-
-```bash
-uv run fpl snapshot-current --season 2025-26
-uv run fpl normalize-current --season 2025-26
-uv run fpl ingest-historical --season 2024-25 --refresh
-uv run fpl normalize-historical --season 2024-25
-uv run fpl validate-data
-```
-
-Validation exits with a nonzero status when serious data-quality errors are present. Warnings are
-reported separately. Vaastav historical `merged_gw.csv` often includes `xP`; the pipeline warns
-when it is present and excludes it from normalized historical data.
-
-## Commands
-
-```bash
-uv run fpl snapshot-current --season 2025-26
-uv run fpl snapshot-current --season 2025-26 --refresh
-uv run fpl snapshot-current --season 2025-26 --offline
-
-uv run fpl ingest-historical --season 2024-25
-uv run fpl ingest-historical --season 2024-25 --refresh
-uv run fpl ingest-historical --season 2024-25 --revision REVISION_SHA
-
-uv run fpl normalize-current --season 2025-26
-uv run fpl normalize-historical --season 2024-25
-uv run fpl validate-data
-```
-
-`snapshot-current` archives these FPL API endpoints:
-
-- `https://fantasy.premierleague.com/api/bootstrap-static/`
-- `https://fantasy.premierleague.com/api/fixtures/`
-
-For current snapshots, the requested `YYYY-YY` label is checked against inferred season identity:
-
-- event `deadline_time` values
-- fixture `kickoff_time` values
-- standard Premier League structure of 20 teams, 38 events, and 380 fixtures
-
-If the inferred payload season conflicts with the requested label, the command fails rather than
-archiving prior-season data under a current-season name. The same check runs before current
-normalization, so a stale mislabeled cache cannot silently produce normalized tables.
-
-The client also has reusable support for:
-
-- `element-summary/{player_id}/`
-- `event/{gameweek}/live/`
-
-`ingest-historical` archives these Vaastav CSVs for the requested season:
-
-- `data/<season>/gws/merged_gw.csv`
-- `data/<season>/players_raw.csv`
-
-When possible, the Vaastav source is fetched by exact Git revision rather than a moving branch URL.
-Replace `REVISION_SHA` with a real Vaastav repository commit before running that example command.
-
-## Normalized Tables
-
-Current FPL API normalization writes:
-
-- `data/normalized/<season>/current_players.parquet`
-- `data/normalized/<season>/current_teams.parquet`
-- `data/normalized/<season>/current_fixtures.parquet`
-
-Historical Vaastav normalization writes:
-
-- `data/normalized/<season>/historical_player_fixtures.parquet`
-
-The historical table is player-fixture grain, not player-gameweek grain. Double gameweeks can
-therefore contain more than one row for the same `season, gameweek, player_id`; the intended key is
-`season, gameweek, player_id, fixture_id`.
-
-Each table includes provenance columns:
-
-- `source`
-- `source_version`
-- `retrieved_at`
-- `season`
-- `raw_snapshot_path`
-
-FPL player IDs and player codes are preserved where source data provides them.
-
-Historical position handling preserves both the raw source label and the FPL element category:
-
-- `source_position`
-- `element_type`
-- `fpl_position`
-
-Vaastav `2024-25` includes assistant-manager rows with `source_position = AM` and
-`players_raw.element_type = 5`; these remain `fpl_position = AM` so later modeling can explicitly
-exclude or handle them.
-
-## Validation
-
-`uv run fpl validate-data` checks:
-
-- required columns
-- primary-key uniqueness
-- null required identifiers
-- valid position values
-- nonnegative prices and minutes
-- plausible player-fixture minutes
-- current fixture team references
-- valid gameweek values
-- duplicate historical rows
-- optional expected-goal field availability
-- suspicious raw historical `xP`
-- provenance fields
-- real-data source labels
-- synthetic-demo contamination markers
-
-## Identity Mapping
-
-Phase 2 implements cross-season player identity mapping using unique FPL player codes. In the
-audited `2022-23`, `2023-24`, and `2024-25` data, every player-season record mapped automatically
-through a unique, non-null FPL code.
-
-Team identities are season-aware and use tracked aliases in `data/manual/team_aliases.csv`.
-Manual player overrides are supported in `data/manual/player_identity_overrides.csv`, and unresolved
-or ambiguous review candidates are written to ignored outputs under `data/review/`.
-
-Future seasons may still require manual review or overrides. Current-season positions, prices, and
-team assignments remain season-specific.
-
-## Verification
-
-Run the offline verification suite:
-
-```bash
-uv run pytest -q
 uv run ruff check .
+uv run pytest -q
 ```
 
-## Phase 2 Panel Workflow
-
-Phase 2 builds identity-aware, leakage-audited player-fixture panel tables. It still does not train
-models or produce projections.
+Run the static frontend locally:
 
 ```bash
-uv run fpl ingest-historical --season 2022-23
-uv run fpl ingest-historical --season 2023-24
-uv run fpl ingest-historical --season 2024-25
-
-uv run fpl normalize-historical --season 2022-23
-uv run fpl normalize-historical --season 2023-24
-uv run fpl normalize-historical --season 2024-25
-
-uv run fpl build-identities --seasons 2022-23,2023-24,2024-25
-uv run fpl build-panel --seasons 2022-23,2023-24,2024-25
-uv run fpl audit-leakage --seasons 2022-23,2023-24,2024-25
-uv run fpl inspect-panel --seasons 2022-23,2023-24,2024-25
+cd frontend
+npm ci
+npm run dev
 ```
 
-Generated Phase 2 tables are written under `data/normalized/phase2/` and ignored by Git.
-Generated identity review candidates are written under `data/review/` and ignored by Git. Manual
-inputs under `data/manual/` are version-controlled templates.
-
-Phase 2 outputs:
-
-- `dim_team.parquet`
-- `team_season_map.parquet`
-- `dim_player.parquet`
-- `player_season_map.parquet`
-- `dim_fixture.parquet`
-- `fact_player_fixture.parquet`
-- `features_player_fixture.parquet`
-
-Feature definitions live in `src/fpl_forecast/features/registry.json`, and the leakage auditor
-checks that produced feature columns are registered, shifted, and backed by source availability
-lineage strictly before each row's information cutoff. When exact historical match-completion times
-are unavailable, Phase 2 uses the conservative rule `source_available_time = kickoff_time + 3h` for
-match-derived results; source kickoff alone is not treated as sufficient evidence that final match
-statistics were known.
-
-The fact and feature tables include `entity_type`, distinguishing standard football players from
-assistant managers. Standard player modeling panels can filter `entity_type == "player"`.
-
-## Phase 3 Baseline Backtesting Workflow
-
-Phase 3 produces honest baseline comparisons over the audited Phase 2 panel. The predictions are
-baseline outputs for historical validation only; they are not production forecasts.
+Open the Vite URL ending in `/fpl-forecast/`. To review a local mocked operational publication in
+the frontend, first run a mocked refresh from the repository root and then synchronize the frontend
+data:
 
 ```bash
-uv run fpl backtest-baselines \
-  --seasons 2022-23,2023-24,2024-25 \
-  --test-seasons 2023-24,2024-25 \
-  --mode rolling \
-  --run-id phase3_rolling_hardened
-
-uv run fpl backtest-baselines \
-  --seasons 2022-23,2023-24,2024-25 \
-  --test-seasons 2023-24,2024-25 \
-  --mode gw1 \
-  --run-id phase3_gw1_hardened
-
-uv run fpl compare-baselines --run-id phase3_rolling_hardened
-uv run fpl inspect-backtest --run-id phase3_rolling_hardened
+uv run fpl refresh-operational --season 2026-27 --mock-launch --force
+cd frontend
+npm run sync-data
+npm run dev
 ```
 
-Generated Phase 3 outputs are written under `reports/backtests/<run_id>/` and ignored by Git.
-`PHASE3_REPORT.md` records the real-data baseline results and limitations.
+## Operational Workflow
 
-## Phase 4 Team-Model Workflow
-
-Phase 4 models fixture-level team goals and probabilities. It is not a player expected-points
-model and must not be compared directly to Phase 3 player-point metrics.
-
-```bash
-uv run fpl backtest-team-model \
-  --seasons 2022-23,2023-24,2024-25 \
-  --test-seasons 2023-24,2024-25 \
-  --mode rolling \
-  --run-id phase4_team_rolling_poisson_v2
-
-uv run fpl backtest-team-model \
-  --seasons 2022-23,2023-24,2024-25 \
-  --test-seasons 2023-24,2024-25 \
-  --mode gw1 \
-  --run-id phase4_team_gw1_poisson_v2
-
-uv run fpl compare-team-models --run-id phase4_team_rolling_poisson_v2
-uv run fpl inspect-team-model --run-id phase4_team_rolling_poisson_v2
-```
-
-Team-model configuration lives in `src/fpl_forecast/team_model/config.json`. Generated Phase 4
-outputs are written under `reports/team_backtests/<run_id>/` and ignored by Git.
-
-The model families are:
-
-- `T0_LEAGUE_HOME_AWAY`: league-average home and away Poisson rates.
-- `T1_SHRUNK_ROLLING_TEAM_RATE`: recent team scoring and conceding rates shrunk toward league rates.
-- `T2_REGULARIZED_ATTACK_DEFENCE`: weighted ridge-penalized Poisson attack and
-  defensive-weakness effects with `sum(attack) = 0` and `sum(defence) = 0`
-  identifiability constraints. Higher attack means stronger scoring; higher defence means the team
-  concedes more and is defensively weaker.
-
-Historical backtests restrict result labels by `source_available_time < information_cutoff`, but the
-historical fixture schedule is reconstructed from retrospective Vaastav files. This is
-result-leakage-safe, but it may know final postponed or rearranged fixture assignments that were not
-known at the original historical deadline. Prospective operation should use archived pre-deadline FPL
-fixture snapshots.
-
-Official current FPL price is preserved as integer `price_tenths` with snapshot provenance, but Phase
-4 does not use price. Launch and pre-deadline price snapshots, integer-tenths budget arithmetic,
-personal purchase and selling prices, and any price-as-feature audit belong in a later optimizer or
-decision phase.
-
-Future fixture inference:
-
-```bash
-uv run fpl forecast-team-fixtures \
-  --season TARGET_SEASON \
-  --gameweek 1 \
-  --as-of AS_OF_TIMESTAMP \
-  --run-id RUN_ID
-```
-
-This command fails clearly when the normalized current snapshot is season-mismatched, missing, fully
-historical relative to `as_of`, or contains teams that cannot be mapped to stable identities. A new
-promoted team can be used by adding a stable `dim_team` identity and alias; if it has no historical
-fixtures, the model uses the neutral no-history fallback and records the promoted/unseen flag.
-
-## Phase 4.1 Dixon-Coles Challenger
-
-Phase 4.1 evaluates `T3_DIXON_COLES`, a Dixon-Coles low-score dependence challenger
-for fixture score probabilities. It is tested as an experiment against the Phase 4
-T2 independent-Poisson benchmark and does not replace expected-minutes or player
-expected-points modeling.
-
-T2 remains the default team probability model. The Phase 4.1 decision is
-`RETAIN AS EXPERIMENTAL CHALLENGER`: T3 is valid and leakage-safe, but the
-chronological scoring evidence is mixed and too small to promote for MVP use.
-
-```bash
-uv run fpl backtest-team-model \
-  --seasons 2022-23,2023-24,2024-25 \
-  --test-seasons 2023-24,2024-25 \
-  --mode rolling \
-  --run-id phase4_1_dixon_coles_rolling
-
-uv run fpl backtest-team-model \
-  --seasons 2022-23,2023-24,2024-25 \
-  --test-seasons 2023-24,2024-25 \
-  --mode gw1 \
-  --run-id phase4_1_dixon_coles_gw1
-
-uv run fpl compare-team-models --run-id phase4_1_dixon_coles_rolling
-uv run fpl compare-team-models --run-id phase4_1_dixon_coles_gw1
-```
-
-## Phase 5 Expected-Minutes Workflow
-
-Phase 5 models player-fixture minutes, appearance probability, start probability, 60-plus
-probability, 90-minute probability, and exact-start role-duration states. It uses only Phase 2
-player rows with `entity_type == "player"` and keeps assistant-manager rows preserved upstream but
-deterministically excluded from standard player minutes panels.
-
-```bash
-uv run fpl backtest-minutes \
-  --seasons 2022-23,2023-24,2024-25 \
-  --test-seasons 2023-24,2024-25 \
-  --mode rolling \
-  --run-id phase5_minutes_rolling_real
-
-uv run fpl backtest-minutes \
-  --seasons 2022-23,2023-24,2024-25 \
-  --test-seasons 2023-24,2024-25 \
-  --mode gw1 \
-  --run-id phase5_minutes_gw1_real
-
-uv run fpl compare-minutes --run-id phase5_minutes_rolling_real
-uv run fpl inspect-minutes --run-id phase5_minutes_rolling_real
-```
-
-Generated Phase 5 outputs are written under `reports/minutes_backtests/<run_id>/` and ignored by
-Git. Frozen predictions exclude target minutes, actual starts, role-duration labels, target points,
-lineup status, price, and other post-deadline fields.
-
-The versioned candidate-population rule lives in
-`src/fpl_forecast/minutes_model/config.json`. All observed player rows remain the primary
-data-quality population. Decision-relevant evaluation is reported separately for
-`pre_deadline_history_active`, and rows with no prior or in-season history are reported as
-`cold_start_no_history`.
-
-Current expected-minutes inference is deliberately guarded:
-
-```bash
-uv run fpl forecast-minutes \
-  --season TARGET_SEASON \
-  --gameweek 1 \
-  --as-of AS_OF_TIMESTAMP
-```
-
-The command validates official future fixture and player snapshots first and fails clearly when the
-current snapshot is missing, stale, season-mismatched, or not genuinely forecastable.
-
-## Phase 6 Component xPoints Workflow
-
-Phase 6 reconstructs FPL points from audited scoring components, estimates leakage-safe component
-rates, integrates Phase 4 T2 team expectations and Phase 5 minutes forecasts, and writes both
-player-fixture and player-gameweek xPoints distributions. It is still a historical validation layer,
-not a production optimizer or live forecast service.
-
-```bash
-uv run fpl validate-scoring --seasons 2022-23,2023-24,2024-25
-
-uv run fpl backtest-xpoints \
-  --seasons 2022-23,2023-24,2024-25 \
-  --test-seasons 2023-24,2024-25 \
-  --mode rolling \
-  --run-id phase6_xpoints_rolling_real
-
-uv run fpl backtest-xpoints \
-  --seasons 2022-23,2023-24,2024-25 \
-  --test-seasons 2023-24,2024-25 \
-  --mode gw1 \
-  --run-id phase6_xpoints_gw1_real
-
-uv run fpl compare-xpoints --run-id phase6_xpoints_rolling_real
-uv run fpl inspect-xpoints --run-id phase6_xpoints_rolling_real
-```
-
-Generated Phase 6 outputs are written under `reports/xpoints_backtests/<run_id>/` and ignored by
-Git. Frozen xPoints predictions exclude target points, target components, Vaastav `xP`, price,
-ownership and transfer fields.
-
-The selected Phase 6 default is `X2_TEAM_CONSTRAINED_SIM_M3`: it preserves T2 team-goal
-conservation while remaining close to the best rolling MAE. `X1_INDEPENDENT_COMPONENT_RATES_M3`
-remains the simple component baseline, and `X2_TEAM_CONSTRAINED_SIM_M5` remains a probabilistic and
-GW1 challenger.
-
-Current xPoints inference is guarded:
-
-```bash
-uv run fpl forecast-xpoints \
-  --season TARGET_SEASON \
-  --gameweek 1 \
-  --as-of AS_OF_TIMESTAMP
-```
-
-The command fails clearly when current fixture/player snapshots are stale or season-mismatched, or
-when prerequisite current team/minutes forecasts are unavailable.
-
-## Phase 7 Decision Workflow
-
-Phase 7 consumes frozen Phase 6 player-gameweek xPoints and historical Phase 2 prices to produce
-legal historical weekly-reset squad and lineup benchmark decisions. This is not a realistic
-season-management simulation, live service, or chip planner.
-
-```bash
-uv run fpl validate-decision-rules \
-  --bootstrap-path data/raw/fpl_api/2025-26/bootstrap_static/20260722T164209744637Z.json
-
-uv run fpl backtest-decisions \
-  --seasons 2023-24,2024-25 \
-  --mode rolling \
-  --run-id phase7_decisions_rolling_real
-
-uv run fpl backtest-decisions \
-  --seasons 2023-24,2024-25 \
-  --mode gw1 \
-  --run-id phase7_decisions_gw1_real
-
-uv run fpl compare-decisions --run-id phase7_decisions_rolling_real
-uv run fpl inspect-decision-run --run-id phase7_decisions_rolling_real
-uv run fpl plan-transfers --run-id phase7_transfer_demo
-```
-
-Generated Phase 7 outputs are written under `reports/decision_backtests/<run_id>/` and ignored by
-Git. The historical runner uses SciPy HiGHS MILP over the full gameweek candidate set and reports
-solver status, objective bound, gap, and runtime. Small exact cases are verified against brute-force
-enumeration. The transfer planner is proven on small exhaustive no-chip multi-gameweek cases because
-honest historical manager state, purchase prices, bank, free transfers, and transfer history are not
-yet archived.
-
-Current decision inference is guarded:
-
-```bash
-uv run fpl forecast-decisions \
-  --season TARGET_SEASON \
-  --gameweek 1 \
-  --as-of AS_OF_TIMESTAMP
-```
-
-The command fails before writing outputs when current snapshots are stale, season-mismatched, or
-missing prerequisite current xPoints artifacts.
-
-## Phase 8 Operational Workflow
-
-Phase 8 adds a local operational shell around the existing model stack. It can check whether the
-requested season has launched, keep a machine-readable waiting state, run the current team,
-minutes, xPoints and exact decision chain for a mocked official-shaped target season, publish
-validated frontend-ready artifacts atomically, preserve the last successful output after failures,
-and render a functional local Python dashboard.
-
-Real `2026-27` operation remains blocked until the official public FPL payload genuinely identifies
-as `2026-27`. A waiting state is normal and safe:
+Safe current-season status checks:
 
 ```bash
 uv run fpl check-season-launch --season 2026-27
@@ -525,10 +197,7 @@ uv run fpl refresh-operational --season 2026-27 --status-only
 uv run fpl operational-status
 ```
 
-Representative target-season operation can be tested without claiming real 2026-27 data. The mocked
-launch path builds target-season fixtures, player/team assignments and prices, combines them with
-prior-season history, runs T2 team forecasts, M3/M5 minutes forecasts, X2-M3/X2-M5 xPoints, and
-the full-candidate MILP squad/lineup/captain optimizer, then publishes those generated outputs:
+Representative target-season operation without claiming genuine live data:
 
 ```bash
 uv run fpl refresh-operational \
@@ -541,71 +210,97 @@ uv run fpl verify-operational-readiness
 uv run fpl dashboard --smoke
 ```
 
-Generated Phase 8 outputs are written under `outputs/operational/`, `reports/operational/`, and
-`logs/operational/` and are ignored by Git. The published run includes model lineage proving the
-team, minutes, xPoints and decision run IDs that generated the frontend artifacts. The dashboard
-reads only the published frontend data contract, not internal model objects or historical Phase 7
-backtest artifacts. Run without `--smoke` to serve the local dashboard:
+Generated raw data, normalized data, reports, logs, operational outputs, frontend synchronized data,
+`node_modules/`, and build outputs are ignored by Git.
 
-```bash
-uv run fpl dashboard
+## Repository Structure
+
+```text
+src/fpl_forecast/        Python package and CLI implementation
+tests/                   Offline tests and fixtures
+data/manual/             Versioned manual identity templates
+frontend/                Static Vite frontend
+docs/deployment/         GitHub Pages setup notes
+PHASE*_REPORT.md         Phase evidence and limitations
+PHASE1_AUDIT.md          Phase 1 audit evidence
+outputs/synthetic_demo/  Quarantined pre-real-data synthetic demo artifacts
 ```
 
-The dashboard shows operational status, data freshness, player projections, model comparison,
-recommended squad, lineup and captaincy, and methodology/limitations. Transfer management remains
-limited to small exhaustive no-chip proof cases until manager-specific bank, purchase prices, free
-transfers and transfer history are available.
+Generated real-data artifacts live under ignored directories such as `data/raw/`,
+`data/normalized/`, `reports/`, `outputs/operational/`, and `logs/operational/`.
 
-The public `event/{gameweek}/live/` endpoint was reachable for `event/38/live/` on July 23, 2026
-and was archived under `data/raw/fpl_api/2025-26/event_live_38/`, then normalized at player-fixture
-grain. The response has two related structures: top-level `stats` are player gameweek totals, while
-`explain` contains fixture-specific scoring components with awarded FPL points. Phase 8 normalizes
-from `explain` at player-fixture grain and uses top-level `stats.total_points` only as a post-match
-validation target, never as a pre-deadline feature.
+## Known Limitations
 
-The original GW38 mismatch was caused by treating partial raw `explain` values as if they were a
-complete scoring source and by missing awarded component points such as 2025-26 defensive
-contribution. The corrected event-live audit reconciles 841/841 cached GW38 player events exactly,
-with 0 duplicate keys and 0 unresolved rows:
+- Genuine 2026-27 operation is not yet proven.
+- Historical candidate universes are reconstructed from observed player-fixture rows, not complete
+  archived pre-deadline squad-registration snapshots.
+- Historical fixture schedules from Vaastav are retrospective, so result leakage is controlled but
+  original deadline-time fixture uncertainty can remain.
+- GW1 validation has only two folds.
+- Transfer planning is proven only for small no-chip cases; full manager-state transfer backtesting
+  needs bank, purchase prices, free transfers, and transfer history.
+- Chips, hosted scheduling, authentication, production monitoring, and commercial data-provider
+  integration are not implemented.
+- No claims are made about real-world FPL rank, profitability, causal performance, or professional
+  club validation.
 
-```bash
-uv run fpl audit-event-live \
-  --season 2025-26 \
-  --gameweek 38 \
-  --run-id phase8_real_gw38_event_live_corrected
-```
+## Roadmap
 
-Completed current-season rows can now be safety-gated before operational publication. The gate
-rejects duplicate player-fixture keys, unresolved fixtures, invalid timestamps, late source
-availability, incomplete fixtures treated as final, unresolved scoring mismatches, repeated event
-totals across double-gameweek fixture rows, and forbidden outcome columns in pre-deadline features.
+Phase A: FPL forecasting and decision system.
 
-The mocked in-season transition proof freezes GW1 forecasts, appends completed GW1 rows only after
-their source availability, produces GW2 projections and an optimized squad, confirms unchanged
-reruns are no-ops, and confirms an injected completed-result validation failure preserves the latest
-successful publication:
+- Phases 1-8: data ingestion, identity, leakage-safe backtesting, team models, minutes, xPoints,
+  optimization, operational readiness, and local dashboard contract.
+- Phase 9: public dashboard and clean web publication.
+- Phase 10: xPoints post-mortem after live evidence exists.
 
-```bash
-uv run fpl mock-gw1-to-gw2-operational-transition \
-  --season 2026-27 \
-  --run-id phase8_gw1_to_gw2_final
-```
+Next major branch: B, football performance forecasting and player valuation.
 
-This supports local GW1 launch readiness and mocked GW2-and-later refresh readiness. Genuine
-2026-27 operation still remains unproven until the official target-season payload launches. Public
-deployment remains Phase 9 scope.
+The current FPL xPoints system is the technical foundation. Later work would estimate expected
+on-field contribution, expected minutes, role-adjusted performance, team and opponent context,
+future performance over defined periods, and value relative to age, cost, or contract. That branch
+is not implemented here.
 
-## Phase 9A Local Frontend
+## Data Sources And Attribution
 
-The basic Vite frontend under `frontend/` reads a local copy of the latest successful
-`phase8_frontend_v1` artifacts. It does not run Python or modify operational outputs.
+This repository uses or supports ingestion from:
 
-```bash
-cd frontend
-npm install
-npm run sync-data
-npm run dev
-```
+- Official Fantasy Premier League API endpoints used by the ingestion code:
+  `bootstrap-static/`, `fixtures/`, and `event/{gameweek}/live/`.
+- Vaastav's Fantasy Premier League historical dataset repository for historical FPL CSV files.
 
-The current published run is representative mocked data and is labelled `DEMO DATA` throughout the
-UI. GitHub Pages and public deployment are not configured in this pass.
+Raw and normalized third-party data are intentionally excluded from Git. See [DATA_NOTICE.md](DATA_NOTICE.md)
+for data-rights boundaries. No Premier League, Fantasy Premier League, or club logos, crests, or
+copied visual identity are included in the tracked source tree.
+
+## References
+
+- [Vaastav Fantasy Premier League historical dataset](https://github.com/vaastav/Fantasy-Premier-League)
+- [Official Fantasy Premier League rules](https://fantasy.premierleague.com/help/rules)
+- [Premier League Terms of Use](https://www.premierleague.com/terms-and-conditions)
+- Dixon, M. J. and Coles, S. G. (1997), "Modelling Association Football Scores and Inefficiencies
+  in the Football Betting Market," *Applied Statistics*, 46(2), 265-280,
+  [doi:10.1111/1467-9876.00065](https://doi.org/10.1111/1467-9876.00065)
+- [SciPy `optimize.milp` documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.milp.html)
+- [HiGHS documentation](https://highs.dev/)
+- [GNU Affero General Public License version 3](https://www.gnu.org/licenses/agpl-3.0.en.html)
+- [Vaastav repository licence](https://github.com/vaastav/Fantasy-Premier-League/blob/master/LICENSE)
+- Graham, Ian (2024), *How to Win the Premier League*; included here as conceptual inspiration, not
+  as a technical specification or a reproduced proprietary model.
+
+## Licence
+
+Daniel Mehta's original source code in this repository is licensed under
+`AGPL-3.0-only`; see [LICENSE](LICENSE). The AGPL permits use, modification, distribution, and
+commercial use, subject to its terms, including the requirement that covered modified network
+versions provide corresponding source under the AGPL.
+
+Third-party dependencies remain under their respective licences; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The source-code licence does not relicense
+third-party data, official FPL content, Premier League material, player or team identities,
+trademarks, or database rights; see [DATA_NOTICE.md](DATA_NOTICE.md).
+
+## Disclaimer
+
+Unofficial project. Not affiliated with, endorsed by, or associated with the Premier League or
+Fantasy Premier League. This repository is for experimental research and engineering demonstration
+only and does not provide official FPL advice, legal advice, or data-rights clearance.

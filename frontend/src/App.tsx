@@ -318,6 +318,10 @@ function App() {
             Current data may remain mocked until the target FPL season launches. This project is
             experimental and the displayed recommendations should be interpreted accordingly.
           </p>
+          <p>
+            Unofficial project. Not affiliated with, endorsed by, or associated with the Premier
+            League or Fantasy Premier League.
+          </p>
           <a href={repositoryUrl}>Read the repository documentation</a>
         </section>
       </main>
@@ -331,7 +335,10 @@ function SiteFooter() {
   return (
     <footer>
       <div className="page-shell footer-inner">
-        <span>Built by Daniel Mehta</span>
+        <span>
+          Built by Daniel Mehta. Unofficial project; no Premier League or Fantasy Premier League
+          affiliation.
+        </span>
         <a
           className="github-link"
           href={repositoryUrl}

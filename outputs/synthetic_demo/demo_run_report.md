@@ -91,4 +91,5 @@ uv run fpl run-demo --seasons 2023-24,2024-25,2025-26 --gameweeks 6 --draws 500
 
 ## Plot
 
-![Projection error by pool](/Users/daniel/Documents/Codex/2026-07-22/files-mentioned-by-the-user-fpl/reports/figures/project_20260722T045210Z_metric_plot.png)
+Projection error plot path from the original local demo run:
+`reports/figures/project_20260722T045210Z_metric_plot.png`.

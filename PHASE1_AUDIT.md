@@ -1,6 +1,6 @@
 # Phase 1 Audit
 
-Audit run from `/Users/daniel/Documents/GitHub/fpl-forecast` on July 22, 2026.
+Audit run from the repository root on July 22, 2026.
 
 | Audit question | Verdict | Evidence | Change made | Remaining limitation |
 |---|---|---|---|---|
