@@ -20,6 +20,9 @@ reports/decision_backtests/**
 reports/operational/**
 outputs/operational/**
 logs/operational/**
+frontend/node_modules/
+frontend/dist/
+frontend/public/data/*
 !data/raw/
 !data/raw/fpl_api/
 !data/raw/vaastav/
@@ -34,3 +37,4 @@ logs/operational/**
 !reports/decision_backtests/
 !reports/operational/
 !data/**/.gitkeep
+!frontend/public/data/README.md

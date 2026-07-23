@@ -594,3 +594,18 @@ uv run fpl mock-gw1-to-gw2-operational-transition \
 This supports local GW1 launch readiness and mocked GW2-and-later refresh readiness. Genuine
 2026-27 operation still remains unproven until the official target-season payload launches. Public
 deployment remains Phase 9 scope.
+
+## Phase 9A Local Frontend
+
+The basic Vite frontend under `frontend/` reads a local copy of the latest successful
+`phase8_frontend_v1` artifacts. It does not run Python or modify operational outputs.
+
+```bash
+cd frontend
+npm install
+npm run sync-data
+npm run dev
+```
+
+The current published run is representative mocked data and is labelled `DEMO DATA` throughout the
+UI. GitHub Pages and public deployment are not configured in this pass.
