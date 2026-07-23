@@ -2,8 +2,8 @@
 
 Real-data foundation for a Fantasy Premier League forecasting system.
 
-This repository currently implements Phase 1, Phase 2, Phase 3, Phase 4, Phase 4.1, and Phase 5.
-Phase 1 covers ingestion, immutable raw snapshots, normalization to Parquet, validation, a
+This repository currently implements Phase 1, Phase 2, Phase 3, Phase 4, Phase 4.1, Phase 5, and
+Phase 6. Phase 1 covers ingestion, immutable raw snapshots, normalization to Parquet, validation, a
 command-line interface, tests, and documentation.
 Phase 2 adds multi-season historical coverage, cross-season team and player identities, a canonical
 player-fixture panel, deadline-safe feature primitives, feature lineage, and leakage auditing.
@@ -15,10 +15,12 @@ season and team-identity checks.
 Phase 4.1 adds an experimental Dixon-Coles low-score dependence challenger.
 Phase 5 adds leakage-safe player expected-minutes and appearance-probability backtests, role-duration
 state modeling, lineup-start diagnostics, and guarded current-season input validation.
+Phase 6 adds deterministic FPL scoring reconstruction, component-based player xPoints backtests,
+team-constrained goal allocation, simulated point distributions, and guarded current xPoints input
+validation.
 
-It does not implement production player expected-points models, player expected-points projections,
-simulations, squad optimization, transfer planning, scheduling, dashboard work, or production
-forecasting.
+It does not implement prices, squad optimization, transfer planning, chips, scheduling, dashboard
+work, deployment, or production forecasting.
 
 ## Data Boundaries
 
@@ -38,7 +40,8 @@ outputs/
 reports/
 ├── backtests/
 ├── team_backtests/
-└── minutes_backtests/
+├── minutes_backtests/
+└── xpoints_backtests/
 ```
 
 Only externally retrieved source bytes belong in `data/raw`. Only tables derived from those real
@@ -405,3 +408,50 @@ uv run fpl forecast-minutes \
 
 The command validates official future fixture and player snapshots first and fails clearly when the
 current snapshot is missing, stale, season-mismatched, or not genuinely forecastable.
+
+## Phase 6 Component xPoints Workflow
+
+Phase 6 reconstructs FPL points from audited scoring components, estimates leakage-safe component
+rates, integrates Phase 4 T2 team expectations and Phase 5 minutes forecasts, and writes both
+player-fixture and player-gameweek xPoints distributions. It is still a historical validation layer,
+not a production optimizer or live forecast service.
+
+```bash
+uv run fpl validate-scoring --seasons 2022-23,2023-24,2024-25
+
+uv run fpl backtest-xpoints \
+  --seasons 2022-23,2023-24,2024-25 \
+  --test-seasons 2023-24,2024-25 \
+  --mode rolling \
+  --run-id phase6_xpoints_rolling_real
+
+uv run fpl backtest-xpoints \
+  --seasons 2022-23,2023-24,2024-25 \
+  --test-seasons 2023-24,2024-25 \
+  --mode gw1 \
+  --run-id phase6_xpoints_gw1_real
+
+uv run fpl compare-xpoints --run-id phase6_xpoints_rolling_real
+uv run fpl inspect-xpoints --run-id phase6_xpoints_rolling_real
+```
+
+Generated Phase 6 outputs are written under `reports/xpoints_backtests/<run_id>/` and ignored by
+Git. Frozen xPoints predictions exclude target points, target components, Vaastav `xP`, price,
+ownership and transfer fields.
+
+The selected Phase 6 default is `X2_TEAM_CONSTRAINED_SIM_M3`: it preserves T2 team-goal
+conservation while remaining close to the best rolling MAE. `X1_INDEPENDENT_COMPONENT_RATES_M3`
+remains the simple component baseline, and `X2_TEAM_CONSTRAINED_SIM_M5` remains a probabilistic and
+GW1 challenger.
+
+Current xPoints inference is guarded:
+
+```bash
+uv run fpl forecast-xpoints \
+  --season TARGET_SEASON \
+  --gameweek 1 \
+  --as-of AS_OF_TIMESTAMP
+```
+
+The command fails clearly when current fixture/player snapshots are stale or season-mismatched, or
+when prerequisite current team/minutes forecasts are unavailable.

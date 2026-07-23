@@ -30,6 +30,13 @@ from fpl_forecast.minutes_model.runner import (
     inspect_minutes_run,
     run_minutes_backtest,
 )
+from fpl_forecast.xpoints.runner import (
+    compare_xpoints as compare_xpoints_run,
+    forecast_xpoints as forecast_xpoints_run,
+    inspect_xpoints as inspect_xpoints_run,
+    run_xpoints_backtest,
+    validate_scoring as validate_scoring_run,
+)
 from fpl_forecast.ingest.fpl_api import FPLApiClient, FPLApiError
 from fpl_forecast.ingest.vaastav import VaastavDataError, VaastavIngestor
 from fpl_forecast.normalize.current import normalize_current as normalize_current_tables
@@ -527,6 +534,112 @@ def forecast_minutes(
         console.print(f"[red]Minutes forecast failed:[/red] {exc}")
         raise typer.Exit(1) from exc
     console.print(f"future_minutes_predictions={path}")
+
+
+@app.command("validate-scoring")
+def validate_scoring(
+    seasons: Annotated[
+        str,
+        typer.Option(help="Comma-separated historical seasons to audit."),
+    ] = "2022-23,2023-24,2024-25",
+    normalized_dir: Annotated[
+        Path,
+        typer.Option(help="Normalized data directory."),
+    ] = NORMALIZED_DIR,
+    run_id: Annotated[str, typer.Option(help="Scoring-audit run id.")] = "scoring_reconstruction",
+) -> None:
+    try:
+        outputs = validate_scoring_run(seasons=seasons, normalized_dir=normalized_dir, run_id=run_id)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Scoring validation failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    _print_paths("Scoring reconstruction audit", list(outputs.values()))
+
+
+@app.command("backtest-xpoints")
+def backtest_xpoints(
+    seasons: Annotated[
+        str,
+        typer.Option(help="Comma-separated seasons available for training and testing."),
+    ],
+    test_seasons: Annotated[
+        str,
+        typer.Option(help="Comma-separated seasons to score out of sample."),
+    ],
+    mode: Annotated[str, typer.Option(help="Backtest mode: rolling or gw1.")] = "rolling",
+    normalized_dir: Annotated[
+        Path,
+        typer.Option(help="Normalized data directory."),
+    ] = NORMALIZED_DIR,
+    run_id: Annotated[str | None, typer.Option(help="Optional deterministic run id.")] = None,
+) -> None:
+    try:
+        result = run_xpoints_backtest(
+            seasons=seasons,
+            test_seasons=test_seasons,
+            mode=mode,
+            normalized_dir=normalized_dir,
+            run_id=run_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]xPoints backtest failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    console.print(f"run_id={result.run_id}")
+    console.print(f"run_dir={result.run_dir}")
+    console.print(f"folds={len(result.folds)}")
+    console.print(f"frozen_predictions={result.frozen_predictions_path}")
+    console.print(f"scored_predictions={result.scored_predictions_path}")
+    console.print(f"player_gameweek_predictions={result.player_gameweek_path}")
+    console.print(f"manifest={result.manifest_path}")
+
+
+@app.command("compare-xpoints")
+def compare_xpoints(
+    run_id: Annotated[str, typer.Option(help="xPoints run id to compare.")],
+) -> None:
+    try:
+        lines = compare_xpoints_run(run_id=run_id)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]xPoints comparison failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    for line in lines:
+        console.print(line)
+
+
+@app.command("inspect-xpoints")
+def inspect_xpoints(
+    run_id: Annotated[str, typer.Option(help="xPoints run id to inspect.")],
+) -> None:
+    try:
+        lines = inspect_xpoints_run(run_id=run_id)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]xPoints inspection failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    for line in lines:
+        console.print(line)
+
+
+@app.command("forecast-xpoints")
+def forecast_xpoints(
+    season: Annotated[str, typer.Option(help="Official current season to forecast.")],
+    as_of: Annotated[str, typer.Option(help="UTC cutoff timestamp for the forecast.")],
+    gameweek: Annotated[int | None, typer.Option(help="Optional FPL gameweek/event filter.")] = None,
+    normalized_dir: Annotated[
+        Path,
+        typer.Option(help="Normalized data directory."),
+    ] = NORMALIZED_DIR,
+) -> None:
+    try:
+        path = forecast_xpoints_run(
+            season=season,
+            gameweek=gameweek,
+            as_of=as_of,
+            normalized_dir=normalized_dir,
+        )
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]xPoints forecast failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    console.print(f"future_xpoints_predictions={path}")
 
 
 def _print_records(title: str, records) -> None:
