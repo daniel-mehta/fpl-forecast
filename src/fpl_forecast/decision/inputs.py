@@ -53,6 +53,42 @@ def load_decision_candidates(
     frame["p_start"] = pd.to_numeric(frame["p_start"], errors="coerce").fillna(frame["p_appearance"])
     if frame[["fpl_position", "player_team_uid", "price_tenths"]].isna().any().any():
         raise ValueError("Decision candidates are missing price, position, or team metadata.")
+    if "D0_PRICE_VALUE_BASELINE" in config.comparison_models:
+        base_keys = [
+            "season",
+            "gameweek",
+            "player_uid",
+            "player_name",
+            "fpl_position",
+            "player_team_uid",
+            "price_tenths",
+            "actual_points",
+            "actual_minutes",
+            "p_appearance",
+            "p_start",
+            "information_cutoff",
+            "cold_start_no_history",
+        ]
+        baseline = frame.sort_values(["season", "gameweek", "player_uid"]).drop_duplicates(
+            ["season", "gameweek", "player_uid"]
+        )[base_keys].copy()
+        baseline["model_name"] = "D0_PRICE_VALUE_BASELINE"
+        position_floor = baseline.groupby(["season", "gameweek", "fpl_position"])["price_tenths"].transform("min")
+        baseline["expected_points"] = (baseline["price_tenths"] - position_floor).clip(lower=0) / 10.0
+        baseline["points_std"] = 0.0
+        baseline["points_p10"] = baseline["expected_points"]
+        baseline["points_p25"] = baseline["expected_points"]
+        baseline["points_p50"] = baseline["expected_points"]
+        baseline["points_p75"] = baseline["expected_points"]
+        baseline["points_p90"] = baseline["expected_points"]
+        baseline["prob_points_eq_0"] = baseline["expected_points"].eq(0).astype(float)
+        baseline["prob_points_ge_1"] = baseline["expected_points"].ge(1).astype(float)
+        baseline["prob_points_ge_5"] = baseline["expected_points"].ge(5).astype(float)
+        baseline["prob_points_ge_10"] = baseline["expected_points"].ge(10).astype(float)
+        for column in frame.columns:
+            if column not in baseline.columns:
+                baseline[column] = pd.NA
+        frame = pd.concat([frame, baseline[frame.columns]], ignore_index=True)
     return frame
 
 

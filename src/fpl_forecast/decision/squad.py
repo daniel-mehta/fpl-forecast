@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from itertools import combinations
 from heapq import nlargest
+from itertools import combinations
 from time import perf_counter
 
 import pandas as pd
@@ -24,6 +24,10 @@ class SquadSolution:
     evaluated_squads: int
     runtime_seconds: float
     optimality_scope: str
+    objective_bound: float | None = None
+    objective_gap: float | None = None
+    solver_message: str | None = None
+    solver_nodes: int | None = None
 
 
 def optimize_initial_squad(

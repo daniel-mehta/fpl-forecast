@@ -3,9 +3,10 @@
   "default_model": "X2_TEAM_CONSTRAINED_SIM_M3",
   "comparison_models": [
     "X2_TEAM_CONSTRAINED_SIM_M3",
-    "X2_TEAM_CONSTRAINED_SIM_M5",
-    "X1_INDEPENDENT_COMPONENT_RATES_M3",
-    "X0_PHASE3_B5_EB_POINTS_PER90"
+      "X2_TEAM_CONSTRAINED_SIM_M5",
+      "X1_INDEPENDENT_COMPONENT_RATES_M3",
+      "X0_PHASE3_B5_EB_POINTS_PER90",
+      "D0_PRICE_VALUE_BASELINE"
   ],
   "xpoints_runs": {
     "rolling": "phase6_xpoints_rolling_real",

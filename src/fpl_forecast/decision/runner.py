@@ -5,7 +5,6 @@ import subprocess
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from time import perf_counter
 
 import pandas as pd
 
@@ -17,15 +16,16 @@ from fpl_forecast.decision.inputs import (
     load_decision_candidates,
 )
 from fpl_forecast.decision.lineup import apply_autosubs_and_score, optimize_lineup
-from fpl_forecast.decision.metrics import compare_models, decision_metrics
+from fpl_forecast.decision.metrics import compare_models, decision_metrics, selected_player_calibration
+from fpl_forecast.decision.milp import optimize_squad_milp
 from fpl_forecast.decision.rules import (
     assert_rules_match_config,
     default_rules,
     rules_from_bootstrap,
     validate_rules,
 )
-from fpl_forecast.decision.squad import SquadSolution, squad_table
-from fpl_forecast.decision.transfers import plan_one_week_transfer
+from fpl_forecast.decision.squad import squad_table
+from fpl_forecast.decision.transfers import plan_multi_gameweek_transfers, plan_to_frame
 from fpl_forecast.panel.common import parse_seasons
 from fpl_forecast.team_model.data import load_current_fixture_frame
 
@@ -105,6 +105,10 @@ def run_decision_backtest(
                     "evaluated_squads": solution.evaluated_squads,
                     "runtime_seconds": solution.runtime_seconds,
                     "optimality_scope": solution.optimality_scope,
+                    "objective_bound": solution.objective_bound,
+                    "objective_gap": solution.objective_gap,
+                    "solver_message": solution.solver_message,
+                    "solver_nodes": solution.solver_nodes,
                 }
             )
             scored_rows.append(
@@ -137,6 +141,10 @@ def run_decision_backtest(
         "optimized_squads": _write_frame(squads, run_dir / "optimized_squads.csv"),
         "metrics": _write_frame(metrics, run_dir / "decision_metrics.csv"),
         "model_comparison": _write_frame(comparison, run_dir / "model_comparison.csv"),
+        "selected_player_calibration": _write_frame(
+            selected_player_calibration(squads),
+            run_dir / "selected_player_calibration.csv",
+        ),
         "constraint_audit": _write_frame(_constraint_audit(scored, rules), run_dir / "constraint_audit.csv"),
     }
     manifest = {
@@ -149,8 +157,8 @@ def run_decision_backtest(
         "config": asdict(config),
         "decisions": int(len(frozen)),
         "git": _git_metadata(),
-        "solver": "deterministic_greedy_repair_fallback",
-        "optimality_scope": "legal deterministic greedy-repair squad with exact lineup search",
+        "solver": "scipy_highs_milp",
+        "optimality_scope": "globally optimal for the full candidate MILP objective",
     }
     (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
     return DecisionRunResult(run_id, run_dir, frozen_path, scored_path, metrics_paths, int(len(frozen)))
@@ -203,10 +211,21 @@ def run_transfer_demo(*, reports_dir: Path | str = DECISION_REPORTS_DIR, run_id:
         ],
         ignore_index=True,
     )
-    plan = plan_one_week_transfer(current, candidates, rules, bank_tenths=10, free_transfers=1)
+    weekly_candidates = {
+        1: candidates.copy(),
+        2: _toy_transfer_frame(upgrade_shift=1.5),
+    }
+    plan = plan_multi_gameweek_transfers(
+        current,
+        weekly_candidates,
+        rules,
+        bank_tenths=10,
+        free_transfers=1,
+        max_transfers_per_gameweek=1,
+    )
     run_dir = Path(reports_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
-    return _write_frame(pd.DataFrame([asdict(plan)]), run_dir / "transfer_plan.csv")
+    return _write_frame(plan_to_frame(plan), run_dir / "transfer_plan.csv")
 
 
 def forecast_decisions_guard(*, season: str, gameweek: int | None, as_of: str) -> None:
@@ -220,119 +239,7 @@ def forecast_decisions_guard(*, season: str, gameweek: int | None, as_of: str) -
 
 def _optimize_squad_with_fallback(candidates: pd.DataFrame, rules, config):
     del config
-    return _greedy_repair_squad(candidates, rules)
-
-
-def _greedy_repair_squad(candidates: pd.DataFrame, rules) -> SquadSolution:
-    start = perf_counter()
-    selected: list[str] = []
-    team_counts: dict[str, int] = {}
-    for position, quota in rules.position_quotas.items():
-        group = candidates.loc[candidates["fpl_position"].eq(position)].sort_values(
-            ["price_tenths", "expected_points", "player_uid"],
-            ascending=[True, False, True],
-        )
-        for row in group.itertuples(index=False):
-            team = str(row.player_team_uid)
-            if team_counts.get(team, 0) >= rules.max_players_per_team:
-                continue
-            selected.append(str(row.player_uid))
-            team_counts[team] = team_counts.get(team, 0) + 1
-            if sum(1 for player in selected if _position(candidates, player) == position) == quota:
-                break
-    if len(selected) != rules.squad_size:
-        raise ValueError("No legal cheap seed squad found for decision fallback.")
-    frame = candidates.set_index("player_uid")
-    upgrade_pool = pd.concat(
-        [
-            candidates.loc[candidates["player_uid"].isin(selected)],
-            _decision_upgrade_pool(candidates),
-        ],
-        ignore_index=True,
-    ).drop_duplicates("player_uid")
-    selected = _improve_greedy_squad(selected, upgrade_pool, rules)
-    squad = frame.loc[selected].reset_index()
-    cost = int(squad["price_tenths"].sum())
-    if cost > rules.budget_tenths or squad["player_team_uid"].value_counts().max() > rules.max_players_per_team:
-        raise ValueError("Greedy fallback failed to produce a legal squad.")
-    lineup = optimize_lineup(squad, rules, appearance_aware=True)
-    return SquadSolution(
-        squad=tuple(selected),
-        lineup_decision=lineup,
-        objective=lineup.objective,
-        cost_tenths=cost,
-        bank_tenths=rules.budget_tenths - cost,
-        solver_status="heuristic_feasible",
-        solver_name="deterministic_greedy_repair_fallback",
-        candidate_count=int(len(candidates)),
-        evaluated_squads=1,
-        runtime_seconds=perf_counter() - start,
-        optimality_scope="legal greedy-repair fallback after infeasible deterministic shortlist",
-    )
-
-
-def _improve_greedy_squad(selected: list[str], candidates: pd.DataFrame, rules) -> list[str]:
-    frame = candidates.set_index("player_uid")
-    selected_set = set(selected)
-    improved = True
-    while improved:
-        improved = False
-        current = frame.loc[selected].reset_index()
-        cost = int(current["price_tenths"].sum())
-        for incoming in candidates.sort_values(
-            ["expected_points", "price_tenths", "player_uid"],
-            ascending=[False, True, True],
-        ).itertuples(index=False):
-            incoming_id = str(incoming.player_uid)
-            if incoming_id in selected_set:
-                continue
-            same_position = current.loc[current["fpl_position"].eq(incoming.fpl_position)].sort_values(
-                ["expected_points", "price_tenths", "player_uid"],
-                ascending=[True, False, True],
-            )
-            for outgoing in same_position.itertuples(index=False):
-                if float(incoming.expected_points) <= float(outgoing.expected_points):
-                    continue
-                new_cost = cost - int(outgoing.price_tenths) + int(incoming.price_tenths)
-                if new_cost > rules.budget_tenths:
-                    continue
-                trial_ids = [player for player in selected if player != outgoing.player_uid]
-                trial_ids.append(incoming_id)
-                trial = frame.loc[trial_ids].reset_index()
-                if trial["player_team_uid"].value_counts().max() > rules.max_players_per_team:
-                    continue
-                selected = trial_ids
-                selected_set = set(selected)
-                improved = True
-                break
-            if improved:
-                break
-    return selected
-
-
-def _position(candidates: pd.DataFrame, player_uid: str) -> str:
-    return str(candidates.loc[candidates["player_uid"].eq(player_uid), "fpl_position"].iloc[0])
-
-
-def _decision_upgrade_pool(candidates: pd.DataFrame) -> pd.DataFrame:
-    rows = []
-    frame = candidates.copy()
-    frame["_value_score"] = frame["expected_points"] / frame["price_tenths"].clip(lower=1)
-    for _, group in frame.groupby("fpl_position", sort=False):
-        expected = group.sort_values(
-            ["expected_points", "price_tenths", "player_uid"],
-            ascending=[False, True, True],
-        ).head(12)
-        value = group.sort_values(
-            ["_value_score", "expected_points", "player_uid"],
-            ascending=[False, False, True],
-        ).head(12)
-        cheap = group.sort_values(
-            ["price_tenths", "expected_points", "player_uid"],
-            ascending=[True, False, True],
-        ).head(8)
-        rows.append(pd.concat([expected, value, cheap], ignore_index=True))
-    return pd.concat(rows, ignore_index=True).drop_duplicates("player_uid").drop(columns="_value_score")
+    return optimize_squad_milp(candidates, rules, appearance_aware=True)
 
 
 def _constraint_audit(frozen: pd.DataFrame, rules) -> pd.DataFrame:
@@ -345,7 +252,7 @@ def _constraint_audit(frozen: pd.DataFrame, rules) -> pd.DataFrame:
     )[["season", "gameweek", "model_name", "cost_tenths", "bank_tenths", "captain", "vice_captain", "legal"]]
 
 
-def _toy_transfer_frame() -> pd.DataFrame:
+def _toy_transfer_frame(upgrade_shift: float = 0.0) -> pd.DataFrame:
     rows = []
     quotas = {"GKP": 2, "DEF": 5, "MID": 5, "FWD": 3}
     team_index = 0
@@ -360,7 +267,7 @@ def _toy_transfer_frame() -> pd.DataFrame:
                     "player_team_uid": f"team_{team_index % 8}",
                     "price_tenths": price,
                     "selling_price_tenths": price,
-                    "expected_points": float(index + 1),
+                    "expected_points": float(index + 1 + (upgrade_shift if index >= count else 0.0)),
                     "p_appearance": 0.9,
                     "actual_points": float(index),
                     "actual_minutes": 90,

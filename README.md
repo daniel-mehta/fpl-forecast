@@ -18,9 +18,10 @@ state modeling, lineup-start diagnostics, and guarded current-season input valid
 Phase 6 adds deterministic FPL scoring reconstruction, component-based player xPoints backtests,
 team-constrained goal allocation, simulated point distributions, and guarded current xPoints input
 validation.
-Phase 7 adds integer-tenths price handling, official squad/lineup rule validation, deterministic
-squad and lineup decision optimization, captain/vice-captain/bench selection, autosub scoring,
-single-transfer planning checks, and guarded current decision input validation.
+Phase 7 adds integer-tenths price handling, official squad/lineup rule validation, full-candidate
+MILP weekly-reset squad optimization, captain/vice-captain/bench selection, autosub scoring,
+exhaustive small-case no-chip multi-gameweek transfer planning, and guarded current decision input
+validation.
 
 It does not implement chips, scheduling, dashboard work, deployment, or production forecasting.
 
@@ -462,8 +463,8 @@ when prerequisite current team/minutes forecasts are unavailable.
 ## Phase 7 Decision Workflow
 
 Phase 7 consumes frozen Phase 6 player-gameweek xPoints and historical Phase 2 prices to produce
-legal historical squad and lineup decisions. It is a decision-layer validation pass, not a live
-service or chip planner.
+legal historical weekly-reset squad and lineup benchmark decisions. This is not a realistic
+season-management simulation, live service, or chip planner.
 
 ```bash
 uv run fpl validate-decision-rules \
@@ -485,9 +486,11 @@ uv run fpl plan-transfers --run-id phase7_transfer_demo
 ```
 
 Generated Phase 7 outputs are written under `reports/decision_backtests/<run_id>/` and ignored by
-Git. The historical runner uses deterministic greedy-repair squad construction with exact legal
-lineup, captain, vice-captain, bench, and autosub evaluation for the selected squad. Small exact
-pruned-universe squad optimization is tested separately.
+Git. The historical runner uses SciPy HiGHS MILP over the full gameweek candidate set and reports
+solver status, objective bound, gap, and runtime. Small exact cases are verified against brute-force
+enumeration. The transfer planner is proven on small exhaustive no-chip multi-gameweek cases because
+honest historical manager state, purchase prices, bank, free transfers, and transfer history are not
+yet archived.
 
 Current decision inference is guarded:
 

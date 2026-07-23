@@ -7,11 +7,12 @@ import pytest
 
 from fpl_forecast.decision.inputs import assert_frozen_decisions_target_free
 from fpl_forecast.decision.lineup import apply_autosubs_and_score, optimize_lineup
+from fpl_forecast.decision.milp import optimize_squad_milp
 from fpl_forecast.decision.prices import selling_price_tenths, validate_budget
 from fpl_forecast.decision.rules import default_rules, validate_rules
 from fpl_forecast.decision.runner import forecast_decisions_guard
 from fpl_forecast.decision.squad import optimize_initial_squad
-from fpl_forecast.decision.transfers import computed_selling_price, plan_one_week_transfer
+from fpl_forecast.decision.transfers import computed_selling_price, plan_multi_gameweek_transfers
 
 
 def test_default_rules_match_official_squad_shape() -> None:
@@ -89,30 +90,65 @@ def test_initial_squad_optimizer_matches_bruteforce_on_small_universe() -> None:
     assert "MID_alt" in solution.squad
 
 
-def test_single_transfer_planner_respects_bank_and_free_transfer_hit() -> None:
+def test_milp_optimizer_matches_bruteforce_on_small_universe() -> None:
+    rules = default_rules()
+    candidates = _small_extra_candidate_frame()
+
+    solution = optimize_squad_milp(candidates, rules)
+    expected = _bruteforce_milp_objective(candidates, rules)
+
+    assert solution.solver_name == "scipy_highs_milp"
+    assert solution.solver_status == "optimal"
+    assert solution.objective_gap == 0
+    assert round(solution.objective, 8) == round(expected, 8)
+    assert solution.objective_bound == pytest.approx(solution.objective)
+
+
+def test_milp_selection_stable_under_small_forecast_perturbations() -> None:
+    rules = default_rules()
+    candidates = _small_extra_candidate_frame()
+    solution = optimize_squad_milp(candidates, rules)
+    perturbed = candidates.copy()
+    perturbed["expected_points"] = perturbed["expected_points"] + 1e-6
+
+    perturbed_solution = optimize_squad_milp(perturbed, rules)
+
+    assert set(perturbed_solution.squad) == set(solution.squad)
+    assert set(perturbed_solution.lineup_decision.lineup) == set(solution.lineup_decision.lineup)
+
+
+def test_multi_gameweek_transfer_planner_tracks_bank_rollover_hits_and_lineups() -> None:
     rules = default_rules()
     current = _squad_frame()
-    current["selling_price_tenths"] = current["price_tenths"]
-    candidate = {
-        "player_uid": "FWD_upgrade",
-        "player_name": "Forward Upgrade",
-        "fpl_position": "FWD",
-        "player_team_uid": "team_9",
-        "price_tenths": 52,
-        "selling_price_tenths": 52,
-        "expected_points": 10.0,
-        "p_appearance": 1.0,
-        "actual_points": 6.0,
-        "actual_minutes": 90,
+    all_candidates = pd.concat(
+        [
+            current,
+            _upgrade_rows("DEF", 1, 48, 8.0),
+            _upgrade_rows("FWD", 1, 52, 10.0),
+        ],
+        ignore_index=True,
+    )
+    weekly = {
+        1: all_candidates.copy(),
+        2: all_candidates.copy(),
     }
-    candidates = pd.concat([current, pd.DataFrame([candidate])], ignore_index=True)
 
-    plan = plan_one_week_transfer(current, candidates, rules, bank_tenths=10, free_transfers=1)
+    plan = plan_multi_gameweek_transfers(
+        current,
+        weekly,
+        rules,
+        bank_tenths=10,
+        free_transfers=1,
+        max_transfers_per_gameweek=1,
+    )
 
-    assert plan.accepted
-    assert plan.transfers_in == ("FWD_upgrade",)
-    assert plan.points_hit == 0
-    assert plan.bank_after >= 0
+    assert plan.solver_status == "exhaustive_optimal"
+    assert plan.objective_gap == 0
+    assert len(plan.actions) == 2
+    assert all(len(action.lineup) == 11 for action in plan.actions)
+    assert all(action.captain != action.vice_captain for action in plan.actions)
+    assert plan.actions[0].free_transfers_after >= 1
+    assert all(action.bank_after >= 0 for action in plan.actions)
 
 
 def test_frozen_decision_artifact_rejects_future_or_target_columns() -> None:
@@ -157,6 +193,36 @@ def _squad_frame() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _small_extra_candidate_frame() -> pd.DataFrame:
+    return pd.concat(
+        [
+            _squad_frame(),
+            _upgrade_rows("MID", 1, 45, 7.7),
+            _upgrade_rows("DEF", 1, 44, 6.2),
+        ],
+        ignore_index=True,
+    )
+
+
+def _upgrade_rows(position: str, count: int, price: int, expected_points: float) -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "player_uid": f"{position}_upgrade_{index}",
+                "player_name": f"{position} Upgrade {index}",
+                "fpl_position": position,
+                "player_team_uid": f"team_upgrade_{position}_{index}",
+                "price_tenths": price,
+                "expected_points": expected_points + index,
+                "p_appearance": 1.0,
+                "actual_points": expected_points,
+                "actual_minutes": 90,
+            }
+            for index in range(count)
+        ]
+    )
+
+
 def _bruteforce_best_objective(candidates: pd.DataFrame, rules) -> float:
     indexed = candidates.set_index("player_uid")
     by_position = {
@@ -175,4 +241,35 @@ def _bruteforce_best_objective(candidates: pd.DataFrame, rules) -> float:
                     if squad["player_team_uid"].value_counts().max() > rules.max_players_per_team:
                         continue
                     best = max(best, optimize_lineup(squad, rules).objective)
+    return best
+
+
+def _bruteforce_milp_objective(candidates: pd.DataFrame, rules) -> float:
+    indexed = candidates.set_index("player_uid")
+    by_position = {
+        position: list(candidates.loc[candidates["fpl_position"].eq(position), "player_uid"])
+        for position in rules.position_quotas
+    }
+    best = float("-inf")
+    for gkp in combinations(by_position["GKP"], 2):
+        for defenders in combinations(by_position["DEF"], 5):
+            for mids in combinations(by_position["MID"], 5):
+                for forwards in combinations(by_position["FWD"], 3):
+                    selected = (*gkp, *defenders, *mids, *forwards)
+                    squad = indexed.loc[list(selected)].reset_index()
+                    if int(squad["price_tenths"].sum()) > rules.budget_tenths:
+                        continue
+                    if squad["player_team_uid"].value_counts().max() > rules.max_players_per_team:
+                        continue
+                    for lineup_ids in combinations(selected, 11):
+                        lineup = indexed.loc[list(lineup_ids)].reset_index()
+                        counts = lineup["fpl_position"].value_counts().to_dict()
+                        if any(counts.get(pos, 0) < minimum for pos, minimum in rules.min_starters.items()):
+                            continue
+                        if any(counts.get(pos, 0) > maximum for pos, maximum in rules.max_starters.items()):
+                            continue
+                        starter_points = float(lineup["expected_points"].sum())
+                        for captain in lineup_ids:
+                            row = indexed.loc[captain]
+                            best = max(best, starter_points + float(row["expected_points"] * row["p_appearance"]))
     return best
