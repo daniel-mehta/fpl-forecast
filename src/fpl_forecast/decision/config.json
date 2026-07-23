@@ -1,0 +1,39 @@
+{
+  "decision_rules_version": "fpl_2025_26_api_verified",
+  "default_model": "X2_TEAM_CONSTRAINED_SIM_M3",
+  "comparison_models": [
+    "X2_TEAM_CONSTRAINED_SIM_M3",
+    "X2_TEAM_CONSTRAINED_SIM_M5",
+    "X1_INDEPENDENT_COMPONENT_RATES_M3",
+    "X0_PHASE3_B5_EB_POINTS_PER90"
+  ],
+  "xpoints_runs": {
+    "rolling": "phase6_xpoints_rolling_real",
+    "gw1": "phase6_xpoints_gw1_real"
+  },
+  "squad_candidate_limits": {
+    "GKP": 4,
+    "DEF": 6,
+    "MID": 6,
+    "FWD": 5
+  },
+  "squad_evaluation_limit": 4,
+  "lineup_objective": "appearance_aware",
+  "future_discount": 1.0,
+  "risk_mode": "risk_neutral",
+  "near_optimal_gap": 0.5,
+  "transfer_candidate_limit": 8,
+  "forbidden_frozen_columns": [
+    "actual_total_points",
+    "total_points",
+    "target_total_points",
+    "actual_minutes",
+    "actual_appearance",
+    "goals_scored",
+    "assists",
+    "bonus",
+    "bps",
+    "xP",
+    "xp"
+  ]
+}

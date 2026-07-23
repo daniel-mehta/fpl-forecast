@@ -37,6 +37,14 @@ from fpl_forecast.xpoints.runner import (
     run_xpoints_backtest,
     validate_scoring as validate_scoring_run,
 )
+from fpl_forecast.decision.runner import (
+    compare_decisions as compare_decisions_run,
+    forecast_decisions_guard as forecast_decisions_guard_run,
+    inspect_decision_run,
+    run_decision_backtest,
+    run_transfer_demo,
+    validate_decision_rules as validate_decision_rules_run,
+)
 from fpl_forecast.ingest.fpl_api import FPLApiClient, FPLApiError
 from fpl_forecast.ingest.vaastav import VaastavDataError, VaastavIngestor
 from fpl_forecast.normalize.current import normalize_current as normalize_current_tables
@@ -640,6 +648,106 @@ def forecast_xpoints(
         console.print(f"[red]xPoints forecast failed:[/red] {exc}")
         raise typer.Exit(1) from exc
     console.print(f"future_xpoints_predictions={path}")
+
+
+@app.command("validate-decision-rules")
+def validate_decision_rules(
+    bootstrap_path: Annotated[
+        Path | None,
+        typer.Option(help="Optional official bootstrap-static snapshot to compare against."),
+    ] = None,
+) -> None:
+    try:
+        warnings = validate_decision_rules_run(bootstrap_path=bootstrap_path)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Decision-rule validation failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    console.print("[green]Decision rules validated.[/green]")
+    for warning in warnings:
+        console.print(f"[yellow]Warning:[/yellow] {warning}")
+
+
+@app.command("backtest-decisions")
+def backtest_decisions(
+    seasons: Annotated[
+        str,
+        typer.Option(help="Comma-separated seasons to optimize historically."),
+    ],
+    mode: Annotated[str, typer.Option(help="Decision mode: rolling or gw1.")] = "rolling",
+    normalized_dir: Annotated[
+        Path,
+        typer.Option(help="Normalized data directory."),
+    ] = NORMALIZED_DIR,
+    run_id: Annotated[str | None, typer.Option(help="Optional deterministic run id.")] = None,
+) -> None:
+    try:
+        result = run_decision_backtest(
+            seasons=seasons,
+            mode=mode,
+            normalized_dir=normalized_dir,
+            run_id=run_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Decision backtest failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    console.print(f"run_id={result.run_id}")
+    console.print(f"run_dir={result.run_dir}")
+    console.print(f"decisions={result.decisions}")
+    console.print(f"frozen_decisions={result.frozen_squads_path}")
+    console.print(f"scored_decisions={result.scored_decisions_path}")
+    for name, path in result.metrics_paths.items():
+        console.print(f"{name}={path}")
+
+
+@app.command("compare-decisions")
+def compare_decisions(
+    run_id: Annotated[str, typer.Option(help="Decision run id to compare.")],
+) -> None:
+    try:
+        lines = compare_decisions_run(run_id=run_id)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Decision comparison failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    for line in lines:
+        console.print(line)
+
+
+@app.command("inspect-decision-run")
+def inspect_decision(
+    run_id: Annotated[str, typer.Option(help="Decision run id to inspect.")],
+) -> None:
+    try:
+        lines = inspect_decision_run(run_id=run_id)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Decision inspection failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    for line in lines:
+        console.print(line)
+
+
+@app.command("plan-transfers")
+def plan_transfers(
+    run_id: Annotated[str, typer.Option(help="Transfer-demo run id.")] = "phase7_transfer_demo",
+) -> None:
+    try:
+        path = run_transfer_demo(run_id=run_id)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Transfer planning failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    console.print(f"transfer_plan={path}")
+
+
+@app.command("forecast-decisions")
+def forecast_decisions(
+    season: Annotated[str, typer.Option(help="Official current season to forecast.")],
+    as_of: Annotated[str, typer.Option(help="UTC cutoff timestamp for the forecast.")],
+    gameweek: Annotated[int | None, typer.Option(help="Optional FPL gameweek/event filter.")] = None,
+) -> None:
+    try:
+        forecast_decisions_guard_run(season=season, gameweek=gameweek, as_of=as_of)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Decision forecast failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
 
 
 def _print_records(title: str, records) -> None:

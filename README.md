@@ -2,9 +2,9 @@
 
 Real-data foundation for a Fantasy Premier League forecasting system.
 
-This repository currently implements Phase 1, Phase 2, Phase 3, Phase 4, Phase 4.1, Phase 5, and
-Phase 6. Phase 1 covers ingestion, immutable raw snapshots, normalization to Parquet, validation, a
-command-line interface, tests, and documentation.
+This repository currently implements Phase 1, Phase 2, Phase 3, Phase 4, Phase 4.1, Phase 5,
+Phase 6, and Phase 7. Phase 1 covers ingestion, immutable raw snapshots, normalization to Parquet,
+validation, a command-line interface, tests, and documentation.
 Phase 2 adds multi-season historical coverage, cross-season team and player identities, a canonical
 player-fixture panel, deadline-safe feature primitives, feature lineage, and leakage auditing.
 Phase 3 adds rolling-origin baseline backtests, dedicated GW1 cold-start validation, frozen
@@ -18,9 +18,11 @@ state modeling, lineup-start diagnostics, and guarded current-season input valid
 Phase 6 adds deterministic FPL scoring reconstruction, component-based player xPoints backtests,
 team-constrained goal allocation, simulated point distributions, and guarded current xPoints input
 validation.
+Phase 7 adds integer-tenths price handling, official squad/lineup rule validation, deterministic
+squad and lineup decision optimization, captain/vice-captain/bench selection, autosub scoring,
+single-transfer planning checks, and guarded current decision input validation.
 
-It does not implement prices, squad optimization, transfer planning, chips, scheduling, dashboard
-work, deployment, or production forecasting.
+It does not implement chips, scheduling, dashboard work, deployment, or production forecasting.
 
 ## Data Boundaries
 
@@ -41,7 +43,8 @@ reports/
 ├── backtests/
 ├── team_backtests/
 ├── minutes_backtests/
-└── xpoints_backtests/
+├── xpoints_backtests/
+└── decision_backtests/
 ```
 
 Only externally retrieved source bytes belong in `data/raw`. Only tables derived from those real
@@ -455,3 +458,45 @@ uv run fpl forecast-xpoints \
 
 The command fails clearly when current fixture/player snapshots are stale or season-mismatched, or
 when prerequisite current team/minutes forecasts are unavailable.
+
+## Phase 7 Decision Workflow
+
+Phase 7 consumes frozen Phase 6 player-gameweek xPoints and historical Phase 2 prices to produce
+legal historical squad and lineup decisions. It is a decision-layer validation pass, not a live
+service or chip planner.
+
+```bash
+uv run fpl validate-decision-rules \
+  --bootstrap-path data/raw/fpl_api/2025-26/bootstrap_static/20260722T164209744637Z.json
+
+uv run fpl backtest-decisions \
+  --seasons 2023-24,2024-25 \
+  --mode rolling \
+  --run-id phase7_decisions_rolling_real
+
+uv run fpl backtest-decisions \
+  --seasons 2023-24,2024-25 \
+  --mode gw1 \
+  --run-id phase7_decisions_gw1_real
+
+uv run fpl compare-decisions --run-id phase7_decisions_rolling_real
+uv run fpl inspect-decision-run --run-id phase7_decisions_rolling_real
+uv run fpl plan-transfers --run-id phase7_transfer_demo
+```
+
+Generated Phase 7 outputs are written under `reports/decision_backtests/<run_id>/` and ignored by
+Git. The historical runner uses deterministic greedy-repair squad construction with exact legal
+lineup, captain, vice-captain, bench, and autosub evaluation for the selected squad. Small exact
+pruned-universe squad optimization is tested separately.
+
+Current decision inference is guarded:
+
+```bash
+uv run fpl forecast-decisions \
+  --season TARGET_SEASON \
+  --gameweek 1 \
+  --as-of AS_OF_TIMESTAMP
+```
+
+The command fails before writing outputs when current snapshots are stale, season-mismatched, or
+missing prerequisite current xPoints artifacts.
