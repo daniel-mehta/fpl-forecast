@@ -25,6 +25,8 @@ class XPointsConfig:
     phase3_runs: dict[str, str]
     component_shrink_minutes: float
     rare_event_shrink_appearances: float
+    conditional_points_prior_strength: float
+    conditional_points_global_prior: float
     assisted_goal_prior: float
     position_goal_prior_per90: dict[str, float]
     position_assist_prior_per90: dict[str, float]
@@ -52,6 +54,8 @@ def load_xpoints_config(path: Path = CONFIG_PATH) -> XPointsConfig:
         phase3_runs={str(key): str(value) for key, value in data["phase3_runs"].items()},
         component_shrink_minutes=float(data["component_shrink_minutes"]),
         rare_event_shrink_appearances=float(data["rare_event_shrink_appearances"]),
+        conditional_points_prior_strength=float(data.get("conditional_points_prior_strength", 5.0)),
+        conditional_points_global_prior=float(data.get("conditional_points_global_prior", 2.0)),
         assisted_goal_prior=float(data["assisted_goal_prior"]),
         position_goal_prior_per90={
             str(key): float(value) for key, value in data["position_goal_prior_per90"].items()

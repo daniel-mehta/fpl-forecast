@@ -401,12 +401,15 @@ def _expected_captain_pair(lineup: tuple[str, ...], indexed: pd.DataFrame) -> tu
     best: tuple[float, str, str] | None = None
     for captain in lineup:
         captain_row = indexed.loc[captain]
-        captain_expected = float(captain_row["expected_points"])
         captain_appearance = float(np.clip(float(captain_row.get("p_appearance", 1.0)), 0.0, 1.0))
+        captain_expected = captain_appearance * float(captain_row["expected_points_given_appearance"])
         for vice in lineup:
             if vice == captain:
                 continue
-            vice_expected = float(indexed.loc[vice, "expected_points"])
+            vice_row = indexed.loc[vice]
+            vice_expected = float(np.clip(float(vice_row.get("p_appearance", 1.0)), 0.0, 1.0)) * float(
+                vice_row["expected_points_given_appearance"]
+            )
             key = (captain_expected + (1.0 - captain_appearance) * vice_expected, captain, vice)
             if best is None or key > best:
                 best = key

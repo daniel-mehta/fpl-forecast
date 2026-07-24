@@ -126,7 +126,9 @@ def test_expected_realized_evaluator_matches_hand_captain_and_vice_case() -> Non
     squad = _squad_frame()
     squad["p_appearance"] = 1.0
     squad.loc[squad["player_uid"].eq("MID_4"), ["expected_points", "p_appearance"]] = [10.0, 0.5]
+    squad.loc[squad["player_uid"].eq("MID_4"), "expected_points_given_appearance"] = 20.0
     squad.loc[squad["player_uid"].eq("MID_3"), ["expected_points", "p_appearance"]] = [7.0, 1.0]
+    squad.loc[squad["player_uid"].eq("MID_3"), "expected_points_given_appearance"] = 7.0
     lineup = (
         "GKP_0",
         "DEF_0",
@@ -167,7 +169,9 @@ def test_expected_realized_uses_unconditional_points_once() -> None:
     squad = _squad_frame()
     squad["p_appearance"] = 1.0
     squad.loc[squad["player_uid"].eq("MID_4"), ["expected_points", "p_appearance"]] = [5.0, 0.5]
+    squad.loc[squad["player_uid"].eq("MID_4"), "expected_points_given_appearance"] = 10.0
     squad.loc[squad["player_uid"].eq("DEF_3"), "expected_points"] = 3.0
+    squad.loc[squad["player_uid"].eq("DEF_3"), "expected_points_given_appearance"] = 3.0
     lineup = (
         "GKP_0",
         "DEF_0",
@@ -207,12 +211,100 @@ def test_expected_realized_uses_unconditional_points_once() -> None:
     assert result.scenario_count == 32768
 
 
+def test_expected_realized_uses_direct_conditional_not_rounded_public_xpoints() -> None:
+    rules = default_rules()
+    squad = _squad_frame()
+    player = squad["player_uid"].eq("GKP_0")
+    squad.loc[player, "p_appearance"] = 0.01
+    squad.loc[player, "expected_points"] = 0.05
+    squad.loc[player, "expected_points_given_appearance"] = 2.0
+    lineup = (
+        "GKP_0",
+        "DEF_0",
+        "DEF_1",
+        "DEF_2",
+        "MID_0",
+        "MID_1",
+        "MID_2",
+        "MID_3",
+        "MID_4",
+        "FWD_0",
+        "FWD_1",
+    )
+    decision = optimize_lineup(squad, rules, appearance_aware=False).__class__(
+        lineup=lineup,
+        captain="MID_0",
+        vice_captain="MID_1",
+        bench=("GKP_1", "DEF_3", "DEF_4", "FWD_2"),
+        objective=0.0,
+        formation="3-5-2",
+        method="hand",
+    )
+
+    first = evaluate_expected_realized_points(squad, decision, rules)
+    squad.loc[player, "expected_points"] = 0.01
+    second = evaluate_expected_realized_points(squad, decision, rules)
+
+    assert first == second
+    expected_nominal = sum(
+        float(row.p_appearance * row.expected_points_given_appearance)
+        for row in squad.loc[squad["player_uid"].isin(lineup)].itertuples(index=False)
+    )
+    assert first.nominal_starting_xi_xpoints == pytest.approx(expected_nominal)
+
+
+def test_goalkeeper_order_uses_stabilized_conditional_points() -> None:
+    rules = default_rules()
+    squad = _squad_frame()
+    rare = squad["player_uid"].eq("GKP_0")
+    reliable = squad["player_uid"].eq("GKP_1")
+    squad.loc[rare, ["expected_points", "p_appearance", "expected_points_given_appearance"]] = [
+        0.05,
+        0.01,
+        2.0,
+    ]
+    squad.loc[reliable, ["expected_points", "p_appearance", "expected_points_given_appearance"]] = [
+        3.6,
+        0.9,
+        4.0,
+    ]
+
+    base = optimize_lineup(squad, rules, appearance_aware=False)
+    rare_starts = base.__class__(
+        lineup=tuple("GKP_0" if player == "GKP_1" else player for player in base.lineup),
+        captain=base.captain,
+        vice_captain=base.vice_captain,
+        bench=("GKP_1", *base.bench[1:]),
+        objective=0.0,
+        formation=base.formation,
+        method="hand",
+    )
+    reliable_starts = rare_starts.__class__(
+        lineup=tuple("GKP_1" if player == "GKP_0" else player for player in rare_starts.lineup),
+        captain=rare_starts.captain,
+        vice_captain=rare_starts.vice_captain,
+        bench=("GKP_0", *rare_starts.bench[1:]),
+        objective=0.0,
+        formation=rare_starts.formation,
+        method="hand",
+    )
+
+    rare_result = evaluate_expected_realized_points(squad, rare_starts, rules)
+    reliable_result = evaluate_expected_realized_points(squad, reliable_starts, rules)
+    repeated = evaluate_expected_realized_points(squad, reliable_starts, rules)
+
+    assert reliable_result.expected_realized_total > rare_result.expected_realized_total
+    assert repeated == reliable_result
+
+
 def test_expected_realized_captain_and_vice_both_may_be_absent() -> None:
     rules = default_rules()
     squad = _squad_frame()
     squad["p_appearance"] = 1.0
     squad.loc[squad["player_uid"].eq("MID_4"), ["expected_points", "p_appearance"]] = [10.0, 0.5]
+    squad.loc[squad["player_uid"].eq("MID_4"), "expected_points_given_appearance"] = 20.0
     squad.loc[squad["player_uid"].eq("MID_3"), ["expected_points", "p_appearance"]] = [2.0, 0.25]
+    squad.loc[squad["player_uid"].eq("MID_3"), "expected_points_given_appearance"] = 8.0
     lineup = (
         "GKP_0",
         "DEF_0",
@@ -248,6 +340,7 @@ def test_expected_realized_autosub_rules_goalkeeper_and_formation() -> None:
     squad["p_appearance"] = 1.0
     squad.loc[squad["player_uid"].eq("GKP_0"), "p_appearance"] = 0.0
     squad.loc[squad["player_uid"].eq("GKP_1"), "expected_points"] = 4.0
+    squad.loc[squad["player_uid"].eq("GKP_1"), "expected_points_given_appearance"] = 4.0
     squad.loc[squad["player_uid"].eq("DEF_4"), "p_appearance"] = 0.0
     lineup = ("GKP_0", "DEF_0", "DEF_1", "DEF_2", "DEF_3", "DEF_4", "MID_0", "MID_1", "MID_2", "MID_3", "FWD_0")
     bench = ("GKP_1", "MID_4", "FWD_1", "FWD_2")
@@ -308,7 +401,9 @@ def test_bench_order_materially_changes_expected_realized_points() -> None:
     squad["p_appearance"] = 1.0
     squad.loc[squad["player_uid"].eq("MID_0"), "p_appearance"] = 0.0
     squad.loc[squad["player_uid"].eq("FWD_2"), ["expected_points", "p_appearance"]] = [8.0, 1.0]
+    squad.loc[squad["player_uid"].eq("FWD_2"), "expected_points_given_appearance"] = 8.0
     squad.loc[squad["player_uid"].eq("DEF_3"), ["expected_points", "p_appearance"]] = [1.0, 1.0]
+    squad.loc[squad["player_uid"].eq("DEF_3"), "expected_points_given_appearance"] = 1.0
     lineup = ("GKP_0", "DEF_0", "DEF_1", "DEF_2", "MID_0", "MID_1", "MID_2", "MID_3", "MID_4", "FWD_0", "FWD_1")
     good = optimize_lineup(squad, rules, appearance_aware=False).__class__(
         lineup=lineup,
@@ -349,7 +444,9 @@ def test_expected_realized_lineup_selects_better_vice_and_order() -> None:
     rules = default_rules()
     squad = _squad_frame()
     squad.loc[squad["player_uid"].eq("MID_4"), ["expected_points", "p_appearance"]] = [10.0, 0.2]
+    squad.loc[squad["player_uid"].eq("MID_4"), "expected_points_given_appearance"] = 50.0
     squad.loc[squad["player_uid"].eq("MID_3"), ["expected_points", "p_appearance"]] = [7.0, 1.0]
+    squad.loc[squad["player_uid"].eq("MID_3"), "expected_points_given_appearance"] = 7.0
 
     decision, breakdown = optimize_lineup_expected_realized(squad, rules, max_scenarios=512, shortlist=200)
 
@@ -363,6 +460,9 @@ def test_expected_realized_optimizer_prefers_stronger_bench_when_it_improves_rea
     candidates = _small_extra_candidate_frame()
     candidates["p_appearance"] = 1.0
     candidates.loc[candidates["player_uid"].eq("MID_4"), "p_appearance"] = 0.05
+    candidates.loc[candidates["player_uid"].eq("MID_4"), "expected_points_given_appearance"] = (
+        candidates.loc[candidates["player_uid"].eq("MID_4"), "expected_points"] / 0.05
+    )
     bench_mid = pd.DataFrame(
         [
             {
@@ -372,6 +472,7 @@ def test_expected_realized_optimizer_prefers_stronger_bench_when_it_improves_rea
                 "player_team_uid": "team_reliable",
                 "price_tenths": 45,
                 "expected_points": 4.0,
+                "expected_points_given_appearance": 4.0,
                 "p_appearance": 1.0,
                 "actual_points": 4.0,
                 "actual_minutes": 90,
@@ -414,6 +515,7 @@ def test_expected_realized_optimizer_is_deterministic_and_does_not_blacklist_che
                 "player_team_uid": "team_cheap",
                 "price_tenths": 40,
                 "expected_points": 0.1,
+                "expected_points_given_appearance": 0.5,
                 "p_appearance": 0.2,
                 "actual_points": 0.0,
                 "actual_minutes": 0,
@@ -524,6 +626,7 @@ def _squad_frame() -> pd.DataFrame:
                     "player_team_uid": f"team_{team_index % 8}",
                     "price_tenths": price,
                     "expected_points": base_points + index / 10,
+                    "expected_points_given_appearance": base_points + index / 10,
                     "p_appearance": 1.0,
                     "actual_points": float(index + 1),
                     "actual_minutes": 90,
@@ -554,6 +657,7 @@ def _upgrade_rows(position: str, count: int, price: int, expected_points: float)
                 "player_team_uid": f"team_upgrade_{position}_{index}",
                 "price_tenths": price,
                 "expected_points": expected_points + index,
+                "expected_points_given_appearance": expected_points + index,
                 "p_appearance": 1.0,
                 "actual_points": expected_points,
                 "actual_minutes": 90,

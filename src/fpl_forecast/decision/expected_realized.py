@@ -77,7 +77,7 @@ def evaluate_expected_realized_points(
     expected_captain = float(weights @ captain_by_state)
     expected_vice = float(weights @ vice_by_state)
     realized = expected_active_starters + expected_autosubs + expected_captain + expected_vice
-    nominal_xpoints = float(sum(float(frame[player]["expected_points"]) for player in starters))
+    nominal_xpoints = float(sum(float(frame[player]["optimizer_unconditional_points"]) for player in starters))
     return ExpectedRealizedBreakdown(
         nominal_starting_xi_xpoints=nominal_xpoints,
         expected_nominal_starting_xi_points=expected_active_starters,
@@ -166,17 +166,26 @@ def optimize_lineup_expected_realized(
 
 
 def _records(squad: pd.DataFrame) -> dict[str, dict[str, float | str]]:
+    if "expected_points_given_appearance" not in squad.columns:
+        raise ValueError(
+            "Expected-realized evaluation requires direct stabilized "
+            "expected_points_given_appearance from the xPoints simulation."
+        )
     rows = {}
     for row in squad.sort_values("player_uid").itertuples(index=False):
         player = str(row.player_uid)
         p_appearance = float(np.clip(float(getattr(row, "p_appearance", 1.0)), 0.0, 1.0))
         expected_points = float(getattr(row, "expected_points", 0.0))
+        conditional_points = float(getattr(row, "expected_points_given_appearance"))
+        if not np.isfinite(conditional_points):
+            raise ValueError(f"Player {player} has non-finite expected_points_given_appearance.")
         rows[player] = {
             "position": str(row.fpl_position),
             "team": str(row.player_team_uid),
             "expected_points": expected_points,
             "p_appearance": p_appearance,
-            "conditional_points": 0.0 if p_appearance <= 1e-9 else expected_points / p_appearance,
+            "conditional_points": conditional_points,
+            "optimizer_unconditional_points": p_appearance * conditional_points,
         }
     return rows
 
@@ -343,7 +352,7 @@ def _approximate_realized_score(
     frame: dict[str, dict[str, float | str]],
     rules: DecisionRules,
 ) -> float:
-    starter_points = sum(float(frame[player]["expected_points"]) for player in lineup)
+    starter_points = sum(float(frame[player]["optimizer_unconditional_points"]) for player in lineup)
     missing_starter_expectation = sum(1.0 - float(frame[player]["p_appearance"]) for player in lineup)
     bench_value = 0.0
     for index, player in enumerate(bench):
@@ -353,14 +362,19 @@ def _approximate_realized_score(
                 for starter in lineup
                 if frame[starter]["position"] == "GKP"
             )
-            bench_value += gkp_missing * float(frame[player]["expected_points"])
+            bench_value += gkp_missing * float(frame[player]["optimizer_unconditional_points"])
             continue
         order_discount = max(0.0, 1.0 - 0.25 * index)
         if _can_ever_substitute(player, lineup, frame, rules):
-            bench_value += missing_starter_expectation * order_discount * float(frame[player]["expected_points"]) / 3.0
+            bench_value += (
+                missing_starter_expectation
+                * order_discount
+                * float(frame[player]["optimizer_unconditional_points"])
+                / 3.0
+            )
     p_captain = float(frame[captain]["p_appearance"])
-    captain_bonus = float(frame[captain]["expected_points"])
-    vice_bonus = (1.0 - p_captain) * float(frame[vice]["expected_points"])
+    captain_bonus = float(frame[captain]["optimizer_unconditional_points"])
+    vice_bonus = (1.0 - p_captain) * float(frame[vice]["optimizer_unconditional_points"])
     return starter_points + bench_value + captain_bonus + vice_bonus
 
 

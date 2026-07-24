@@ -20,6 +20,20 @@ POINT_COMPONENTS = [
     "points_bonus",
 ]
 
+CONDITIONAL_SUMMARY_COLUMNS = [
+    "expected_points_unconditional",
+    "raw_expected_points_given_appearance",
+    "expected_points_given_appearance",
+    "appearance_draw_count",
+    "simulation_draw_count",
+    "simulation_appearance_probability",
+    "conditional_points_prior",
+    "conditional_points_prior_strength",
+    "conditional_estimate_reliability",
+    "conditional_estimate_source",
+    "conditional_coherence_error",
+]
+
 
 def summarize_draws(draws: np.ndarray, *, prefix: str = "") -> dict[str, float]:
     values = draws.astype(float)
@@ -46,6 +60,8 @@ def simulate_component_points(
 ) -> tuple[pd.DataFrame, np.ndarray]:
     rng = np.random.default_rng(seed)
     draws = np.zeros((len(frame), config.draw_count), dtype=np.int16)
+    appearance_counts = np.zeros(len(frame), dtype=int)
+    appearance_point_sums = np.zeros(len(frame), dtype=float)
     summaries = []
     for idx, row in enumerate(frame.itertuples(index=False)):
         p_app = _clip(row.p_appearance)
@@ -87,13 +103,88 @@ def simulate_component_points(
         for component_points in component_draws.values():
             points += component_points
         draws[idx, :] = points.astype(np.int16)
+        appearance_counts[idx] = int(app.sum())
+        appearance_point_sums[idx] = float(points[app.astype(bool)].sum())
         summary = summarize_draws(draws[idx, :])
         for component, component_points in component_draws.items():
             summary[component] = float(component_points.mean())
         summary["component_points_sum"] = float(sum(summary[component] for component in component_draws))
         summary["component_reconciliation_error"] = float(summary["component_points_sum"] - summary["expected_points"])
         summaries.append(summary)
-    return pd.DataFrame(summaries, index=frame.index), draws
+    summary_frame = pd.DataFrame(summaries, index=frame.index)
+    summary_frame = stabilize_conditional_estimates(
+        summary_frame,
+        positions=frame["fpl_position"],
+        appearance_counts=appearance_counts,
+        appearance_point_sums=appearance_point_sums,
+        config=config,
+    )
+    return summary_frame, draws
+
+
+def stabilize_conditional_estimates(
+    summaries: pd.DataFrame,
+    *,
+    positions: pd.Series,
+    appearance_counts: np.ndarray,
+    appearance_point_sums: np.ndarray,
+    config: XPointsConfig,
+) -> pd.DataFrame:
+    output = summaries.copy()
+    counts = np.asarray(appearance_counts, dtype=float)
+    point_sums = np.asarray(appearance_point_sums, dtype=float)
+    if len(output) != len(counts) or len(output) != len(point_sums) or len(output) != len(positions):
+        raise ValueError("Conditional xPoints inputs must have matching row counts.")
+
+    position_frame = pd.DataFrame(
+        {
+            "position": positions.astype(str).to_numpy(),
+            "appearance_count": counts,
+            "appearance_point_sum": point_sums,
+        },
+        index=output.index,
+    )
+    position_counts = position_frame.groupby("position")["appearance_count"].transform("sum").to_numpy(dtype=float)
+    position_sums = position_frame.groupby("position")["appearance_point_sum"].transform("sum").to_numpy(dtype=float)
+    leave_one_out_counts = position_counts - counts
+    leave_one_out_sums = position_sums - point_sums
+    global_count = float(counts.sum())
+    global_sum = float(point_sums.sum())
+    global_leave_one_out_counts = global_count - counts
+    global_leave_one_out_sums = global_sum - point_sums
+    position_prior = np.divide(
+        leave_one_out_sums,
+        leave_one_out_counts,
+        out=np.full(len(output), np.nan),
+        where=leave_one_out_counts > 0,
+    )
+    global_prior = np.divide(
+        global_leave_one_out_sums,
+        global_leave_one_out_counts,
+        out=np.full(len(output), config.conditional_points_global_prior),
+        where=global_leave_one_out_counts > 0,
+    )
+    prior = np.where(np.isfinite(position_prior), position_prior, global_prior)
+    prior = np.where(np.isfinite(prior), prior, config.conditional_points_global_prior)
+    raw_conditional = np.divide(point_sums, counts, out=np.zeros(len(output)), where=counts > 0)
+    prior_strength = float(config.conditional_points_prior_strength)
+    shrunk = (counts * raw_conditional + prior_strength * prior) / (counts + prior_strength)
+    reliability = np.divide(counts, counts + prior_strength, out=np.zeros(len(output)), where=(counts + prior_strength) > 0)
+    simulation_probability = counts / float(config.draw_count)
+    unconditional = pd.to_numeric(output["expected_points"], errors="raise").to_numpy(dtype=float)
+
+    output["expected_points_unconditional"] = unconditional
+    output["raw_expected_points_given_appearance"] = raw_conditional
+    output["expected_points_given_appearance"] = shrunk
+    output["appearance_draw_count"] = counts.astype(int)
+    output["simulation_draw_count"] = int(config.draw_count)
+    output["simulation_appearance_probability"] = simulation_probability
+    output["conditional_points_prior"] = prior
+    output["conditional_points_prior_strength"] = prior_strength
+    output["conditional_estimate_reliability"] = reliability
+    output["conditional_estimate_source"] = "direct_simulation_draws_eb_leave_one_out_position_prior"
+    output["conditional_coherence_error"] = unconditional - simulation_probability * raw_conditional
+    return output
 
 
 def aggregate_gameweek_draws(
@@ -107,7 +198,11 @@ def aggregate_gameweek_draws(
     for key, group in fixture_predictions.groupby(key_columns, dropna=False):
         key_values = key if isinstance(key, tuple) else (key,)
         summed = draw_df.loc[group.index].sum(axis=0).to_numpy()
-        rows.append({**dict(zip(key_columns, key_values, strict=False)), **summarize_draws(summed)})
+        row = {**dict(zip(key_columns, key_values, strict=False)), **summarize_draws(summed)}
+        if len(group) == 1:
+            source = group.iloc[0]
+            row.update({column: source[column] for column in CONDITIONAL_SUMMARY_COLUMNS if column in group.columns})
+        rows.append(row)
     return pd.DataFrame(rows)
 
 

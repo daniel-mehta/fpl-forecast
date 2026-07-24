@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -8,7 +10,12 @@ from fpl_forecast.xpoints.components import attacking_shares, award_bonus_from_b
 from fpl_forecast.xpoints.config import load_xpoints_config
 from fpl_forecast.xpoints.data import assert_frozen_target_free
 from fpl_forecast.xpoints.scoring import reconstruction_audit, score_frame
-from fpl_forecast.xpoints.simulation import aggregate_gameweek_draws, coherent_goal_allocation, simulate_component_points
+from fpl_forecast.xpoints.simulation import (
+    aggregate_gameweek_draws,
+    coherent_goal_allocation,
+    simulate_component_points,
+    stabilize_conditional_estimates,
+)
 
 
 def test_scoring_engine_hand_calculates_all_components():
@@ -165,9 +172,73 @@ def test_simulation_outputs_are_deterministic_finite_and_monotonic():
     pd.testing.assert_frame_equal(first, second)
     assert np.array_equal(first_draws, second_draws)
     assert first.iloc[0]["points_p10"] <= first.iloc[0]["points_p50"] <= first.iloc[0]["points_p90"]
-    assert np.isfinite(first.to_numpy()).all()
+    numeric = first.select_dtypes(include=[np.number])
+    assert np.isfinite(numeric.to_numpy()).all()
     assert first.iloc[0]["component_reconciliation_error"] == pytest.approx(0.0)
     assert first.iloc[0]["component_points_sum"] == pytest.approx(first.iloc[0]["expected_points"])
+    assert first.iloc[0]["conditional_coherence_error"] == pytest.approx(0.0)
+    assert first.iloc[0]["appearance_draw_count"] <= config.draw_count
+    assert first.iloc[0]["simulation_draw_count"] == config.draw_count
+
+
+def test_conditional_xpoints_shrink_rare_draws_and_preserve_supported_estimates():
+    config = replace(
+        load_xpoints_config(),
+        draw_count=80,
+        conditional_points_prior_strength=5.0,
+        conditional_points_global_prior=2.0,
+    )
+    summaries = pd.DataFrame(
+        {
+            "expected_points": [0.125, 1.0, 4.0],
+        }
+    )
+    stabilized = stabilize_conditional_estimates(
+        summaries,
+        positions=pd.Series(["GKP", "GKP", "MID"]),
+        appearance_counts=np.array([1, 40, 80]),
+        appearance_point_sums=np.array([10.0, 80.0, 320.0]),
+        config=config,
+    )
+
+    rare = stabilized.iloc[0]
+    supported = stabilized.iloc[2]
+    assert rare["raw_expected_points_given_appearance"] == pytest.approx(10.0)
+    assert rare["conditional_points_prior"] == pytest.approx(2.0)
+    assert rare["expected_points_given_appearance"] == pytest.approx(10.0 / 3.0)
+    assert rare["conditional_estimate_reliability"] == pytest.approx(1.0 / 6.0)
+    assert supported["raw_expected_points_given_appearance"] == pytest.approx(4.0)
+    expected_supported = (
+        80.0 * 4.0 + 5.0 * supported["conditional_points_prior"]
+    ) / 85.0
+    assert supported["expected_points_given_appearance"] == pytest.approx(expected_supported)
+    assert abs(
+        supported["expected_points_given_appearance"]
+        - supported["raw_expected_points_given_appearance"]
+    ) < 0.12
+    assert stabilized["conditional_coherence_error"].abs().max() == pytest.approx(0.0)
+
+
+def test_conditional_xpoints_zero_appearance_draws_use_general_prior():
+    config = replace(
+        load_xpoints_config(),
+        draw_count=80,
+        conditional_points_prior_strength=5.0,
+        conditional_points_global_prior=2.0,
+    )
+    stabilized = stabilize_conditional_estimates(
+        pd.DataFrame({"expected_points": [0.0, 2.0]}),
+        positions=pd.Series(["GKP", "GKP"]),
+        appearance_counts=np.array([0, 40]),
+        appearance_point_sums=np.array([0.0, 80.0]),
+        config=config,
+    )
+
+    zero = stabilized.iloc[0]
+    assert zero["raw_expected_points_given_appearance"] == 0.0
+    assert zero["expected_points_given_appearance"] == pytest.approx(2.0)
+    assert zero["conditional_estimate_reliability"] == 0.0
+    assert zero["conditional_coherence_error"] == 0.0
 
 
 def test_simulated_non_appearance_produces_exactly_zero_points():
