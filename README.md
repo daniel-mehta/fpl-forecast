@@ -148,10 +148,13 @@ The frontend in `frontend/` is Vite, React, TypeScript, and ordinary CSS. It rea
 the latest `phase9_frontend_v1` artifacts from `frontend/public/data/`. It does not execute Python,
 fetch live FPL data, run optimization, or modify operational outputs.
 
-The manual GitHub Pages workflow builds the frontend without `npm run sync-data`, so the initial
-public deployment can show a safe waiting state instead of local mocked recommendations. Mocked data
-must remain visibly labelled when synchronized for local review. Forecast publication automation
-remains separate from static hosting.
+GitHub Pages publication is manual. The `Publish official FPL forecast` workflow reconstructs the
+pinned historical inputs on a clean runner, retrieves fresh official FPL inputs, runs the verified
+forecast chain, applies fail-closed publication gates, synchronizes the allowlisted frontend
+artifacts, and deploys only after every earlier stage succeeds. Phase 9B2A is limited to GW1 until
+clean-runner event-live reconstruction is added. It has no mock input and no schedule.
+Frontend-only pushes are linted and built but are not deployed because a clean frontend runner does
+not possess the last successful forecast artifacts.
 
 Local Python dashboard support from Phase 8 still exists:
 
@@ -174,8 +177,11 @@ Install and verify the Python workspace:
 ```bash
 uv sync
 uv run ruff check .
-uv run pytest -q
+uv run pytest -q -m "not slow"
 ```
+
+The complete suite runs separately through the manually triggered and nightly `Full Python suite`
+workflow.
 
 Run the static frontend locally:
 
@@ -221,6 +227,9 @@ uv run fpl dashboard --smoke
 
 Generated raw data, normalized data, reports, logs, operational outputs, frontend synchronized data,
 `node_modules/`, and build outputs are ignored by Git.
+
+Manual official publication instructions and failure-preservation behavior are documented in
+`docs/deployment/github-pages.md`.
 
 ## Repository Structure
 

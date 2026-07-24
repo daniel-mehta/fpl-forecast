@@ -10,6 +10,7 @@ from fpl_forecast.operations.model_chain import _add_gameweek_fixture_metadata, 
 from fpl_forecast.operations.training_seasons import resolve_historical_training_seasons
 
 
+@pytest.mark.slow
 def test_official_mode_uses_current_inputs_and_contains_no_mock_markers(tmp_path, phase8_normalized_dir) -> None:
     normalized_dir = _copy_phase8_normalized(tmp_path, phase8_normalized_dir)
     _write_official_current_tables(normalized_dir)
@@ -38,6 +39,7 @@ def test_official_mode_uses_current_inputs_and_contains_no_mock_markers(tmp_path
     assert "official_bootstrap_static.now_cost" == result.lineage["price_source"]
 
 
+@pytest.mark.slow
 def test_mock_mode_remains_explicitly_mocked(tmp_path, phase8_normalized_dir) -> None:
     result = run_operational_model_chain(
         season="2026-27",
@@ -51,6 +53,7 @@ def test_mock_mode_remains_explicitly_mocked(tmp_path, phase8_normalized_dir) ->
     assert result.lineage["price_source"] == "mock_adapter"
 
 
+@pytest.mark.slow
 def test_official_mode_excludes_assistant_managers(tmp_path, phase8_normalized_dir) -> None:
     normalized_dir = _copy_phase8_normalized(tmp_path, phase8_normalized_dir)
     _write_official_current_tables(normalized_dir, include_assistant_manager=True, include_unselectable=True)

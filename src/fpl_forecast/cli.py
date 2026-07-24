@@ -57,6 +57,15 @@ from fpl_forecast.operations.orchestrator import (
     refresh_operational as refresh_operational_run,
     verify_operational_readiness as verify_operational_readiness_run,
 )
+from fpl_forecast.operations.publication_pipeline import (
+    PUBLICATION_HISTORICAL_SEASONS,
+    PUBLICATION_VAASTAV_REVISION,
+    prepare_publication_data as prepare_publication_data_run,
+    read_preparation,
+    run_official_publication_forecast,
+    validate_publication_candidate,
+    write_preparation,
+)
 from fpl_forecast.operations.transition import run_mock_gw1_to_gw2_transition
 from fpl_forecast.ingest.fpl_api import FPLApiClient, FPLApiError
 from fpl_forecast.ingest.vaastav import VaastavDataError, VaastavIngestor
@@ -824,6 +833,117 @@ def refresh_operational(
     console.print(f"manifest={result.manifest_path}")
     console.print(f"no_op={result.no_op}")
     console.print(f"reason={result.status.reason}")
+
+
+@app.command("prepare-publication-data")
+def prepare_publication_data(
+    season: Annotated[str, typer.Option(help="Requested official season.")] = "2026-27",
+    target_gameweek: Annotated[
+        int | None,
+        typer.Option(help="Optional official gameweek; omit to resolve from event deadlines."),
+    ] = None,
+    historical_seasons: Annotated[
+        str,
+        typer.Option(help="Comma-separated completed historical seasons."),
+    ] = ",".join(PUBLICATION_HISTORICAL_SEASONS),
+    revision: Annotated[
+        str,
+        typer.Option(help="Pinned Vaastav source revision."),
+    ] = PUBLICATION_VAASTAV_REVISION,
+    raw_fpl_dir: Annotated[
+        Path,
+        typer.Option(help="Raw official FPL snapshot directory."),
+    ] = RAW_FPL_API_DIR,
+    raw_vaastav_dir: Annotated[
+        Path,
+        typer.Option(help="Raw Vaastav snapshot directory."),
+    ] = RAW_VAASTAV_DIR,
+    normalized_dir: Annotated[
+        Path,
+        typer.Option(help="Normalized data directory."),
+    ] = NORMALIZED_DIR,
+    output: Annotated[
+        Path,
+        typer.Option(help="Preparation manifest path."),
+    ] = Path("reports/operational/publication_preparation.json"),
+) -> None:
+    try:
+        prepared = prepare_publication_data_run(
+            season=season,
+            requested_gameweek=target_gameweek,
+            historical_seasons=tuple(parse_seasons(historical_seasons)),
+            revision=revision,
+            raw_fpl_dir=raw_fpl_dir,
+            raw_vaastav_dir=raw_vaastav_dir,
+            normalized_dir=normalized_dir,
+            refresh=True,
+        )
+        path = write_preparation(prepared, output)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Publication preparation failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    console.print(f"preparation={path}")
+    console.print(f"target_gameweek={prepared.target.gameweek}")
+    console.print(f"deadline={prepared.target.deadline_time}")
+    console.print(f"source_revision={prepared.source_revision}")
+    console.print(f"stage_seconds={prepared.stage_seconds}")
+
+
+@app.command("run-publication-forecast")
+def run_publication_forecast(
+    preparation: Annotated[Path, typer.Option(help="Preparation manifest path.")],
+    run_id: Annotated[str, typer.Option(help="Deterministic official publication run ID.")],
+    raw_fpl_dir: Annotated[
+        Path,
+        typer.Option(help="Raw official FPL snapshot directory."),
+    ] = RAW_FPL_API_DIR,
+    normalized_dir: Annotated[
+        Path,
+        typer.Option(help="Normalized data directory."),
+    ] = NORMALIZED_DIR,
+) -> None:
+    try:
+        result = run_official_publication_forecast(
+            preparation=read_preparation(preparation),
+            run_id=run_id,
+            raw_fpl_dir=raw_fpl_dir,
+            normalized_dir=normalized_dir,
+        )
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Official publication forecast failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    console.print(f"state={result.status.state.value}")
+    console.print(f"run_id={result.run_id}")
+    console.print(f"run_dir={result.run_dir}")
+
+
+@app.command("validate-publication")
+def validate_publication(
+    preparation: Annotated[Path, typer.Option(help="Preparation manifest path.")],
+    run_id: Annotated[str, typer.Option(help="Official operational run ID.")],
+    audit_dir: Annotated[
+        Path,
+        typer.Option(help="Non-public publication audit directory."),
+    ] = Path("reports/operational/publication_audit"),
+    public_dir: Annotated[
+        Path | None,
+        typer.Option(help="Optional synchronized frontend data directory to validate."),
+    ] = None,
+) -> None:
+    try:
+        result = validate_publication_candidate(
+            run_dir=Path("outputs/operational/runs") / run_id,
+            preparation=read_preparation(preparation),
+            audit_dir=audit_dir,
+            public_dir=public_dir,
+        )
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Publication validation failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+    console.print("publication_validation=passed")
+    console.print(f"run_id={result.run_id}")
+    console.print(f"gates={len(result.gates)}")
+    console.print(f"audit={result.audit_path}")
 
 
 @app.command("frozen-oot-evaluation")

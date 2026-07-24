@@ -218,6 +218,7 @@ def test_event_live_reingestion_is_idempotent_and_revised_snapshot_replaces_by_k
     assert int(revised.iloc[0]["total_points"]) == 3
 
 
+@pytest.mark.slow
 def test_mock_gw1_to_gw2_transition_publishes_and_preserves_latest_on_failure(phase8_normalized_dir) -> None:
     result = run_mock_gw1_to_gw2_transition(
         season="2026-27",
@@ -268,6 +269,7 @@ def test_current_panel_rebuild_is_idempotent_and_excludes_assistant_managers() -
     assert panel.iloc[0]["fpl_position"] == "MID"
 
 
+@pytest.mark.slow
 def test_mock_operational_refresh_noop_failure_and_lock_behaviors(phase8_normalized_dir) -> None:
     first = refresh_operational(
         season="2026-27",
@@ -306,6 +308,7 @@ def test_mock_operational_refresh_noop_failure_and_lock_behaviors(phase8_normali
     assert not LOCK_PATH.exists()
 
 
+@pytest.mark.slow
 def test_dashboard_smoke_builds_html_without_server(phase8_normalized_dir) -> None:
     refresh_operational(
         season="2026-27",
@@ -324,6 +327,7 @@ def test_dashboard_smoke_builds_html_without_server(phase8_normalized_dir) -> No
     assert "phase8_dashboard_smoke_team_current" in html
 
 
+@pytest.mark.slow
 def test_target_fixture_change_moves_team_and_player_forecasts(tmp_path, phase8_normalized_dir) -> None:
     base = run_operational_model_chain(
         season="2026-27",
@@ -359,6 +363,7 @@ def test_target_fixture_change_moves_team_and_player_forecasts(tmp_path, phase8_
     assert player_delta.gt(1e-9).any()
 
 
+@pytest.mark.slow
 def test_price_change_can_move_optimized_squad_without_changing_performance_forecasts(
     tmp_path,
     phase8_normalized_dir,
@@ -387,6 +392,7 @@ def test_price_change_can_move_optimized_squad_without_changing_performance_fore
     assert set(base.optimized_squad["player_uid"]) != set(changed.optimized_squad["player_uid"])
 
 
+@pytest.mark.slow
 def test_full_chain_handles_new_transferred_position_change_and_promoted_fallback(
     tmp_path,
     phase8_normalized_dir,
@@ -434,6 +440,7 @@ def test_cached_old_season_status_is_waiting_from_temp_snapshots(tmp_path) -> No
     assert result.status.inferred_official_season == "2025-26"
 
 
+@pytest.mark.slow
 def test_operational_chain_uses_explicit_normalized_dir_when_default_phase2_is_absent(
     tmp_path,
     phase8_normalized_dir,

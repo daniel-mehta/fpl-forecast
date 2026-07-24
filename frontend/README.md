@@ -37,10 +37,10 @@ home/away context, forecast timestamps, and source/disclaimer text without the d
 generated artifacts are absent, including on the initial GitHub Pages build, the UI displays a safe
 waiting state instead of forecast recommendations.
 
-The manual Pages workflow builds the frontend without running `sync-data`, so locally synchronized
-forecast artifacts are never included in the public artifact unless a later deployment workflow
-explicitly adds that step. See `docs/deployment/github-pages.md`
-from the repository root for setup and deployment steps.
+The manual official Pages workflow runs `sync-data` only after clean-runner reconstruction, an
+official forecast, and fail-closed publication validation. Frontend-only CI still does not deploy,
+because its clean runner has no last-successful ignored forecast artifacts. See
+`docs/deployment/github-pages.md` from the repository root for setup and manual publication steps.
 
 The repository documentation link defaults to the repository URL found in Git configuration. It
 can be changed at build time with `VITE_REPOSITORY_URL`.

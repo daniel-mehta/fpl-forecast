@@ -50,6 +50,7 @@ def refresh_operational(
     completed_player_fixtures: pd.DataFrame | None = None,
     completed_team_fixtures: pd.DataFrame | None = None,
     normalized_dir: Path | str = NORMALIZED_DIR,
+    raw_fpl_dir: Path = RAW_FPL_API_DIR,
 ) -> RefreshResult:
     _ensure_dirs()
     config = load_operational_config()
@@ -58,7 +59,7 @@ def refresh_operational(
         with RefreshLock():
             launch = _mock_launch_check(season) if mock_launch else check_season_launch(
                 season=season,
-                raw_dir=RAW_FPL_API_DIR,
+                raw_dir=raw_fpl_dir,
                 offline=offline,
             )
             if status_only or launch.status.state != OperationalStateName.READY_TO_REFRESH:
@@ -378,6 +379,10 @@ def _build_frontend_artifacts(
                 "run_id": run_id,
                 "reason": "Operational refresh published genuinely generated target-season projections.",
                 "warning": _status_warning(result.lineage),
+                "disclaimer": (
+                    "Experimental forecast. This project is not affiliated with or endorsed by "
+                    "the Premier League or Fantasy Premier League."
+                ),
             },
             indent=2,
             sort_keys=True,

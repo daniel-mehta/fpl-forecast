@@ -1,26 +1,115 @@
-name: Deploy frontend to GitHub Pages
+name: Publish official FPL forecast
 
 on:
   workflow_dispatch:
+    inputs:
+      season:
+        description: Official season in YYYY-YY form
+        required: true
+        default: "2026-27"
+        type: string
+      target_gameweek:
+        description: Optional official gameweek; leave blank for deterministic resolution
+        required: false
+        type: string
+      run_id:
+        description: Optional safe run ID; leave blank to derive one from this workflow run
+        required: false
+        type: string
+      confirm_official_publication:
+        description: Confirm that this is an official public forecast publication
+        required: true
+        default: "no"
+        type: choice
+        options:
+          - "no"
+          - "yes"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
 
 concurrency:
   group: github-pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
-    name: Build static frontend
+    name: Reconstruct, forecast, validate, and build
+    if: ${{ inputs.confirm_official_publication == 'yes' }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    defaults:
-      run:
-        working-directory: frontend
+    outputs:
+      run_id: ${{ steps.inputs.outputs.run_id }}
+      target_gameweek: ${{ steps.target.outputs.target_gameweek }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.31"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install locked Python environment
+        run: uv sync --locked --dev
+
+      - name: Validate workflow inputs
+        id: inputs
+        env:
+          REQUESTED_RUN_ID: ${{ inputs.run_id }}
+        run: |
+          if [[ -n "$REQUESTED_RUN_ID" ]]; then
+            RUN_ID="$REQUESTED_RUN_ID"
+          else
+            RUN_ID="official_${{ inputs.season }}_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+          fi
+          if [[ ! "$RUN_ID" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "Unsafe run ID: $RUN_ID" >&2
+            exit 1
+          fi
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Run focused publication tests
+        run: uv run pytest -q tests/test_phase9b2_publication.py tests/test_season.py tests/test_phase8_operations.py -m "not slow"
+
+      - name: Reconstruct historical and official inputs
+        env:
+          TARGET_GAMEWEEK: ${{ inputs.target_gameweek }}
+        run: |
+          args=(
+            --season "${{ inputs.season }}"
+            --historical-seasons "2022-23,2023-24,2024-25,2025-26"
+            --revision "f2090d378ebd1b0c3d14884770dde95f38c50a0d"
+            --output reports/operational/publication_preparation.json
+          )
+          if [[ -n "$TARGET_GAMEWEEK" ]]; then
+            args+=(--target-gameweek "$TARGET_GAMEWEEK")
+          fi
+          uv run fpl prepare-publication-data "${args[@]}"
+
+      - name: Record resolved target
+        id: target
+        run: |
+          target="$(uv run python -c 'import json; print(json.load(open("reports/operational/publication_preparation.json"))["target"]["gameweek"])')"
+          echo "target_gameweek=$target" >> "$GITHUB_OUTPUT"
+
+      - name: Run verified official forecast chain
+        run: |
+          uv run fpl run-publication-forecast \
+            --preparation reports/operational/publication_preparation.json \
+            --run-id "${{ steps.inputs.outputs.run_id }}"
+
+      - name: Apply mandatory publication gates
+        run: |
+          uv run fpl validate-publication \
+            --preparation reports/operational/publication_preparation.json \
+            --run-id "${{ steps.inputs.outputs.run_id }}" \
+            --audit-dir reports/operational/publication_audit
 
       - name: Install Node
         uses: actions/setup-node@v6
@@ -30,29 +119,50 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install locked frontend dependencies
+        working-directory: frontend
         run: npm ci
 
+      - name: Synchronize allowlisted public artifacts
+        working-directory: frontend
+        run: npm run sync-data
+
+      - name: Revalidate sanitized publication
+        run: |
+          uv run fpl validate-publication \
+            --preparation reports/operational/publication_preparation.json \
+            --run-id "${{ steps.inputs.outputs.run_id }}" \
+            --audit-dir reports/operational/publication_audit \
+            --public-dir frontend/public/data
+
       - name: Run frontend lint
+        working-directory: frontend
         run: npm run lint
 
       - name: Build frontend
+        working-directory: frontend
         run: npm run build
+
+      - name: Upload non-public publication audit
+        uses: actions/upload-artifact@v6
+        with:
+          name: publication-audit-${{ steps.inputs.outputs.run_id }}
+          path: reports/operational/publication_audit
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6
 
-      - name: Upload static frontend
+      - name: Upload validated Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
           path: frontend/dist
 
   deploy:
-    name: Deploy static frontend
+    name: Deploy validated official forecast
     needs: build
+    if: ${{ needs.build.result == 'success' }}
     runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

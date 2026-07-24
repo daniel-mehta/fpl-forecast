@@ -38,3 +38,6 @@ target-version = "py312"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "slow: expensive full-chain, full-pool optimization, backtest, or publication rehearsal tests",
+]

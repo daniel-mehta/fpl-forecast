@@ -583,6 +583,7 @@ def test_expected_realized_lineup_selects_better_vice_and_order() -> None:
     assert breakdown.expected_vice_captain_contingency > 0
 
 
+@pytest.mark.slow
 def test_expected_realized_optimizer_prefers_stronger_bench_when_it_improves_realized_score() -> None:
     rules = default_rules()
     candidates = _small_extra_candidate_frame()
@@ -632,6 +633,7 @@ def test_expected_realized_optimizer_allows_unused_bank_and_does_not_reward_spen
     assert cheap.bank_tenths >= costly.bank_tenths
 
 
+@pytest.mark.slow
 def test_expected_realized_optimizer_is_deterministic_and_does_not_blacklist_cheap_players() -> None:
     rules = default_rules()
     cheap = pd.DataFrame(
@@ -660,6 +662,7 @@ def test_expected_realized_optimizer_is_deterministic_and_does_not_blacklist_che
     assert "cheap_low_projection_def" in set(candidates["player_uid"])
 
 
+@pytest.mark.slow
 def test_expected_realized_search_covers_full_legal_one_swap_pool() -> None:
     rules = default_rules()
     candidates = _small_extra_candidate_frame()
