@@ -11,6 +11,7 @@ from scipy.sparse import lil_array
 from fpl_forecast.decision.expected_realized import (
     evaluate_expected_realized_points,
     optimize_lineup_expected_realized,
+    refine_fixed_squad_lineup,
 )
 from fpl_forecast.decision.lineup import LineupDecision
 from fpl_forecast.decision.rules import DecisionRules, POSITIONS
@@ -230,7 +231,13 @@ def optimize_squad_expected_realized(
         )
         best = refined if _solution_key(refined) > _solution_key(iteration_best) else iteration_best
         accepted_moves += 1
-    diagnostics = dict(best.diagnostics or {})
+    final_squad = indexed.loc[list(best.squad)].reset_index(drop=True)
+    refined_lineup, refined_breakdown, refinement = refine_fixed_squad_lineup(
+        final_squad,
+        best.lineup_decision,
+        rules,
+    )
+    diagnostics = refined_breakdown.to_dict()
     diagnostics.update(
         {
             **coverage,
@@ -263,17 +270,18 @@ def optimize_squad_expected_realized(
             "final_unique_squads_evaluated": int(len(evaluated_keys)),
             "termination_reason": termination_reason,
             "scenario_count": int(diagnostics.get("scenario_count", 2**rules.squad_size)),
+            **{f"lineup_refinement_{key}": value for key, value in refinement.to_dict().items()},
         }
     )
-    if best.objective + 1e-9 < d1_breakdown.expected_realized_total:
+    if refined_breakdown.expected_realized_total + 1e-9 < d1_breakdown.expected_realized_total:
         raise ValueError(
             "D2 expected-realized search returned a solution worse than its D1 seed "
             "under the common exact evaluator."
         )
     return SquadSolution(
         squad=best.squad,
-        lineup_decision=best.lineup_decision,
-        objective=best.objective,
+        lineup_decision=refined_lineup,
+        objective=refined_breakdown.expected_realized_total,
         cost_tenths=best.cost_tenths,
         bank_tenths=best.bank_tenths,
         solver_status="heuristic_feasible",
@@ -284,11 +292,11 @@ def optimize_squad_expected_realized(
         optimality_scope=(
             "D1 globally optimal full-candidate MILP seed, then deterministic full-pool one-swap "
             f"local search scored by exact expected realized points; termination={termination_reason}; "
-            "not a global proof for D2."
+            "final fixed-squad lineup refined to a single-change local optimum; not a global proof for D2."
         ),
         objective_bound=None,
         objective_gap=None,
-        solver_message=str(best.solver_message),
+        solver_message=f"{best.solver_message}; fixed-squad lineup refinement complete",
         solver_nodes=seed_solution.solver_nodes,
         diagnostics=diagnostics,
     )

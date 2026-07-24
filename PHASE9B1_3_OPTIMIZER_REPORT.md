@@ -6,7 +6,7 @@ exclusions.
 
 ## Repository State
 
-- Starting point: local Phase 9B work on `main`, currently ahead of `origin/main` by two commits.
+- Starting point: local Phase 9B work on `main`, currently ahead of `origin/main` by three commits.
 - No commit, push, deploy, scheduled workflow, or frontend redesign was performed.
 - Generated raw data, normalized data, decision reports, operational outputs, synced frontend data,
   build output, and dependencies remain ignored by Git.
@@ -109,12 +109,36 @@ The direct stabilized estimates in the closure run are:
 | Pecsi | 2 / 80 | 2.0000 | 2.6526 | 0.2857 | 2.4661 |
 | Raya | 69 / 80 | 3.9275 | 2.5938 | 0.9324 | 3.8374 |
 
-The statistical instability is fixed, but the bounded lineup-search limitation remains: starting
-Raya scores `50.0837`, while the returned Pecsi-start lineup scores `50.0662`, a `+0.0176`
-improvement. The search algorithm was intentionally not changed in this closure pass.
+The statistical instability was fixed first. A final fixed-squad refinement now starts Raya at
+`50.0837` rather than returning the inferior Pecsi-start ordering at `50.0662`.
 
 D2 is not globally proven optimal for the expected-realized objective. It is globally optimal only
 for the D1 seed objective, then heuristic-feasible after bounded expected-realized local search.
+
+## Fixed-Squad Lineup Refinement
+
+The squad-level search is unchanged. After it chooses the final 15 players, a deterministic
+lineup-only refinement evaluates:
+
+- Both goalkeeper starter/bench orientations.
+- Every legal single swap between a starting outfield player and an outfield substitute.
+- All six outfield bench orders for every retained lineup.
+- The exact best captain and vice-captain pair after every lineup change.
+
+Every candidate uses the exact 32,768-state evaluator. The process repeats until no documented
+single lineup change improves the deterministic decision key. The selected 15-player squad cannot
+change.
+
+The official refinement:
+
+- Started from `50.0662`.
+- Completed two passes and 350 exact evaluations.
+- Finished at `50.0837`, a gain of `0.0176`.
+- Returned `single_change_local_optimum`.
+- Verified the reversed goalkeeper order at `50.0662`.
+
+This proves local optimality only within the documented fixed-squad candidate space. The overall
+squad result remains `heuristic_feasible`.
 
 ## Search Coverage
 
@@ -223,7 +247,7 @@ Run:
 uv run fpl backtest-decisions \
   --seasons 2023-24,2024-25,2025-26 \
   --mode gw1 \
-  --run-id phase9b13_conditional_stabilized_decisions_gw1
+  --run-id phase9b13_lineup_refined_decisions_gw1
 ```
 
 Scope: weekly-reset GW1 decisions only, using frozen `X2_TEAM_CONSTRAINED_SIM_M7` predictions.
@@ -231,13 +255,13 @@ This is not a transfer-aware season simulation.
 
 | Optimizer | Decisions | Mean expected realized | Mean realized | Mean autosub points | Unreplaced-starter rate | Mean bank |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| D2 expected-realized | 3 | 49.3856 | 61.00 | 6.33 | 0.667 | 0.0 |
+| D2 expected-realized | 3 | 49.4284 | 61.00 | 3.00 | 0.667 | 0.0 |
 | D1 mean-only MILP | 3 | 48.6920 | 59.33 | 1.33 | 0.667 | 10.0 |
 
 Paired D2 minus D1 realized comparison:
 
-- Mean common-evaluator expected-realized difference: `+0.6936`.
-- Median common-evaluator expected-realized difference: `+0.4565`.
+- Mean common-evaluator expected-realized difference: `+0.7364`.
+- Median common-evaluator expected-realized difference: `+0.4668`.
 - Mean realized difference: `+1.67`.
 - Median realized difference: `+2.00`.
 - Improved / tied / worse: `66.7% / 33.3% / 0.0%`.
@@ -245,7 +269,7 @@ Paired D2 minus D1 realized comparison:
 - Captain agreement: `1.000`.
 - Vice-captain agreement: `1.000`.
 - Mean squad overlap: `0.800`.
-- Mean lineup overlap: `0.970`.
+- Mean lineup overlap: `1.000`.
 - Mean bench overlap: `0.250`.
 
 Because this contains only three GW1 folds, it is useful acceptance evidence but not a definitive
@@ -260,7 +284,7 @@ Run:
 uv run fpl refresh-operational \
   --season 2026-27 \
   --target-gameweek 1 \
-  --run-id phase9b_real_2026_27_gw1_optimizer_conditional_stabilized \
+  --run-id phase9b_real_2026_27_gw1_optimizer_lineup_refined \
   --force
 ```
 
@@ -276,14 +300,18 @@ Result:
 - Formation: `3-5-2`.
 - Cost: `995`.
 - Bank: `5`.
-- Nominal starting-XI xPoints: `39.3165`.
-- Expected active-starter points: `39.3165`.
-- Expected autosub contribution: `5.5892`.
+- Lineup-refinement status: `single_change_local_optimum`.
+- Lineup-refinement passes: `2`.
+- Lineup-refinement exact evaluations: `350`.
+- Lineup-refinement gain: `+0.0176`.
+- Nominal starting-XI xPoints: `42.6732`.
+- Expected active-starter points: `42.6732`.
+- Expected autosub contribution: `2.2500`.
 - Expected captain bonus: `4.7069`.
 - Expected vice-captain fallback contribution: `0.4536`.
-- Expected realized total: `50.0662`.
-- Probability all starters appear: `0.0057`.
-- Expected automatic substitutions: `1.6587`.
+- Expected realized total: `50.0837`.
+- Probability all starters appear: `0.3479`.
+- Expected automatic substitutions: `0.7892`.
 - Probability of an unreplaced starter: `0.1779`.
 
 Selected squad:
@@ -293,7 +321,7 @@ Selected squad:
 | Mbeumo | MID | Manchester United | HUL (A) | 80 | 4.7250 | Captain |
 | B.Fernandes | MID | Manchester United | HUL (A) | 120 | 4.9625 | Vice-captain |
 | Watkins | FWD | Aston Villa | BHA (A) | 80 | 5.0000 | Starter |
-| Pecsi | GKP | Liverpool | NEW (A) | 40 | 0.0500 | Starter |
+| Raya | GKP | Arsenal | COV (H) | 60 | 3.3875 | Starter |
 | Tarkowski | DEF | Everton | CRY (H) | 60 | 3.0000 | Starter |
 | Gabriel | DEF | Arsenal | COV (H) | 80 | 4.2250 | Starter |
 | Muñoz | DEF | Crystal Palace | EVE (A) | 55 | 2.8250 | Starter |
@@ -301,7 +329,7 @@ Selected squad:
 | Cunha | MID | Manchester United | HUL (A) | 80 | 4.0250 | Starter |
 | Semenyo | MID | Manchester City | BOU (H) | 85 | 4.3875 | Starter |
 | Igor Jesus | FWD | Nottingham Forest | LEE (H) | 60 | 3.8250 | Starter |
-| Raya | GKP | Arsenal | COV (H) | 60 | 3.3875 | Bench GKP |
+| Pecsi | GKP | Liverpool | NEW (A) | 40 | 0.0500 | Bench GKP |
 | Kayode | DEF | Brentford | TOT (H) | 45 | 2.7875 | Bench 1 |
 | O'Shea | DEF | Ipswich | SUN (H) | 40 | 2.5125 | Bench 2 |
 | Mateo Joseph | FWD | Leeds | NFO (A) | 45 | 0.1625 | Bench 3 |
@@ -313,25 +341,21 @@ forecasts, independence assumption, substitution rules, and tolerances:
 
 | Metric | D1 seed | D2 final | D2 minus D1 |
 | --- | ---: | ---: | ---: |
-| Nominal starting-XI xPoints | 42.6615 | 39.3165 | -3.3450 |
-| Expected active-starter points | 42.6615 | 39.3165 | -3.3450 |
-| Expected autosub contribution | 0.6530 | 5.5892 | +4.9362 |
+| Nominal starting-XI xPoints | 42.6615 | 42.6732 | +0.0118 |
+| Expected active-starter points | 42.6615 | 42.6732 | +0.0118 |
+| Expected autosub contribution | 0.6530 | 2.2500 | +1.5970 |
 | Expected captain bonus | 4.7459 | 4.7069 | -0.0390 |
 | Expected vice fallback | 0.1147 | 0.4536 | +0.3388 |
-| Expected realized total | 48.1751 | 50.0662 | **+1.8911** |
-| Expected autosubs | 0.3201 | 1.6587 | +1.3386 |
-| All starters appear | 0.3610 | 0.0057 | -0.3553 |
+| Expected realized total | 48.1751 | 50.0837 | **+1.9087** |
+| Expected autosubs | 0.3201 | 0.7892 | +0.4691 |
+| All starters appear | 0.3610 | 0.3479 | -0.0130 |
 | At least one unreplaced starter | 0.4505 | 0.1779 | -0.2726 |
 | Cost | 995 | 995 | 0 |
 | Bank | 5 | 5 | 0 |
 
 Both formations are `3-5-2`. D1 captains Watkins with B.Fernandes vice; D2 captains Mbeumo with
-B.Fernandes vice. D1 benches Pecsi, McNair, Amenda, and Mateo Joseph. D2 starts Pecsi and benches
-Raya first, followed by Kayode, O'Shea, and Mateo Joseph.
-
-The Pecsi/Raya order is legal but is not the best order for the returned squad under the exact
-evaluator. This is a bounded approximate lineup-search limitation, not support for Pecsi having
-higher conditional xPoints.
+B.Fernandes vice. D1 and D2 both start Raya. D1 benches Pecsi, McNair, Amenda, and Mateo Joseph.
+D2 benches Pecsi first, followed by Kayode, O'Shea, and Mateo Joseph.
 
 ## McNair Acceptance Result
 
@@ -343,7 +367,7 @@ blacklist, projection threshold, team rule, name rule, or code rule was added.
 
 D2 does not reward budget spending by itself. Tests retain a cheaper squad when football value is
 equivalent. The official D1 seed and D2 both leave `5` tenths; D2 improves the common-evaluator
-expected realized total by `1.8911`.
+expected realized total by `1.9087`.
 
 ## Frontend Contract
 
@@ -360,30 +384,36 @@ display were otherwise preserved.
 Commands run:
 
 ```bash
-uv run pytest -q tests/test_phase6_xpoints.py tests/test_phase7_decision.py
+uv run pytest -q tests/test_phase7_decision.py -k "fixed_squad_refinement or goalkeeper_order or expected_realized_lineup or expected_realized_optimizer"
 uv run pytest -q
 uv run ruff check .
 uv run fpl validate-data
 uv run fpl audit-leakage --seasons 2022-23,2023-24,2024-25,2025-26
-uv run fpl backtest-xpoints --seasons 2022-23,2023-24,2024-25,2025-26 --test-seasons 2023-24,2024-25,2025-26 --mode gw1 --run-id phase9b12_xpoints_gw1
-uv run fpl backtest-decisions --seasons 2023-24,2024-25,2025-26 --mode gw1 --run-id phase9b13_conditional_stabilized_decisions_gw1
-uv run fpl refresh-operational --season 2026-27 --target-gameweek 1 --run-id phase9b_real_2026_27_gw1_optimizer_conditional_stabilized --force
+uv run fpl backtest-decisions --seasons 2023-24,2024-25,2025-26 --mode gw1 --run-id phase9b13_lineup_refined_decisions_gw1
+uv run fpl refresh-operational --season 2026-27 --target-gameweek 1 --run-id phase9b_real_2026_27_gw1_optimizer_lineup_refined --force
+cd frontend && npm run sync-data
+cd frontend && npm run lint
+cd frontend && npm run build
 git diff --check
 git check-ignore -v ...
 ```
 
 Observed results:
 
-- Focused conditional-xPoints and optimizer tests: exit `0`, `40 passed in 48.37s`.
-- `uv run pytest -q`: exit `0`, `162 passed in 960.13s`.
+- Focused lineup-refinement tests: exit `0`, `9 passed, 17 deselected in 64.32s`.
+- `uv run pytest -q`: exit `0`, `166 passed in 1085.16s`.
 - `uv run ruff check .`: exit `0`.
 - `uv run fpl validate-data`: exit `0`, `1 warning, 0 errors`; warning is raw Vaastav `xP`
   presence only.
 - `uv run fpl audit-leakage --seasons 2022-23,2023-24,2024-25,2025-26`: exit `0`.
-- Refreshed three-fold GW1 xPoints artifact: exit `0`, 3 folds.
-- Frozen conditional-stabilized GW1 comparison: exit `0`, 6 decisions.
-- Official conditional-stabilized operational refresh: exit `0`, state `SUCCEEDED`.
-- Frontend source and contract were unchanged, so npm lint/build were not rerun.
+- Frozen lineup-refined GW1 comparison: exit `0`, 6 decisions.
+- Official lineup-refined operational refresh: exit `0`, state `SUCCEEDED`.
+- `npm run sync-data`: exit `0`, synchronized
+  `phase9b_real_2026_27_gw1_optimizer_lineup_refined`.
+- `npm run lint`: exit `0`.
+- `npm run build`: exit `0`.
+- Localhost smoke check: Raya starter, Pecsi bench goalkeeper, diagnostics visible, no demo/mock
+  banner, and no browser console errors. The local server was stopped.
 - `git diff --check`: exit `0`.
 - Representative `git check-ignore -v`: confirmed raw, normalized, report, operational, frontend
   synced, build, and dependency artifacts are ignored.
@@ -394,11 +424,10 @@ Observed results:
 - D2 is a bounded local-search challenger, not a globally proven stochastic MILP optimum.
 - The official search reached its configured three-iteration bound; it did not establish even a
   one-swap local optimum.
-- The returned official lineup is not optimal even within its selected squad: swapping Raya into
-  the starting lineup improves the exact evaluator by `0.0176`. Correcting the bounded lineup
-  shortlist was outside this closure scope.
+- The final lineup is a single-change local optimum in the documented fixed-squad candidate space,
+  not a proof of global lineup optimality across every simultaneous multi-player change.
 - Complete exact evaluation and full-pool search increase runtime. The official D2 search took about
-  114 seconds, and the full test suite took about 16 minutes on the development machine.
+  131 seconds, and the full test suite took about 18 minutes on the development machine.
 - Historical evidence here is GW1-only across three seasons.
 - Weekly-reset historical decisions are not equivalent to a transfer-aware season strategy.
 - Bench Boost, Triple Captain, Free Hit, Wildcard, transfers, hits, price-change mechanics, and
@@ -407,6 +436,6 @@ Observed results:
 
 ## Verdict
 
-The conditional-xPoints fix is sound, but D2 should remain an experimental challenger because the
-bounded lineup shortlist returned a goalkeeper order that is `0.0176` worse under its own exact
-evaluator. Phase 9B2 must wait.
+The Phase 9B1.3 optimizer is safe to commit. The bounded squad search remains heuristic, but the
+returned fixed-squad lineup no longer knowingly loses to a goalkeeper reversal or any documented
+single lineup-only refinement. Phase 9B2 still requires a separate explicit start.

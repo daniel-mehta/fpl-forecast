@@ -7,8 +7,10 @@ import pytest
 
 from fpl_forecast.decision.inputs import assert_frozen_decisions_target_free
 from fpl_forecast.decision.expected_realized import (
+    _fixed_squad_lineup_candidates,
     evaluate_expected_realized_points,
     optimize_lineup_expected_realized,
+    refine_fixed_squad_lineup,
 )
 from fpl_forecast.decision.lineup import apply_autosubs_and_score, optimize_lineup
 from fpl_forecast.decision.milp import optimize_squad_expected_realized, optimize_squad_milp
@@ -295,6 +297,132 @@ def test_goalkeeper_order_uses_stabilized_conditional_points() -> None:
 
     assert reliable_result.expected_realized_total > rare_result.expected_realized_total
     assert repeated == reliable_result
+
+
+@pytest.mark.parametrize("reliable_goalkeeper", ["GKP_0", "GKP_1"])
+def test_fixed_squad_refinement_selects_better_goalkeeper_order_in_both_directions(
+    reliable_goalkeeper: str,
+) -> None:
+    rules = default_rules()
+    squad = _squad_frame()
+    other = "GKP_1" if reliable_goalkeeper == "GKP_0" else "GKP_0"
+    squad.loc[
+        squad["player_uid"].eq(reliable_goalkeeper),
+        ["expected_points", "p_appearance", "expected_points_given_appearance"],
+    ] = [3.6, 0.9, 4.0]
+    squad.loc[
+        squad["player_uid"].eq(other),
+        ["expected_points", "p_appearance", "expected_points_given_appearance"],
+    ] = [0.05, 0.01, 2.0]
+    base = optimize_lineup(squad, rules, appearance_aware=False)
+    initial = base.__class__(
+        lineup=tuple(other if player in {"GKP_0", "GKP_1"} else player for player in base.lineup),
+        captain=base.captain,
+        vice_captain=base.vice_captain,
+        bench=(reliable_goalkeeper, *base.bench[1:]),
+        objective=0.0,
+        formation=base.formation,
+        method="synthetic_rare_goalkeeper_regression",
+    )
+    initial_value = evaluate_expected_realized_points(squad, initial, rules).expected_realized_total
+
+    refined, breakdown, diagnostics = refine_fixed_squad_lineup(squad, initial, rules)
+    repeated = refine_fixed_squad_lineup(squad, initial, rules)
+
+    assert reliable_goalkeeper in refined.lineup
+    assert refined.bench[0] == other
+    assert breakdown.expected_realized_total > initial_value
+    assert diagnostics.returned_goalkeeper_order_value >= diagnostics.reversed_goalkeeper_order_value
+    assert diagnostics.status == "single_change_local_optimum"
+    assert repeated == (refined, breakdown, diagnostics)
+    assert set(refined.lineup) | set(refined.bench) == set(squad["player_uid"])
+
+
+def test_fixed_squad_refinement_improves_outfield_reorders_bench_and_captaincy() -> None:
+    rules = default_rules()
+    squad = _squad_frame()
+    squad.loc[
+        squad["player_uid"].eq("MID_0"),
+        ["expected_points", "p_appearance", "expected_points_given_appearance"],
+    ] = [0.1, 0.1, 1.0]
+    squad.loc[
+        squad["player_uid"].eq("FWD_2"),
+        ["expected_points", "p_appearance", "expected_points_given_appearance"],
+    ] = [10.0, 1.0, 10.0]
+    lineup = (
+        "GKP_0",
+        "DEF_0",
+        "DEF_1",
+        "DEF_2",
+        "MID_0",
+        "MID_1",
+        "MID_2",
+        "MID_3",
+        "MID_4",
+        "FWD_0",
+        "FWD_1",
+    )
+    initial = optimize_lineup(squad, rules, appearance_aware=False).__class__(
+        lineup=lineup,
+        captain="MID_0",
+        vice_captain="MID_1",
+        bench=("GKP_1", "DEF_3", "DEF_4", "FWD_2"),
+        objective=0.0,
+        formation="3-5-2",
+        method="synthetic_outfield_regression",
+    )
+    initial_value = evaluate_expected_realized_points(squad, initial, rules).expected_realized_total
+
+    refined, breakdown, diagnostics = refine_fixed_squad_lineup(squad, initial, rules)
+
+    assert "FWD_2" in refined.lineup
+    assert "MID_0" in refined.bench
+    assert refined.captain == "FWD_2"
+    assert refined.vice_captain != refined.captain
+    assert breakdown.expected_realized_total > initial_value
+    assert diagnostics.outfield_swaps_considered > 0
+    assert diagnostics.illegal_outfield_swaps_rejected > 0
+    assert diagnostics.bench_orders_evaluated >= 6
+    assert diagnostics.captain_pairs_reoptimized == diagnostics.bench_orders_evaluated
+
+
+def test_fixed_squad_refinement_is_locally_optimal_over_documented_candidates() -> None:
+    rules = default_rules()
+    squad = _squad_frame()
+    initial, _ = optimize_lineup_expected_realized(squad, rules, shortlist=1)
+
+    refined, breakdown, diagnostics = refine_fixed_squad_lineup(squad, initial, rules)
+    frame = {
+        str(row.player_uid): {
+            "position": str(row.fpl_position),
+            "team": str(row.player_team_uid),
+            "expected_points": float(row.expected_points),
+            "p_appearance": float(row.p_appearance),
+            "conditional_points": float(row.expected_points_given_appearance),
+            "optimizer_unconditional_points": float(
+                row.p_appearance * row.expected_points_given_appearance
+            ),
+        }
+        for row in squad.itertuples(index=False)
+    }
+    candidates, _ = _fixed_squad_lineup_candidates(refined, frame, rules)
+    candidate_values = []
+    for lineup, bench in candidates:
+        candidate = refined.__class__(
+            lineup=lineup,
+            captain=refined.captain,
+            vice_captain=refined.vice_captain,
+            bench=bench,
+            objective=0.0,
+            formation=refined.formation,
+            method="audit",
+        )
+        if candidate.captain not in lineup or candidate.vice_captain not in lineup:
+            continue
+        candidate_values.append(evaluate_expected_realized_points(squad, candidate, rules).expected_realized_total)
+
+    assert breakdown.expected_realized_total + 1e-9 >= max(candidate_values)
+    assert diagnostics.gain >= 0
 
 
 def test_expected_realized_captain_and_vice_both_may_be_absent() -> None:

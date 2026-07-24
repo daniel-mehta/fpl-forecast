@@ -32,6 +32,27 @@ class ExpectedRealizedBreakdown:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class LineupRefinementDiagnostics:
+    status: str
+    iterations: int
+    exact_evaluations: int
+    unique_lineups_evaluated: int
+    goalkeeper_orderings_evaluated: int
+    outfield_swaps_considered: int
+    illegal_outfield_swaps_rejected: int
+    bench_orders_evaluated: int
+    captain_pairs_reoptimized: int
+    initial_value: float
+    final_value: float
+    gain: float
+    returned_goalkeeper_order_value: float
+    reversed_goalkeeper_order_value: float
+
+    def to_dict(self) -> dict[str, float | int | str]:
+        return asdict(self)
+
+
 def evaluate_expected_realized_points(
     squad: pd.DataFrame,
     decision: LineupDecision,
@@ -163,6 +184,169 @@ def optimize_lineup_expected_realized(
     if best_decision is None or best_breakdown is None:
         raise ValueError("No expected-realized lineup survived evaluation.")
     return best_decision, best_breakdown
+
+
+def refine_fixed_squad_lineup(
+    squad: pd.DataFrame,
+    initial: LineupDecision,
+    rules: DecisionRules,
+) -> tuple[LineupDecision, ExpectedRealizedBreakdown, LineupRefinementDiagnostics]:
+    if len(squad) != rules.squad_size:
+        raise ValueError("Fixed-squad lineup refinement requires a full 15-player squad.")
+    frame = _records(squad)
+    _validate_decision(tuple(initial.lineup), tuple(initial.bench), frame, rules)
+    best = initial
+    best_breakdown = evaluate_expected_realized_points(squad, best, rules)
+    initial_value = best_breakdown.expected_realized_total
+    exact_evaluations = 1
+    evaluated_lineups = {frozenset(best.lineup)}
+    goalkeeper_orderings = 0
+    outfield_swaps = 0
+    illegal_outfield_swaps = 0
+    bench_orders = 0
+    captain_pairs = 0
+    iterations = 0
+
+    while True:
+        iterations += 1
+        candidates, coverage = _fixed_squad_lineup_candidates(best, frame, rules)
+        goalkeeper_orderings += coverage["goalkeeper_orderings"]
+        outfield_swaps += coverage["outfield_swaps_considered"]
+        illegal_outfield_swaps += coverage["illegal_outfield_swaps_rejected"]
+        iteration_best = best
+        iteration_breakdown = best_breakdown
+        for lineup, bench in candidates:
+            evaluated_lineups.add(frozenset(lineup))
+            captain, vice = _best_captain_pair(lineup, frame)
+            captain_pairs += 1
+            bench_orders += 1
+            decision = LineupDecision(
+                lineup=lineup,
+                captain=captain,
+                vice_captain=vice,
+                bench=bench,
+                objective=0.0,
+                formation=_formation(lineup, frame),
+                method="expected_realized_fixed_squad_lineup_refinement",
+            )
+            breakdown = evaluate_expected_realized_points(squad, decision, rules)
+            exact_evaluations += 1
+            decision = LineupDecision(
+                lineup=decision.lineup,
+                captain=decision.captain,
+                vice_captain=decision.vice_captain,
+                bench=decision.bench,
+                objective=breakdown.expected_realized_total,
+                formation=decision.formation,
+                method=decision.method,
+            )
+            if _decision_key(decision, breakdown, squad, rules) > _decision_key(
+                iteration_best,
+                iteration_breakdown,
+                squad,
+                rules,
+            ):
+                iteration_best = decision
+                iteration_breakdown = breakdown
+        if _decision_key(iteration_best, iteration_breakdown, squad, rules) <= _decision_key(
+            best,
+            best_breakdown,
+            squad,
+            rules,
+        ):
+            break
+        best = iteration_best
+        best_breakdown = iteration_breakdown
+
+    reversed_value = _reversed_goalkeeper_order_value(squad, best, frame, rules)
+    exact_evaluations += 1
+    diagnostics = LineupRefinementDiagnostics(
+        status="single_change_local_optimum",
+        iterations=iterations,
+        exact_evaluations=exact_evaluations,
+        unique_lineups_evaluated=len(evaluated_lineups),
+        goalkeeper_orderings_evaluated=goalkeeper_orderings,
+        outfield_swaps_considered=outfield_swaps,
+        illegal_outfield_swaps_rejected=illegal_outfield_swaps,
+        bench_orders_evaluated=bench_orders,
+        captain_pairs_reoptimized=captain_pairs,
+        initial_value=initial_value,
+        final_value=best_breakdown.expected_realized_total,
+        gain=best_breakdown.expected_realized_total - initial_value,
+        returned_goalkeeper_order_value=best_breakdown.expected_realized_total,
+        reversed_goalkeeper_order_value=reversed_value,
+    )
+    if diagnostics.returned_goalkeeper_order_value + 1e-9 < diagnostics.reversed_goalkeeper_order_value:
+        raise ValueError("Fixed-squad refinement returned a worse goalkeeper ordering.")
+    return best, best_breakdown, diagnostics
+
+
+def _fixed_squad_lineup_candidates(
+    decision: LineupDecision,
+    frame: dict[str, dict[str, float | str]],
+    rules: DecisionRules,
+) -> tuple[list[tuple[tuple[str, ...], tuple[str, ...]]], dict[str, int]]:
+    lineup = tuple(decision.lineup)
+    bench = tuple(decision.bench)
+    bench_goalkeeper = bench[0]
+    starting_goalkeeper = next(player for player in lineup if frame[player]["position"] == "GKP")
+    lineups: dict[frozenset[str], tuple[str, ...]] = {frozenset(lineup): lineup}
+
+    reversed_goalkeepers = tuple(
+        bench_goalkeeper if player == starting_goalkeeper else player
+        for player in lineup
+    )
+    lineups[frozenset(reversed_goalkeepers)] = reversed_goalkeepers
+    coverage = {
+        "goalkeeper_orderings": 1,
+        "outfield_swaps_considered": 0,
+        "illegal_outfield_swaps_rejected": 0,
+    }
+    outfield_starters = [player for player in lineup if frame[player]["position"] != "GKP"]
+    outfield_bench = [player for player in bench if frame[player]["position"] != "GKP"]
+    for starter in outfield_starters:
+        for substitute in outfield_bench:
+            coverage["outfield_swaps_considered"] += 1
+            trial = tuple(substitute if player == starter else player for player in lineup)
+            if not _is_legal_lineup(trial, frame, rules):
+                coverage["illegal_outfield_swaps_rejected"] += 1
+                continue
+            lineups[frozenset(trial)] = trial
+
+    candidates: list[tuple[tuple[str, ...], tuple[str, ...]]] = []
+    squad_ids = set(frame)
+    for candidate_lineup in sorted(lineups.values(), key=lambda values: tuple(sorted(values))):
+        remaining = squad_ids - set(candidate_lineup)
+        goalkeeper = sorted(player for player in remaining if frame[player]["position"] == "GKP")
+        outfield = sorted(player for player in remaining if frame[player]["position"] != "GKP")
+        if len(goalkeeper) != 1 or len(outfield) != 3:
+            raise ValueError("Fixed-squad lineup candidate does not leave a legal four-player bench.")
+        for order in permutations(outfield):
+            candidates.append((candidate_lineup, (goalkeeper[0], *order)))
+    return candidates, coverage
+
+
+def _reversed_goalkeeper_order_value(
+    squad: pd.DataFrame,
+    decision: LineupDecision,
+    frame: dict[str, dict[str, float | str]],
+    rules: DecisionRules,
+) -> float:
+    starting_goalkeeper = next(player for player in decision.lineup if frame[player]["position"] == "GKP")
+    bench_goalkeeper = decision.bench[0]
+    lineup = tuple(bench_goalkeeper if player == starting_goalkeeper else player for player in decision.lineup)
+    bench = (starting_goalkeeper, *decision.bench[1:])
+    captain, vice = _best_captain_pair(lineup, frame)
+    reversed_decision = LineupDecision(
+        lineup=lineup,
+        captain=captain,
+        vice_captain=vice,
+        bench=bench,
+        objective=0.0,
+        formation=_formation(lineup, frame),
+        method="expected_realized_goalkeeper_reversal_audit",
+    )
+    return evaluate_expected_realized_points(squad, reversed_decision, rules).expected_realized_total
 
 
 def _records(squad: pd.DataFrame) -> dict[str, dict[str, float | str]]:

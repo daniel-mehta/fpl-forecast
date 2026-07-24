@@ -209,6 +209,20 @@ def run_operational_model_chain(
                 "accepted_improving_moves": (solution.diagnostics or {}).get("accepted_improving_moves"),
                 "local_search_iterations": (solution.diagnostics or {}).get("local_search_iterations"),
                 "termination_reason": (solution.diagnostics or {}).get("termination_reason"),
+                "lineup_refinement_status": (solution.diagnostics or {}).get("lineup_refinement_status"),
+                "lineup_refinement_iterations": (solution.diagnostics or {}).get(
+                    "lineup_refinement_iterations"
+                ),
+                "lineup_refinement_exact_evaluations": (solution.diagnostics or {}).get(
+                    "lineup_refinement_exact_evaluations"
+                ),
+                "lineup_refinement_gain": (solution.diagnostics or {}).get("lineup_refinement_gain"),
+                "lineup_refinement_returned_goalkeeper_order_value": (solution.diagnostics or {}).get(
+                    "lineup_refinement_returned_goalkeeper_order_value"
+                ),
+                "lineup_refinement_reversed_goalkeeper_order_value": (solution.diagnostics or {}).get(
+                    "lineup_refinement_reversed_goalkeeper_order_value"
+                ),
                 "d1_nominal_starting_xi_xpoints": (solution.diagnostics or {}).get(
                     "d1_nominal_starting_xi_xpoints"
                 ),
