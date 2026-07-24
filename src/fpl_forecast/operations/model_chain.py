@@ -14,7 +14,8 @@ from fpl_forecast.decision.rules import default_rules
 from fpl_forecast.minutes_model.config import load_minutes_config
 from fpl_forecast.minutes_model.data import load_minutes_frame
 from fpl_forecast.minutes_model.models import fit_predict_minutes_models
-from fpl_forecast.panel.common import phase2_dir
+from fpl_forecast.panel.common import normalize_name, phase2_dir, uid_from_slug
+from fpl_forecast.panel.teams import TEAM_ALIAS_TEMPLATE, read_team_aliases
 from fpl_forecast.team_model.config import load_team_model_config
 from fpl_forecast.team_model.data import load_historical_team_fixtures
 from fpl_forecast.team_model.models import fit_predict_models
@@ -53,22 +54,39 @@ def run_operational_model_chain(
     as_of: pd.Timestamp | None = None,
     completed_player_fixtures: pd.DataFrame | None = None,
     completed_team_fixtures: pd.DataFrame | None = None,
+    source_mode: str = "mock",
 ) -> OperationalModelChainResult:
-    as_of = as_of or _default_information_cutoff(season, target_gameweek=target_gameweek)
+    if source_mode not in {"mock", "official_current_season"}:
+        raise ValueError(f"Unknown operational source mode: {source_mode}")
+    if source_mode == "official_current_season":
+        official_context = _official_current_context(season, normalized_dir=normalized_dir, target_gameweek=target_gameweek)
+        as_of = as_of or official_context["deadline"]
+    else:
+        official_context = {}
+        as_of = as_of or _default_information_cutoff(season, target_gameweek=target_gameweek)
     as_of = as_of.tz_localize("UTC") if as_of.tzinfo is None else as_of.tz_convert("UTC")
     _validate_completed_inputs(
         completed_player_fixtures=completed_player_fixtures,
         completed_team_fixtures=completed_team_fixtures,
         information_cutoff=as_of,
     )
-    target_fixtures = _target_fixtures(
-        season,
-        as_of=as_of,
-        variant=fixture_variant,
-        normalized_dir=normalized_dir,
-        target_gameweek=target_gameweek,
-    )
-    target_players = _target_players(season, variant=price_variant, normalized_dir=normalized_dir)
+    if source_mode == "official_current_season":
+        target_fixtures = _official_target_fixtures(official_context, as_of=as_of)
+        target_players = _official_target_players(
+            season,
+            normalized_dir=normalized_dir,
+            price_variant=price_variant,
+            team_identity=official_context["team_identity"],
+        )
+    else:
+        target_fixtures = _target_fixtures(
+            season,
+            as_of=as_of,
+            variant=fixture_variant,
+            normalized_dir=normalized_dir,
+            target_gameweek=target_gameweek,
+        )
+        target_players = _target_players(season, variant=price_variant, normalized_dir=normalized_dir)
     target_rows = _target_player_fixture_rows(target_fixtures, target_players, as_of=as_of)
 
     team_config = load_team_model_config()
@@ -159,6 +177,7 @@ def run_operational_model_chain(
         "team_model": "T2_REGULARIZED_ATTACK_DEFENCE",
         "minutes_models": ["M3_EWMA_MINUTES", "M5_REGULARIZED_STATE_SOFTMAX"],
         "xpoints_models": ["X2_TEAM_CONSTRAINED_SIM_M3", "X2_TEAM_CONSTRAINED_SIM_M5"],
+        "source_mode": source_mode,
         "target_gameweek": target_gameweek,
         "target_deadline": as_of.isoformat(),
         "fixture_variant": fixture_variant,
@@ -170,6 +189,14 @@ def run_operational_model_chain(
         "minutes_diagnostics": [diagnostic.__dict__ for diagnostic in minutes_diagnostics],
         "team_ratings_rows": int(len(team_ratings)),
         "conservation_rows": int(len(conservation)),
+        **_official_lineage(
+            source_mode=source_mode,
+            official_context=official_context,
+            target_players=target_players,
+            target_fixtures=target_fixtures,
+            decision_candidates=decision_candidates,
+            normalized_dir=normalized_dir,
+        ),
     }
     _write_chain_outputs(
         output_dir,
@@ -241,6 +268,344 @@ def _target_fixtures(
             }
         )
     return pd.DataFrame(rows)
+
+
+def _official_current_context(
+    season: str,
+    *,
+    normalized_dir: Path | str,
+    target_gameweek: int,
+) -> dict[str, Any]:
+    season_dir = Path(normalized_dir) / season
+    players_path = season_dir / "current_players.parquet"
+    teams_path = season_dir / "current_teams.parquet"
+    fixtures_path = season_dir / "current_fixtures.parquet"
+    events_path = season_dir / "current_events.parquet"
+    missing = [path for path in (players_path, teams_path, fixtures_path, events_path) if not path.exists()]
+    if missing:
+        raise FileNotFoundError(f"Missing official normalized current-season inputs: {', '.join(str(path) for path in missing)}")
+    events = pd.read_parquet(events_path)
+    fixtures = pd.read_parquet(fixtures_path)
+    teams = pd.read_parquet(teams_path)
+    event = events.loc[pd.to_numeric(events["gameweek"], errors="coerce").eq(target_gameweek)]
+    if event.empty:
+        raise ValueError(f"Official current events do not contain gameweek {target_gameweek}.")
+    deadline = pd.to_datetime(event.iloc[0]["deadline_time"], utc=True, errors="coerce")
+    if pd.isna(deadline):
+        raise ValueError(f"Official current gameweek {target_gameweek} has no valid deadline.")
+    target = fixtures.loc[pd.to_numeric(fixtures["gameweek"], errors="coerce").eq(target_gameweek)].copy()
+    if target.empty:
+        raise ValueError(f"Official current fixtures do not contain gameweek {target_gameweek}.")
+    if target["team_h_score"].notna().any() or target["team_a_score"].notna().any():
+        raise ValueError("Official target fixtures contain outcomes and cannot be used for a pre-deadline forecast.")
+    team_identity = _current_team_identity(teams, normalized_dir=normalized_dir, season=season)
+    return {
+        "deadline": deadline,
+        "events": events,
+        "event": event.iloc[0].to_dict(),
+        "fixtures": target,
+        "teams": teams,
+        "team_identity": team_identity,
+        "snapshot_metadata": _official_snapshot_metadata(season_dir),
+    }
+
+
+def _current_team_identity(teams: pd.DataFrame, *, normalized_dir: Path | str, season: str) -> pd.DataFrame:
+    dim_path = phase2_dir(normalized_dir) / "dim_team.parquet"
+    historical = pd.read_parquet(dim_path) if dim_path.exists() else pd.DataFrame(columns=["team_uid", "normalized_short_name"])
+    if "normalized_short_name" not in historical.columns:
+        historical["normalized_short_name"] = historical["canonical_name"].map(normalize_name)
+    records = teams.copy()
+    records["normalized_short_name"] = records["team_name"].map(normalize_name)
+    aliases = read_team_aliases(TEAM_ALIAS_TEMPLATE)
+    records["identity_lookup_name"] = records["normalized_short_name"].map(
+        lambda value: normalize_name(aliases.get(value, _trim_team_suffix(value)))
+    )
+    duplicates = records["normalized_short_name"].duplicated(keep=False)
+    if duplicates.any():
+        names = ", ".join(records.loc[duplicates, "team_name"].astype(str))
+        raise ValueError(f"Ambiguous current team identities after normalization: {names}")
+    bridged = records.merge(
+        historical[["team_uid", "normalized_short_name"]].drop_duplicates("normalized_short_name"),
+        left_on="identity_lookup_name",
+        right_on="normalized_short_name",
+        how="left",
+        suffixes=("", "_historical"),
+    )
+    bridged["identity_status"] = "historical"
+    bridged.loc[bridged["team_uid"].isna(), "identity_status"] = "genuinely_unseen"
+    bridged["team_uid"] = bridged.apply(
+        lambda row: row.team_uid if pd.notna(row.team_uid) else uid_from_slug("team", row.team_name),
+        axis=1,
+    )
+    bridged["neutral_team_strength_fallback"] = bridged["identity_status"].eq("genuinely_unseen")
+    bridged["match_method"] = bridged["identity_status"].map(
+        {"historical": "current_name_to_historical_identity", "genuinely_unseen": "official_name_deterministic_uid"}
+    )
+    output = bridged[
+        [
+            "season",
+            "team_id",
+            "team_code",
+            "team_name",
+            "short_name",
+            "team_uid",
+            "identity_status",
+            "match_method",
+            "neutral_team_strength_fallback",
+            "source",
+            "source_version",
+            "retrieved_at",
+            "raw_snapshot_path",
+        ]
+    ].sort_values("team_id")
+    output.to_parquet(Path(normalized_dir) / season / "current_team_identities.parquet", index=False)
+    return output
+
+
+def _trim_team_suffix(normalized_name: str) -> str:
+    for suffix in (" town", " city"):
+        if normalized_name.endswith(suffix):
+            return normalized_name[: -len(suffix)]
+    return normalized_name
+
+
+def _official_target_fixtures(context: dict[str, Any], *, as_of: pd.Timestamp) -> pd.DataFrame:
+    fixtures = context["fixtures"].copy()
+    team_identity = context["team_identity"]
+    home = team_identity[["team_id", "team_uid", "team_name"]].rename(
+        columns={"team_id": "home_team_id", "team_uid": "home_team_uid", "team_name": "home_team_name"}
+    )
+    away = team_identity[["team_id", "team_uid", "team_name"]].rename(
+        columns={"team_id": "away_team_id", "team_uid": "away_team_uid", "team_name": "away_team_name"}
+    )
+    frame = fixtures.merge(home, on="home_team_id", how="left").merge(away, on="away_team_id", how="left")
+    if frame[["home_team_uid", "away_team_uid"]].isna().any().any():
+        raise ValueError("Official target fixtures reference teams without stable current identities.")
+    frame["stable_fixture_uid"] = frame["season"].astype(str) + ":official_fixture_" + frame["fixture_id"].astype(str)
+    frame["fixture_key"] = frame["stable_fixture_uid"]
+    frame["source_fixture_id"] = pd.to_numeric(frame["fixture_id"], errors="raise").astype(int)
+    frame["source_home_team_id"] = pd.to_numeric(frame["home_team_id"], errors="raise").astype(int)
+    frame["source_away_team_id"] = pd.to_numeric(frame["away_team_id"], errors="raise").astype(int)
+    frame["kickoff_time"] = pd.to_datetime(frame["kickoff_time"], utc=True, errors="coerce")
+    if frame["kickoff_time"].isna().any():
+        raise ValueError("Official target fixtures contain invalid kickoff_time values.")
+    frame["information_cutoff"] = as_of
+    frame["source_available_time"] = pd.NaT
+    frame["source_available_method"] = "official_fixture_pre_deadline_no_result"
+    frame["finished"] = False
+    frame["result_valid"] = False
+    return frame[
+        [
+            "season",
+            "gameweek",
+            "stable_fixture_uid",
+            "fixture_key",
+            "source_fixture_id",
+            "home_team_uid",
+            "away_team_uid",
+            "source_home_team_id",
+            "source_away_team_id",
+            "home_team_name",
+            "away_team_name",
+            "kickoff_time",
+            "information_cutoff",
+            "source_available_time",
+            "source_available_method",
+            "finished",
+            "result_valid",
+            "source_version",
+            "raw_snapshot_path",
+        ]
+    ].sort_values("source_fixture_id")
+
+
+def _official_target_players(
+    season: str,
+    *,
+    normalized_dir: Path | str,
+    price_variant: str,
+    team_identity: pd.DataFrame,
+) -> pd.DataFrame:
+    season_dir = Path(normalized_dir) / season
+    players = pd.read_parquet(season_dir / "current_players.parquet")
+    entity_type = players["entity_type"] if "entity_type" in players.columns else pd.Series("player", index=players.index)
+    football = players.loc[entity_type.eq("player")].copy()
+    if football.empty:
+        raise ValueError("Official current player population is empty.")
+    duplicate_codes = football.loc[football["player_code"].notna() & football["player_code"].duplicated(keep=False)]
+    if not duplicate_codes.empty:
+        names = ", ".join(duplicate_codes["web_name"].astype(str).head(10))
+        raise ValueError(f"Ambiguous current player identities from duplicate player codes: {names}")
+    if football["player_code"].isna().any():
+        raise ValueError("Official current players without stable player_code cannot be bridged safely.")
+    prices = pd.to_numeric(football["price_tenths"], errors="coerce")
+    if prices.isna().any() or prices.le(0).any() or prices.mod(1).ne(0).any():
+        raise ValueError("Official current players contain missing or invalid price_tenths.")
+    team_map = team_identity[["team_id", "team_uid"]].rename(columns={"team_uid": "player_team_uid"})
+    frame = football.merge(team_map, on="team_id", how="left")
+    if frame["player_team_uid"].isna().any():
+        raise ValueError("Official current players reference teams without stable current identities.")
+    frame["player_uid"] = "player_code_" + frame["player_code"].astype("Int64").astype(str)
+    latest_history = _latest_player_history(normalized_dir)
+    frame = frame.merge(latest_history, on="player_uid", how="left", suffixes=("", "_historical"))
+    frame["player_name"] = frame["web_name"].astype(str)
+    frame["fpl_position"] = frame["position"].astype(str)
+    frame["status"] = frame["status"].fillna("a").astype(str)
+    frame["news"] = frame["news"].fillna("").astype(str) if "news" in frame.columns else ""
+    frame["cold_start_no_history"] = frame["historical_player_team_uid"].isna()
+    frame["fallback_flag"] = frame["cold_start_no_history"]
+    frame["transferred_player"] = frame["historical_player_team_uid"].notna() & frame["historical_player_team_uid"].ne(frame["player_team_uid"])
+    frame["position_change"] = frame["historical_fpl_position"].notna() & frame["historical_fpl_position"].ne(frame["fpl_position"])
+    frame["lineage_note"] = "returning_player"
+    frame.loc[frame["cold_start_no_history"], "lineage_note"] = "new_player_cold_start"
+    frame.loc[frame["transferred_player"], "lineage_note"] = "transferred_player"
+    frame.loc[frame["position_change"], "lineage_note"] = "position_change"
+    if price_variant == "premium_target":
+        targets = frame.sort_values(["price_tenths", "player_uid"], ascending=[False, True]).head(3).index
+        frame.loc[targets, "price_tenths"] = pd.to_numeric(frame.loc[targets, "price_tenths"], errors="coerce") + 300
+    elif price_variant != "base":
+        raise ValueError(f"Official current-season mode does not support price variant {price_variant}.")
+    identity = frame[
+        [
+            "season",
+            "player_id",
+            "player_code",
+            "web_name",
+            "player_uid",
+            "player_team_uid",
+            "historical_player_team_uid",
+            "fpl_position",
+            "historical_fpl_position",
+            "cold_start_no_history",
+            "transferred_player",
+            "position_change",
+            "lineage_note",
+            "source",
+            "source_version",
+            "retrieved_at",
+            "raw_snapshot_path",
+        ]
+    ].copy()
+    identity.to_parquet(season_dir / "current_player_identities.parquet", index=False)
+    pd.DataFrame(columns=["player_id", "player_code", "web_name", "review_reason"]).to_csv(
+        season_dir / "current_player_identity_review.csv",
+        index=False,
+    )
+    return frame[
+        [
+            "season",
+            "player_uid",
+            "player_name",
+            "player_team_uid",
+            "fpl_position",
+            "price_tenths",
+            "status",
+            "news",
+            "cold_start_no_history",
+            "fallback_flag",
+            "lineage_note",
+            "transferred_player",
+            "position_change",
+            "player_id",
+            "player_code",
+            "team_id",
+            "position_id",
+            "source_version",
+            "raw_snapshot_path",
+        ]
+    ].drop_duplicates("player_uid")
+
+
+def _latest_player_history(normalized_dir: Path | str) -> pd.DataFrame:
+    fact_path = phase2_dir(normalized_dir) / "fact_player_fixture.parquet"
+    fact = pd.read_parquet(fact_path)
+    latest = (
+        fact.loc[fact["entity_type"].eq("player")]
+        .sort_values(["season", "gameweek", "source_available_time"])
+        .groupby("player_uid", as_index=False)
+        .tail(1)
+    )
+    return latest[
+        ["player_uid", "player_team_uid", "fpl_position"]
+    ].rename(
+        columns={
+            "player_team_uid": "historical_player_team_uid",
+            "fpl_position": "historical_fpl_position",
+        }
+    )
+
+
+def _official_snapshot_metadata(season_dir: Path) -> dict[str, dict[str, Any]]:
+    metadata: dict[str, dict[str, Any]] = {}
+    for table_name, endpoint in (
+        ("current_players", "bootstrap_static"),
+        ("current_fixtures", "fixtures"),
+    ):
+        path = season_dir / f"{table_name}.parquet"
+        if not path.exists():
+            continue
+        frame = pd.read_parquet(path, columns=["raw_snapshot_path", "retrieved_at", "source_version"])
+        if frame.empty:
+            continue
+        raw_path = Path(str(frame["raw_snapshot_path"].dropna().iloc[0]))
+        meta_path = raw_path.with_suffix(raw_path.suffix + ".metadata.json")
+        item: dict[str, Any] = {
+            "retrieved_at": str(frame["retrieved_at"].dropna().iloc[0]),
+            "source_version": str(frame["source_version"].dropna().iloc[0]),
+            "raw_snapshot_file": "/".join(raw_path.parts[-4:]),
+        }
+        if meta_path.exists():
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            item["sha256"] = meta.get("sha256")
+            item["source_url"] = meta.get("source_url")
+        metadata[endpoint] = item
+    return metadata
+
+
+def _official_lineage(
+    *,
+    source_mode: str,
+    official_context: dict[str, Any],
+    target_players: pd.DataFrame,
+    target_fixtures: pd.DataFrame,
+    decision_candidates: pd.DataFrame,
+    normalized_dir: Path | str,
+) -> dict[str, Any]:
+    if source_mode != "official_current_season":
+        return {
+            "current_player_count": int(len(target_players)),
+            "current_team_count": 20,
+            "target_fixture_count": int(len(target_fixtures)),
+            "price_source": "mock_adapter",
+            "rules_source": "configured_phase8_rules",
+        }
+    team_identity = official_context["team_identity"]
+    current_identity_path = Path(normalized_dir) / str(target_players["season"].iloc[0]) / "current_player_identities.parquet"
+    identity = pd.read_parquet(current_identity_path) if current_identity_path.exists() else pd.DataFrame()
+    cold_start_count = int(target_players["cold_start_no_history"].astype(bool).sum())
+    neutral_count = int(team_identity["neutral_team_strength_fallback"].astype(bool).sum())
+    return {
+        "official_deadline": official_context["deadline"].isoformat(),
+        "official_snapshots": official_context["snapshot_metadata"],
+        "current_player_count": int(len(target_players)),
+        "current_team_count": int(len(team_identity)),
+        "target_fixture_count": int(len(target_fixtures)),
+        "identity_coverage": {
+            "players_total": int(len(identity)) if not identity.empty else int(len(target_players)),
+            "players_with_stable_uid": int(identity["player_uid"].notna().sum()) if not identity.empty else int(target_players["player_uid"].notna().sum()),
+            "teams_total": int(len(team_identity)),
+            "teams_with_stable_uid": int(team_identity["team_uid"].notna().sum()),
+        },
+        "cold_start_count": cold_start_count,
+        "neutral_team_fallback_count": neutral_count,
+        "price_source": "official_bootstrap_static.now_cost",
+        "rules_source": "official_bootstrap_static.game_settings_and_element_types",
+        "team_identity_status_counts": team_identity["identity_status"].value_counts().to_dict(),
+        "player_lineage_note_counts": target_players["lineage_note"].value_counts().to_dict(),
+        "mock_markers_present": False,
+        "decision_candidate_count": int(len(decision_candidates)),
+    }
 
 
 def _default_information_cutoff(season: str, *, target_gameweek: int) -> pd.Timestamp:

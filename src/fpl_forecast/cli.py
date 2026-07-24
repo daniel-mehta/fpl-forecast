@@ -800,6 +800,7 @@ def refresh_operational(
     mock_launch: Annotated[bool, typer.Option(help="Use representative target-season launch fixtures for tests.")] = False,
     force: Annotated[bool, typer.Option(help="Force rerun even when fingerprints are unchanged.")] = False,
     status_only: Annotated[bool, typer.Option(help="Only update/check operational status.")] = False,
+    target_gameweek: Annotated[int, typer.Option(help="Target official gameweek/event to forecast.")] = 1,
     run_id: Annotated[str | None, typer.Option(help="Optional deterministic run id.")] = None,
     fail_stage: Annotated[str | None, typer.Option(help="Inject failure at ingestion, modeling, optimization or publication.")] = None,
 ) -> None:
@@ -811,6 +812,7 @@ def refresh_operational(
         run_id=run_id,
         fail_stage=fail_stage,
         status_only=status_only,
+        target_gameweek=target_gameweek,
     )
     console.print(f"state={result.status.state.value}")
     console.print(f"run_id={result.run_id}")

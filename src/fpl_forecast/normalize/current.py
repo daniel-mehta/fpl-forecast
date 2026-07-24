@@ -62,6 +62,10 @@ def normalize_current(
     players.to_parquet(outputs[0], index=False)
     teams.to_parquet(outputs[1], index=False)
     fixtures_frame.to_parquet(outputs[2], index=False)
+    _events_frame(bootstrap.payload, metadata=bootstrap.metadata, raw_path=bootstrap.raw_path, season=season_identity.inferred_season).to_parquet(
+        output_dir / "current_events.parquet",
+        index=False,
+    )
     return outputs
 
 
@@ -124,6 +128,12 @@ def _players_frame(
             "element_type",
             "now_cost",
             "status",
+            "news",
+            "news_added",
+            "chance_of_playing_next_round",
+            "chance_of_playing_this_round",
+            "selected_by_percent",
+            "form",
             "minutes",
             "total_points",
         ],
@@ -139,13 +149,23 @@ def _players_frame(
             "position_id": pd.to_numeric(frame["element_type"], errors="coerce").astype("Int64"),
             "price_tenths": pd.to_numeric(frame["now_cost"], errors="coerce").astype("Int64"),
             "status": frame["status"].astype("string"),
+            "news": frame["news"].astype("string"),
+            "news_added": frame["news_added"].astype("string"),
+            "chance_of_playing_next_round": pd.to_numeric(frame["chance_of_playing_next_round"], errors="coerce").astype("Int64"),
+            "chance_of_playing_this_round": pd.to_numeric(frame["chance_of_playing_this_round"], errors="coerce").astype("Int64"),
+            "selected_by_percent": pd.to_numeric(frame["selected_by_percent"], errors="coerce"),
+            "form": pd.to_numeric(frame["form"], errors="coerce"),
             "minutes": pd.to_numeric(frame["minutes"], errors="coerce").astype("Int64"),
             "total_points": pd.to_numeric(frame["total_points"], errors="coerce").astype("Int64"),
         }
     )
     normalized["position"] = normalized["position_id"].map(POSITION_BY_ID).astype("string")
+    normalized["entity_type"] = "player"
+    normalized.loc[normalized["position_id"].eq(5) | normalized["position"].eq("AM"), "entity_type"] = "assistant_manager"
+    normalized["price"] = pd.to_numeric(normalized["price_tenths"], errors="coerce") / 10
     for key, value in _provenance_columns(metadata=metadata, raw_path=raw_path, season=season).items():
         normalized[key] = value
+    _validate_current_players(normalized)
     return normalized
 
 
@@ -229,6 +249,12 @@ def _fixtures_frame(
             "started",
             "team_h_score",
             "team_a_score",
+            "finished_provisional",
+            "provisional_start_time",
+            "minutes",
+            "team_h_difficulty",
+            "team_a_difficulty",
+            "pulse_id",
         ],
     )
     normalized = pd.DataFrame(
@@ -243,10 +269,17 @@ def _fixtures_frame(
             "started": frame["started"].astype("boolean"),
             "team_h_score": pd.to_numeric(frame["team_h_score"], errors="coerce").astype("Int64"),
             "team_a_score": pd.to_numeric(frame["team_a_score"], errors="coerce").astype("Int64"),
+            "finished_provisional": frame["finished_provisional"].astype("boolean"),
+            "provisional_start_time": frame["provisional_start_time"].astype("boolean"),
+            "minutes": pd.to_numeric(frame["minutes"], errors="coerce").astype("Int64"),
+            "home_team_difficulty": pd.to_numeric(frame["team_h_difficulty"], errors="coerce").astype("Int64"),
+            "away_team_difficulty": pd.to_numeric(frame["team_a_difficulty"], errors="coerce").astype("Int64"),
+            "pulse_id": pd.to_numeric(frame["pulse_id"], errors="coerce").astype("Int64"),
         }
     )
     for key, value in _provenance_columns(metadata=metadata, raw_path=raw_path, season=season).items():
         normalized[key] = value
+    _validate_current_fixtures(normalized)
     return normalized
 
 
@@ -255,3 +288,54 @@ def _ensure_columns(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
         if column not in frame.columns:
             frame[column] = pd.NA
     return frame
+
+
+def _events_frame(
+    payload: dict[str, Any],
+    *,
+    metadata: dict[str, Any],
+    raw_path: str,
+    season: str,
+) -> pd.DataFrame:
+    frame = pd.DataFrame(payload.get("events", []))
+    frame = _ensure_columns(
+        frame,
+        ["id", "name", "deadline_time", "finished", "data_checked", "is_current", "is_next", "released"],
+    )
+    normalized = pd.DataFrame(
+        {
+            "gameweek": pd.to_numeric(frame["id"], errors="coerce").astype("Int64"),
+            "name": frame["name"].astype("string"),
+            "deadline_time": frame["deadline_time"].astype("string"),
+            "finished": frame["finished"].astype("boolean"),
+            "data_checked": frame["data_checked"].astype("boolean"),
+            "is_current": frame["is_current"].astype("boolean"),
+            "is_next": frame["is_next"].astype("boolean"),
+            "released": frame["released"].astype("boolean"),
+        }
+    )
+    for key, value in _provenance_columns(metadata=metadata, raw_path=raw_path, season=season).items():
+        normalized[key] = value
+    return normalized
+
+
+def _validate_current_players(frame: pd.DataFrame) -> None:
+    if frame["player_id"].duplicated().any():
+        raise ValueError("Current players contain duplicate official player IDs.")
+    missing_names = frame["web_name"].isna() | frame["web_name"].astype(str).str.strip().eq("")
+    if missing_names.any():
+        raise ValueError(f"Current players contain {int(missing_names.sum())} missing web names.")
+    prices = pd.to_numeric(frame["price_tenths"], errors="coerce")
+    if prices.isna().any():
+        raise ValueError(f"Current players contain {int(prices.isna().sum())} missing prices.")
+    invalid = prices.lt(30) | prices.gt(200) | prices.mod(1).ne(0)
+    if invalid.any():
+        raise ValueError(f"Current players contain {int(invalid.sum())} invalid prices.")
+
+
+def _validate_current_fixtures(frame: pd.DataFrame) -> None:
+    if frame["fixture_id"].duplicated().any():
+        raise ValueError("Current fixtures contain duplicate official fixture IDs.")
+    missing = frame[["gameweek", "home_team_id", "away_team_id", "kickoff_time"]].isna().any(axis=1)
+    if missing.any():
+        raise ValueError(f"Current fixtures contain {int(missing.sum())} incomplete fixture rows.")

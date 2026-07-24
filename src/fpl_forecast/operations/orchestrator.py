@@ -108,6 +108,7 @@ def refresh_operational(
                     completed_player_fixtures=completed_player_fixtures,
                     completed_team_fixtures=completed_team_fixtures,
                     normalized_dir=normalized_dir,
+                    source_mode="mock" if mock_launch else "official_current_season",
                 )
                 stages.append("frontend_artifacts_built")
                 _validate_frontend_artifacts(frontend)
@@ -129,8 +130,8 @@ def refresh_operational(
                     "dirty_worktree": bool(_git(["status", "--short"])),
                     "models": config.default_models,
                     "model_lineage": _read_json(temp_dir / "model_lineage.json"),
-                    "warnings": ["mock_target_season_transition" if mock_launch else "real_target_season"],
-                    "fall_back_flags": ["cold_start_new_player", "neutral_promoted_team"],
+                    "warnings": ["mock_target_season_transition"] if mock_launch else [],
+                    "fall_back_flags": _lineage_fallback_flags(_read_json(temp_dir / "model_lineage.json")),
                     "stages": stages,
                     "previous_latest_successful_run_id": latest.get("run_id") if latest else None,
                     "completion_stage": "published",
@@ -244,6 +245,7 @@ def _build_frontend_artifacts(
     completed_player_fixtures: pd.DataFrame | None = None,
     completed_team_fixtures: pd.DataFrame | None = None,
     normalized_dir: Path | str = NORMALIZED_DIR,
+    source_mode: str = "mock",
 ) -> dict[str, Path]:
     selected_model = config.default_models["xpoints"]
     if completed_player_fixtures is not None and "official_event_total_points" in completed_player_fixtures.columns:
@@ -259,6 +261,7 @@ def _build_frontend_artifacts(
         completed_player_fixtures=completed_player_fixtures,
         completed_team_fixtures=completed_team_fixtures,
         normalized_dir=normalized_dir,
+        source_mode=source_mode,
     )
 
     projections = result.decision_candidates.loc[result.decision_candidates["model_name"].eq(selected_model)].copy()
@@ -333,12 +336,23 @@ def _build_frontend_artifacts(
             {
                 "schema_version": config.frontend_schema_version,
                 "generated_at": now_utc(),
-                "source": "mocked target-season production model chain",
+                "source": _source_description(result.lineage),
+                "source_mode": result.lineage.get("source_mode"),
                 "lineage_artifact": "model_lineage.json",
                 "team_model_run_id": result.lineage["team_model_run_id"],
                 "minutes_model_run_id": result.lineage["minutes_model_run_id"],
                 "xpoints_model_run_id": result.lineage["xpoints_model_run_id"],
                 "decision_run_id": result.lineage["decision_run_id"],
+                "official_deadline": result.lineage.get("official_deadline"),
+                "official_snapshots": result.lineage.get("official_snapshots"),
+                "current_player_count": result.lineage.get("current_player_count"),
+                "current_team_count": result.lineage.get("current_team_count"),
+                "target_fixture_count": result.lineage.get("target_fixture_count"),
+                "identity_coverage": result.lineage.get("identity_coverage"),
+                "cold_start_count": result.lineage.get("cold_start_count"),
+                "neutral_team_fallback_count": result.lineage.get("neutral_team_fallback_count"),
+                "price_source": result.lineage.get("price_source"),
+                "rules_source": result.lineage.get("rules_source"),
                 "stale": False,
             },
             indent=2,
@@ -356,7 +370,7 @@ def _build_frontend_artifacts(
                 "target_gameweek": target_gameweek,
                 "run_id": run_id,
                 "reason": "Operational refresh published genuinely generated target-season projections.",
-                "warning": "Representative mocked target-season run; real 2026-27 remains unproven.",
+                "warning": _status_warning(result.lineage),
             },
             indent=2,
             sort_keys=True,
@@ -395,6 +409,27 @@ def _validate_frontend_artifacts(paths: dict[str, Path]) -> None:
     missing = required_columns.difference(projections.columns)
     if missing:
         raise ValueError(f"Projection artifact missing columns: {', '.join(sorted(missing))}")
+
+
+def _source_description(lineage: dict[str, Any]) -> str:
+    if lineage.get("source_mode") == "official_current_season":
+        return "official current-season FPL API snapshots"
+    return "mocked target-season production model chain"
+
+
+def _status_warning(lineage: dict[str, Any]) -> str | None:
+    if lineage.get("source_mode") == "official_current_season":
+        return None
+    return "Representative mocked target-season run; real 2026-27 remains unproven."
+
+
+def _lineage_fallback_flags(lineage: dict[str, Any]) -> list[str]:
+    flags: list[str] = []
+    if int(lineage.get("cold_start_count") or 0) > 0:
+        flags.append("cold_start_new_player")
+    if int(lineage.get("neutral_team_fallback_count") or 0) > 0:
+        flags.append("neutral_promoted_team")
+    return flags
 
 
 def _mock_launch_check(season: str) -> LaunchCheck:
