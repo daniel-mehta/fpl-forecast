@@ -1,16 +1,12 @@
 {
   "decision_rules_version": "fpl_2025_26_api_verified",
-  "default_model": "X2_TEAM_CONSTRAINED_SIM_M3",
+  "default_model": "X2_TEAM_CONSTRAINED_SIM_M7",
   "comparison_models": [
-    "X2_TEAM_CONSTRAINED_SIM_M3",
-      "X2_TEAM_CONSTRAINED_SIM_M5",
-      "X1_INDEPENDENT_COMPONENT_RATES_M3",
-      "X0_PHASE3_B5_EB_POINTS_PER90",
-      "D0_PRICE_VALUE_BASELINE"
+    "X2_TEAM_CONSTRAINED_SIM_M7"
   ],
   "xpoints_runs": {
-    "rolling": "phase6_xpoints_rolling_real",
-    "gw1": "phase6_xpoints_gw1_real"
+    "rolling": "phase9b12_xpoints_rolling",
+    "gw1": "phase9b12_xpoints_gw1"
   },
   "squad_candidate_limits": {
     "GKP": 4,
@@ -24,6 +20,14 @@
   "risk_mode": "risk_neutral",
   "near_optimal_gap": 0.5,
   "transfer_candidate_limit": 8,
+  "optimizer_variants": [
+    "D1_MEAN_ONLY_MILP",
+    "D2_EXPECTED_REALIZED_POINTS"
+  ],
+  "expected_realized_search_limit": 24,
+  "expected_realized_search_iterations": 1,
+  "expected_realized_scenarios": 512,
+  "expected_realized_seed": 9113,
   "forbidden_frozen_columns": [
     "actual_total_points",
     "total_points",

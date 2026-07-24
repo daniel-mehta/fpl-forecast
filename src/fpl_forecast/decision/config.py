@@ -25,6 +25,11 @@ class DecisionConfig:
     risk_mode: str
     near_optimal_gap: float
     transfer_candidate_limit: int
+    optimizer_variants: tuple[str, ...]
+    expected_realized_search_limit: int
+    expected_realized_search_iterations: int
+    expected_realized_scenarios: int
+    expected_realized_seed: int
     forbidden_frozen_columns: tuple[str, ...]
 
 
@@ -42,5 +47,10 @@ def load_decision_config(path: Path = CONFIG_PATH) -> DecisionConfig:
         risk_mode=str(data["risk_mode"]),
         near_optimal_gap=float(data["near_optimal_gap"]),
         transfer_candidate_limit=int(data["transfer_candidate_limit"]),
+        optimizer_variants=tuple(str(value) for value in data.get("optimizer_variants", ["D1_MEAN_ONLY_MILP"])),
+        expected_realized_search_limit=int(data.get("expected_realized_search_limit", 24)),
+        expected_realized_search_iterations=int(data.get("expected_realized_search_iterations", 1)),
+        expected_realized_scenarios=int(data.get("expected_realized_scenarios", 512)),
+        expected_realized_seed=int(data.get("expected_realized_seed", 9113)),
         forbidden_frozen_columns=tuple(str(value) for value in data["forbidden_frozen_columns"]),
     )

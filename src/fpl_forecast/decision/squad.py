@@ -28,6 +28,7 @@ class SquadSolution:
     objective_gap: float | None = None
     solver_message: str | None = None
     solver_nodes: int | None = None
+    diagnostics: dict[str, float | int | str] | None = None
 
 
 def optimize_initial_squad(

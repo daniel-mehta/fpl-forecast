@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from fpl_forecast.config import NORMALIZED_DIR
-from fpl_forecast.decision.milp import optimize_squad_milp
+from fpl_forecast.decision.milp import optimize_squad_expected_realized
 from fpl_forecast.decision.rules import default_rules
 from fpl_forecast.minutes_model.config import load_minutes_config
 from fpl_forecast.minutes_model.data import load_minutes_frame
@@ -149,7 +149,7 @@ def run_operational_model_chain(
     selected_candidates = decision_candidates.loc[
         decision_candidates["model_name"].eq("X2_TEAM_CONSTRAINED_SIM_M7")
     ].copy()
-    solution = optimize_squad_milp(selected_candidates, default_rules())
+    solution = optimize_squad_expected_realized(selected_candidates, default_rules())
     optimized_squad = _squad_table(solution, selected_candidates)
     optimized_lineup = pd.DataFrame(
         [
@@ -165,6 +165,28 @@ def run_operational_model_chain(
                 "cost_tenths": solution.cost_tenths,
                 "bank_tenths": solution.bank_tenths,
                 "expected_team_points": solution.objective,
+                "optimizer_variant": "D2_EXPECTED_REALIZED_POINTS",
+                "expected_nominal_starting_xi_points": (solution.diagnostics or {}).get(
+                    "expected_nominal_starting_xi_points"
+                ),
+                "expected_autosub_contribution": (solution.diagnostics or {}).get("expected_autosub_contribution"),
+                "expected_captain_bonus": (solution.diagnostics or {}).get("expected_captain_bonus"),
+                "expected_vice_captain_contingency": (solution.diagnostics or {}).get(
+                    "expected_vice_captain_contingency"
+                ),
+                "expected_realized_total": (solution.diagnostics or {}).get("expected_realized_total", solution.objective),
+                "probability_all_starters_appear": (solution.diagnostics or {}).get("probability_all_starters_appear"),
+                "expected_automatic_substitutions": (solution.diagnostics or {}).get(
+                    "expected_automatic_substitutions"
+                ),
+                "probability_unreplaced_starter": (solution.diagnostics or {}).get("probability_unreplaced_starter"),
+                "expected_bench_points_used": (solution.diagnostics or {}).get("expected_bench_points_used"),
+                "scenario_count": (solution.diagnostics or {}).get("scenario_count"),
+                "analytic_method": (solution.diagnostics or {}).get("analytic_method"),
+                "evaluated_squads": solution.evaluated_squads,
+                "optimality_scope": solution.optimality_scope,
+                "solver_name": solution.solver_name,
+                "solver_message": solution.solver_message,
                 "solver_status": solution.solver_status,
                 "objective_bound": solution.objective_bound,
                 "objective_gap": solution.objective_gap,
@@ -179,6 +201,8 @@ def run_operational_model_chain(
         "xpoints_model_run_id": f"{run_id}_xpoints_current",
         "decision_run_id": f"{run_id}_decision_current",
         "team_model": "T2_REGULARIZED_ATTACK_DEFENCE",
+        "decision_optimizer": "D2_EXPECTED_REALIZED_POINTS",
+        "decision_optimizer_scope": solution.optimality_scope,
         "minutes_models": [
             "M3_EWMA_MINUTES",
             "M5_REGULARIZED_STATE_SOFTMAX",

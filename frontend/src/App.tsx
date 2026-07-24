@@ -89,6 +89,7 @@ function App() {
   const modelVariant = data.projections[0]?.model_variant ?? textValue(data.manifest, "models");
   const gameweek = textValue(data.status, "target_gameweek");
   const state = textValue(data.status, "state");
+  const lineupSummary = data.lineup[0];
 
   return (
     <>
@@ -165,15 +166,47 @@ function App() {
         <section aria-labelledby="squad-heading">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Exact weekly optimization</p>
+              <p className="eyebrow">Expected-realized optimization</p>
               <h2 id="squad-heading">Recommended squad</h2>
             </div>
-            {data.lineup[0] && (
+            {lineupSummary && (
               <p className="section-note">
-                {data.lineup[0].formation} formation · {formatLabel(data.lineup[0].solver_status)}
+                {lineupSummary.formation} formation · {formatLabel(lineupSummary.solver_status)}
               </p>
             )}
           </div>
+          {lineupSummary && (
+            <dl className="optimizer-summary" aria-label="Optimizer expected-realized diagnostics">
+              <div>
+                <dt>Optimizer</dt>
+                <dd>{formatLabel(lineupSummary.optimizer_variant || lineupSummary.solver_name || "available")}</dd>
+              </div>
+              <div>
+                <dt>Expected realized</dt>
+                <dd>{formatNumber(lineupSummary.expected_realized_total, 2)}</dd>
+              </div>
+              <div>
+                <dt>Autosub value</dt>
+                <dd>{formatNumber(lineupSummary.expected_autosub_contribution, 2)}</dd>
+              </div>
+              <div>
+                <dt>Captain bonus</dt>
+                <dd>{formatNumber(lineupSummary.expected_captain_bonus, 2)}</dd>
+              </div>
+              <div>
+                <dt>Vice fallback</dt>
+                <dd>{formatNumber(lineupSummary.expected_vice_captain_contingency, 2)}</dd>
+              </div>
+              <div>
+                <dt>Expected subs</dt>
+                <dd>{formatNumber(lineupSummary.expected_automatic_substitutions, 2)}</dd>
+              </div>
+              <div>
+                <dt>Unreplaced risk</dt>
+                <dd>{formatPercentage(lineupSummary.probability_unreplaced_starter)}</dd>
+              </div>
+            </dl>
+          )}
           <div className="table-scroll">
             <table>
               <thead>
@@ -324,7 +357,8 @@ function App() {
           <p>
             xPoints are model estimates, not guarantees. Expected minutes and appearance
             probabilities directly affect player projections. The displayed squad is selected by
-            an exact optimization model for this weekly forecast.
+            an exact weekly MILP seed and a deterministic expected-realized search that accounts
+            for ordinary automatic substitutions and captain fallback.
           </p>
           <p>
             Current official FPL data are joined to historical model features when available. This

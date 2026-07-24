@@ -2,7 +2,7 @@
 
 FPL Forecast is an end-to-end, time-aware Fantasy Premier League forecasting and
 decision system. It combines data engineering, statistical football modelling,
-probabilistic FPL point simulation, backtesting, operational publication, and exact squad
+probabilistic FPL point simulation, backtesting, operational publication, and squad
 optimization in one reproducible `uv` workspace.
 
 Unofficial project. Not affiliated with, endorsed by, or associated with the Premier League or
@@ -22,7 +22,7 @@ live-season forecast performance has not yet been validated, and public automati
 - Evaluates baselines and model families with rolling-origin and Gameweek 1 backtests.
 - Estimates team fixture probabilities, player minutes, component xPoints, and point distributions.
 - Selects legal FPL squads, lineups, captaincy, vice-captaincy, and bench order with exact MILP
-  optimization.
+  baselines plus an expected-realized optimizer that accounts for ordinary automatic substitutions.
 - Publishes validated frontend-ready artifacts atomically and preserves the last successful
   publication after failures.
 
@@ -70,7 +70,7 @@ flowchart LR
   E --> G["Expected-minutes models<br/>M0-M7"]
   F --> H["Component xPoints simulation<br/>X0/X1/X2"]
   G --> H
-  H --> I["MILP decision layer<br/>squad, lineup, captain, bench"]
+  H --> I["Decision layer<br/>D1 MILP and D2 expected-realized"]
   I --> J["Operational publication<br/>atomic latest-successful artifacts"]
   J --> K["Static Vite dashboard<br/>React, TypeScript, CSS"]
 ```
@@ -86,8 +86,10 @@ Default model chain used by the current operational adapter:
 - `X2_TEAM_CONSTRAINED_SIM_M7`: team-goal-constrained xPoints simulation using M7 minutes,
   hierarchical attacking-rate shrinkage, current-squad share allocation, and draw-level component
   reconciliation.
-- SciPy HiGHS MILP: full-candidate weekly squad, lineup, captain, vice-captain, and bench
-  optimization.
+- `D2_EXPECTED_REALIZED_POINTS`: full-candidate D1 MILP seed plus deterministic one-swap
+  expected-realized search. It scores ordinary automatic substitutions, bench order, goalkeeper-only
+  goalkeeper replacement, captain non-appearance, and vice-captain fallback from M7 appearance
+  probabilities. D2 is a heuristic challenger for the expected-realized objective, not a global proof.
 
 Experimental challengers:
 
@@ -105,6 +107,8 @@ Diagnostic baselines:
   MAE is strong, but its mechanically derived appearance/start probabilities are not treated as
   calibrated state probabilities.
 - Phase 7 `D0_PRICE_VALUE_BASELINE` for market-price comparison in decision backtests.
+- `D1_MEAN_ONLY_MILP`, retained as the exact full-candidate weekly MILP benchmark for nominal
+  starting-XI expected points and captain bonus.
 
 Operational safeguards:
 
@@ -134,6 +138,7 @@ therefore have high uncertainty.
 | Decision optimization | `2023-24`, `2024-25`; rolling weekly-reset benchmark | 380 MILP decisions solved with status `optimal`, max gap `2.96e-16`, mean runtime `0.0892s`; all squads legal. X2-M3 had the highest realized rolling weekly-reset score in this pass, but paired intervals versus X2-M5 crossed zero. |
 | Operations | Mocked 2026-27 launch and GW1-to-GW2 transition | Mocked target-season runs execute the real T2, minutes, xPoints, and MILP chain; injected failures preserve latest-successful artifacts. Genuine 2026-27 production evidence is still pending. |
 | Phase 9B1.2 GW1 hardening | `2023-24`-`2025-26`; GW1 folds; 1,964 rows | M7 worsened GW1 MAE versus M5 (`1.3032` vs `1.2517`) but improved RMSE (`2.1463`), Spearman (`0.4895`), 5+ Brier (`0.0805`), and central-80 coverage (`0.8819`). It is the official GW1 operational choice with caveats, not a universal rolling winner. |
+| Phase 9B1.3 optimizer hardening | `2023-24`-`2025-26`; GW1 weekly-reset decisions | D2 improved realized GW1 score by `+2.00` points on average versus D1 across three historical folds, with 2 improved, 1 tied, and 0 worse. This is useful acceptance evidence, not a season-long transfer-aware result. |
 
 ## Frontend And Dashboard
 
@@ -234,8 +239,9 @@ Generated real-data artifacts live under ignored directories such as `data/raw/`
 ## Known Limitations
 
 - Genuine 2026-27 operation is not yet proven.
-- The current optimizer still values the starting XI and captain more than bench/autosub
-  contingencies; bench hardening is intentionally deferred to Phase 9B1.3.
+- D2 models ordinary bench and captain contingency, but it still uses independent appearance
+  scenarios and a bounded local search after the exact D1 seed. It is not a transfer-aware season
+  optimizer.
 - M7 is selected for official GW1 coherence, but M3/M5 remain important challengers. M7 performs
   worse on rolling all-row MAE and should not be treated as broadly superior.
 - Historical candidate universes are reconstructed from observed player-fixture rows, not complete

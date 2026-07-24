@@ -6,8 +6,12 @@ import pandas as pd
 import pytest
 
 from fpl_forecast.decision.inputs import assert_frozen_decisions_target_free
+from fpl_forecast.decision.expected_realized import (
+    evaluate_expected_realized_points,
+    optimize_lineup_expected_realized,
+)
 from fpl_forecast.decision.lineup import apply_autosubs_and_score, optimize_lineup
-from fpl_forecast.decision.milp import optimize_squad_milp
+from fpl_forecast.decision.milp import optimize_squad_expected_realized, optimize_squad_milp
 from fpl_forecast.decision.prices import selling_price_tenths, validate_budget
 from fpl_forecast.decision.rules import default_rules, validate_rules
 from fpl_forecast.decision.runner import forecast_decisions_guard
@@ -115,6 +119,197 @@ def test_milp_selection_stable_under_small_forecast_perturbations() -> None:
 
     assert set(perturbed_solution.squad) == set(solution.squad)
     assert set(perturbed_solution.lineup_decision.lineup) == set(solution.lineup_decision.lineup)
+
+
+def test_expected_realized_evaluator_matches_hand_captain_and_vice_case() -> None:
+    rules = default_rules()
+    squad = _squad_frame()
+    squad["p_appearance"] = 1.0
+    squad.loc[squad["player_uid"].eq("MID_4"), ["expected_points", "p_appearance"]] = [10.0, 0.5]
+    squad.loc[squad["player_uid"].eq("MID_3"), ["expected_points", "p_appearance"]] = [7.0, 1.0]
+    lineup = (
+        "GKP_0",
+        "DEF_0",
+        "DEF_1",
+        "DEF_2",
+        "DEF_3",
+        "MID_0",
+        "MID_1",
+        "MID_2",
+        "MID_3",
+        "MID_4",
+        "FWD_0",
+    )
+    bench = ("GKP_1", "DEF_4", "FWD_1", "FWD_2")
+    decision = optimize_lineup(squad, rules, appearance_aware=False)
+    decision = decision.__class__(
+        lineup=lineup,
+        captain="MID_4",
+        vice_captain="MID_3",
+        bench=bench,
+        objective=0.0,
+        formation="3-5-2",
+        method="hand",
+    )
+
+    result = evaluate_expected_realized_points(squad, decision, rules, max_scenarios=None)
+
+    assert result.expected_captain_bonus == pytest.approx(10.0)
+    assert result.expected_vice_captain_contingency == pytest.approx(3.5)
+    assert result.probability_all_starters_appear == pytest.approx(0.5)
+
+
+def test_expected_realized_autosub_rules_goalkeeper_and_formation() -> None:
+    rules = default_rules()
+    squad = _squad_frame()
+    squad["p_appearance"] = 1.0
+    squad.loc[squad["player_uid"].eq("GKP_0"), "p_appearance"] = 0.0
+    squad.loc[squad["player_uid"].eq("GKP_1"), "expected_points"] = 4.0
+    squad.loc[squad["player_uid"].eq("DEF_4"), "p_appearance"] = 0.0
+    lineup = ("GKP_0", "DEF_0", "DEF_1", "DEF_2", "DEF_3", "DEF_4", "MID_0", "MID_1", "MID_2", "MID_3", "FWD_0")
+    bench = ("GKP_1", "MID_4", "FWD_1", "FWD_2")
+    decision = optimize_lineup(squad, rules, appearance_aware=False).__class__(
+        lineup=lineup,
+        captain="MID_0",
+        vice_captain="MID_1",
+        bench=bench,
+        objective=0.0,
+        formation="5-4-1",
+        method="hand",
+    )
+
+    result = evaluate_expected_realized_points(squad, decision, rules, max_scenarios=None)
+
+    assert result.expected_automatic_substitutions == pytest.approx(2.0)
+    assert result.probability_unreplaced_starter == pytest.approx(0.0)
+    assert result.expected_autosub_contribution >= 4.0
+
+
+def test_bench_order_materially_changes_expected_realized_points() -> None:
+    rules = default_rules()
+    squad = _squad_frame()
+    squad["p_appearance"] = 1.0
+    squad.loc[squad["player_uid"].eq("MID_0"), "p_appearance"] = 0.0
+    squad.loc[squad["player_uid"].eq("FWD_2"), ["expected_points", "p_appearance"]] = [8.0, 1.0]
+    squad.loc[squad["player_uid"].eq("DEF_3"), ["expected_points", "p_appearance"]] = [1.0, 1.0]
+    lineup = ("GKP_0", "DEF_0", "DEF_1", "DEF_2", "MID_0", "MID_1", "MID_2", "MID_3", "MID_4", "FWD_0", "FWD_1")
+    good = optimize_lineup(squad, rules, appearance_aware=False).__class__(
+        lineup=lineup,
+        captain="MID_1",
+        vice_captain="MID_1",
+        bench=("GKP_1", "FWD_2", "DEF_3", "DEF_4"),
+        objective=0.0,
+        formation="3-5-2",
+        method="hand",
+    )
+    good = good.__class__(
+        lineup=good.lineup,
+        captain="MID_1",
+        vice_captain="MID_2",
+        bench=good.bench,
+        objective=good.objective,
+        formation=good.formation,
+        method=good.method,
+    )
+    bad = good.__class__(
+        lineup=good.lineup,
+        captain=good.captain,
+        vice_captain=good.vice_captain,
+        bench=("GKP_1", "DEF_3", "FWD_2", "DEF_4"),
+        objective=0.0,
+        formation=good.formation,
+        method=good.method,
+    )
+
+    assert evaluate_expected_realized_points(squad, good, rules).expected_realized_total > evaluate_expected_realized_points(
+        squad,
+        bad,
+        rules,
+    ).expected_realized_total
+
+
+def test_expected_realized_lineup_selects_better_vice_and_order() -> None:
+    rules = default_rules()
+    squad = _squad_frame()
+    squad.loc[squad["player_uid"].eq("MID_4"), ["expected_points", "p_appearance"]] = [10.0, 0.2]
+    squad.loc[squad["player_uid"].eq("MID_3"), ["expected_points", "p_appearance"]] = [7.0, 1.0]
+
+    decision, breakdown = optimize_lineup_expected_realized(squad, rules, max_scenarios=512, shortlist=200)
+
+    assert decision.captain != decision.vice_captain
+    assert breakdown.expected_realized_total == pytest.approx(decision.objective)
+    assert breakdown.expected_vice_captain_contingency > 0
+
+
+def test_expected_realized_optimizer_prefers_stronger_bench_when_it_improves_realized_score() -> None:
+    rules = default_rules()
+    candidates = _small_extra_candidate_frame()
+    candidates["p_appearance"] = 1.0
+    candidates.loc[candidates["player_uid"].eq("MID_4"), "p_appearance"] = 0.05
+    bench_mid = pd.DataFrame(
+        [
+            {
+                "player_uid": "MID_reliable_bench",
+                "player_name": "Reliable Bench Mid",
+                "fpl_position": "MID",
+                "player_team_uid": "team_reliable",
+                "price_tenths": 45,
+                "expected_points": 4.0,
+                "p_appearance": 1.0,
+                "actual_points": 4.0,
+                "actual_minutes": 90,
+            }
+        ]
+    )
+    candidates = pd.concat([candidates, bench_mid], ignore_index=True)
+
+    d1 = optimize_squad_milp(candidates, rules)
+    d2 = optimize_squad_expected_realized(candidates, rules, search_limit=30, max_scenarios=512)
+    indexed = candidates.set_index("player_uid", drop=False)
+    d1_eval = evaluate_expected_realized_points(indexed.loc[list(d1.squad)].reset_index(drop=True), d1.lineup_decision, rules)
+
+    assert d2.objective >= d1_eval.expected_realized_total
+    assert (d2.diagnostics or {})["expected_bench_points_used"] > d1_eval.expected_bench_points_used
+
+
+def test_expected_realized_optimizer_allows_unused_bank_and_does_not_reward_spend() -> None:
+    rules = default_rules()
+    candidates = _small_extra_candidate_frame()
+    expensive = candidates.copy()
+    expensive.loc[expensive["player_uid"].eq("MID_upgrade_0"), "price_tenths"] += 50
+
+    cheap = optimize_squad_expected_realized(candidates, rules, search_limit=5, max_scenarios=256)
+    costly = optimize_squad_expected_realized(expensive, rules, search_limit=5, max_scenarios=256)
+
+    assert cheap.objective == pytest.approx(costly.objective)
+    assert cheap.bank_tenths >= costly.bank_tenths
+
+
+def test_expected_realized_optimizer_is_deterministic_and_does_not_blacklist_cheap_players() -> None:
+    rules = default_rules()
+    cheap = pd.DataFrame(
+        [
+            {
+                "player_uid": "cheap_low_projection_def",
+                "player_name": "Cheap Low Projection Def",
+                "fpl_position": "DEF",
+                "player_team_uid": "team_cheap",
+                "price_tenths": 40,
+                "expected_points": 0.1,
+                "p_appearance": 0.2,
+                "actual_points": 0.0,
+                "actual_minutes": 0,
+            }
+        ]
+    )
+    candidates = pd.concat([_small_extra_candidate_frame(), cheap], ignore_index=True)
+
+    first = optimize_squad_expected_realized(candidates, rules, search_limit=20, max_scenarios=256)
+    second = optimize_squad_expected_realized(candidates, rules, search_limit=20, max_scenarios=256)
+
+    assert first.squad == second.squad
+    assert first.lineup_decision == second.lineup_decision
+    assert "cheap_low_projection_def" in set(candidates["player_uid"])
 
 
 def test_multi_gameweek_transfer_planner_tracks_bank_rollover_hits_and_lineups() -> None:

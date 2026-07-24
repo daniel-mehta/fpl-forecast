@@ -109,6 +109,7 @@ def apply_autosubs_and_score(
     bench = list(decision.bench)
     active = starters.copy()
     used_bench: list[str] = []
+    unreplaced_starters: list[str] = []
     for starter in starters:
         if _appeared(frame.loc[starter]):
             continue
@@ -119,6 +120,8 @@ def apply_autosubs_and_score(
             active.append(replacement)
             bench.remove(replacement)
             used_bench.append(replacement)
+        else:
+            unreplaced_starters.append(starter)
     captain = decision.captain
     vice = decision.vice_captain
     captain_multiplier_player = None
@@ -127,6 +130,7 @@ def apply_autosubs_and_score(
     elif vice in active and _appeared(frame.loc[vice]):
         captain_multiplier_player = vice
     points = sum(float(frame.loc[player, "actual_points"]) for player in active)
+    autosub_points = sum(float(frame.loc[player, "actual_points"]) for player in used_bench)
     captain_points = 0.0
     if captain_multiplier_player is not None:
         captain_points = float(frame.loc[captain_multiplier_player, "actual_points"])
@@ -136,6 +140,8 @@ def apply_autosubs_and_score(
         "captain_bonus_points": captain_points,
         "active_players": tuple(active),
         "autosub_players": tuple(used_bench),
+        "autosub_points": autosub_points,
+        "unreplaced_starters": tuple(unreplaced_starters),
         "captain_multiplier_player": captain_multiplier_player,
     }
 

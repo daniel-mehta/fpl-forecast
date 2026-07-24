@@ -15,9 +15,10 @@ from fpl_forecast.decision.inputs import (
     candidate_slice,
     load_decision_candidates,
 )
+from fpl_forecast.decision.expected_realized import evaluate_expected_realized_points
 from fpl_forecast.decision.lineup import apply_autosubs_and_score, optimize_lineup
 from fpl_forecast.decision.metrics import compare_models, decision_metrics, selected_player_calibration
-from fpl_forecast.decision.milp import optimize_squad_milp
+from fpl_forecast.decision.milp import optimize_squad_expected_realized, optimize_squad_milp
 from fpl_forecast.decision.rules import (
     assert_rules_match_config,
     default_rules,
@@ -73,55 +74,91 @@ def run_decision_backtest(
     for row in groups.itertuples(index=False):
         for model_name in config.comparison_models:
             universe = candidate_slice(candidates, season=row.season, gameweek=int(row.gameweek), model_name=model_name)
-            solution = _optimize_squad_with_fallback(universe, rules, config)
-            mean_only = optimize_lineup(
-                universe.set_index("player_uid").loc[list(solution.squad)].reset_index(),
-                rules,
-                appearance_aware=False,
-            )
-            selected = squad_table(solution, universe)
-            scored_payload = apply_autosubs_and_score(
-                selected.rename(columns={"actual_points": "actual_points"}),
-                solution.lineup_decision,
-                rules,
-            )
-            frozen_rows.append(
-                {
-                    "season": row.season,
-                    "gameweek": int(row.gameweek),
-                    "model_name": model_name,
-                    "objective": solution.objective,
-                    "mean_only_objective": mean_only.objective,
-                    "cost_tenths": solution.cost_tenths,
-                    "bank_tenths": solution.bank_tenths,
-                    "lineup": ",".join(solution.lineup_decision.lineup),
-                    "captain": solution.lineup_decision.captain,
-                    "vice_captain": solution.lineup_decision.vice_captain,
-                    "bench": ",".join(solution.lineup_decision.bench),
-                    "formation": solution.lineup_decision.formation,
-                    "solver_status": solution.solver_status,
-                    "solver_name": solution.solver_name,
-                    "candidate_count": solution.candidate_count,
-                    "evaluated_squads": solution.evaluated_squads,
-                    "runtime_seconds": solution.runtime_seconds,
-                    "optimality_scope": solution.optimality_scope,
-                    "objective_bound": solution.objective_bound,
-                    "objective_gap": solution.objective_gap,
-                    "solver_message": solution.solver_message,
-                    "solver_nodes": solution.solver_nodes,
-                }
-            )
-            scored_rows.append(
-                {
-                    **frozen_rows[-1],
-                    "realized_points": scored_payload["realized_points"],
-                    "captain_bonus_points": scored_payload["captain_bonus_points"],
-                    "autosub_count": len(scored_payload["autosub_players"]),
-                    "captain_multiplier_player": scored_payload["captain_multiplier_player"],
-                }
-            )
-            selected = selected.assign(season=row.season, gameweek=int(row.gameweek), model_name=model_name)
-            squad_rows.append(selected)
+            for optimizer_variant in config.optimizer_variants:
+                solution = _optimize_squad_with_fallback(universe, rules, config, optimizer_variant=optimizer_variant)
+                mean_only = optimize_lineup(
+                    universe.set_index("player_uid").loc[list(solution.squad)].reset_index(),
+                    rules,
+                    appearance_aware=False,
+                )
+                selected = squad_table(solution, universe)
+                diagnostics = dict(solution.diagnostics or {})
+                if "expected_realized_total" not in diagnostics:
+                    diagnostics.update(
+                        evaluate_expected_realized_points(
+                            selected,
+                            solution.lineup_decision,
+                            rules,
+                            max_scenarios=config.expected_realized_scenarios,
+                            seed=config.expected_realized_seed,
+                        ).to_dict()
+                    )
+                scored_payload = apply_autosubs_and_score(
+                    selected.rename(columns={"actual_points": "actual_points"}),
+                    solution.lineup_decision,
+                    rules,
+                )
+                decision_model = f"{model_name}:{optimizer_variant}"
+                frozen_rows.append(
+                    {
+                        "season": row.season,
+                        "gameweek": int(row.gameweek),
+                        "model_name": model_name,
+                        "optimizer_variant": optimizer_variant,
+                        "decision_model": decision_model,
+                        "objective": solution.objective,
+                        "mean_only_objective": mean_only.objective,
+                        "expected_nominal_starting_xi_points": diagnostics.get("expected_nominal_starting_xi_points"),
+                        "expected_autosub_contribution": diagnostics.get("expected_autosub_contribution"),
+                        "expected_captain_bonus": diagnostics.get("expected_captain_bonus"),
+                        "expected_vice_captain_contingency": diagnostics.get("expected_vice_captain_contingency"),
+                        "expected_realized_total": diagnostics.get("expected_realized_total", solution.objective),
+                        "probability_all_starters_appear": diagnostics.get("probability_all_starters_appear"),
+                        "expected_automatic_substitutions": diagnostics.get("expected_automatic_substitutions"),
+                        "probability_unreplaced_starter": diagnostics.get("probability_unreplaced_starter"),
+                        "expected_bench_points_used": diagnostics.get("expected_bench_points_used"),
+                        "scenario_count": diagnostics.get("scenario_count"),
+                        "analytic_method": diagnostics.get("analytic_method"),
+                        "cost_tenths": solution.cost_tenths,
+                        "bank_tenths": solution.bank_tenths,
+                        "lineup": ",".join(solution.lineup_decision.lineup),
+                        "captain": solution.lineup_decision.captain,
+                        "vice_captain": solution.lineup_decision.vice_captain,
+                        "bench": ",".join(solution.lineup_decision.bench),
+                        "formation": solution.lineup_decision.formation,
+                        "solver_status": solution.solver_status,
+                        "solver_name": solution.solver_name,
+                        "candidate_count": solution.candidate_count,
+                        "evaluated_squads": solution.evaluated_squads,
+                        "runtime_seconds": solution.runtime_seconds,
+                        "optimality_scope": solution.optimality_scope,
+                        "objective_bound": solution.objective_bound,
+                        "objective_gap": solution.objective_gap,
+                        "solver_message": solution.solver_message,
+                        "solver_nodes": solution.solver_nodes,
+                    }
+                )
+                scored_rows.append(
+                    {
+                        **frozen_rows[-1],
+                        "realized_points": scored_payload["realized_points"],
+                        "captain_bonus_points": scored_payload["captain_bonus_points"],
+                        "autosub_count": len(scored_payload["autosub_players"]),
+                        "autosub_points": scored_payload["autosub_points"],
+                        "unreplaced_starter_count": len(scored_payload["unreplaced_starters"]),
+                        "captain_multiplier_player": scored_payload["captain_multiplier_player"],
+                        "captain_fallback_used": scored_payload["captain_multiplier_player"]
+                        == solution.lineup_decision.vice_captain,
+                    }
+                )
+                selected = selected.assign(
+                    season=row.season,
+                    gameweek=int(row.gameweek),
+                    model_name=model_name,
+                    optimizer_variant=optimizer_variant,
+                    decision_model=decision_model,
+                )
+                squad_rows.append(selected)
     frozen = pd.DataFrame(frozen_rows)
     assert_frozen_decisions_target_free(frozen, config.forbidden_frozen_columns)
     scored = pd.DataFrame(scored_rows)
@@ -134,8 +171,8 @@ def run_decision_backtest(
     metrics = decision_metrics(scored)
     comparison = compare_models(
         scored,
-        left="X2_TEAM_CONSTRAINED_SIM_M3",
-        right="X2_TEAM_CONSTRAINED_SIM_M5",
+        left=f"{config.default_model}:D2_EXPECTED_REALIZED_POINTS",
+        right=f"{config.default_model}:D1_MEAN_ONLY_MILP",
     )
     metrics_paths = {
         "optimized_squads": _write_frame(squads, run_dir / "optimized_squads.csv"),
@@ -157,8 +194,8 @@ def run_decision_backtest(
         "config": asdict(config),
         "decisions": int(len(frozen)),
         "git": _git_metadata(),
-        "solver": "scipy_highs_milp",
-        "optimality_scope": "globally optimal for the full candidate MILP objective",
+        "solver": "scipy_highs_milp plus expected-realized local search",
+        "optimality_scope": "D1 exact MILP benchmark and D2 deterministic expected-realized challenger",
     }
     (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
     return DecisionRunResult(run_id, run_dir, frozen_path, scored_path, metrics_paths, int(len(frozen)))
@@ -170,7 +207,7 @@ def compare_decisions(*, run_id: str, reports_dir: Path | str = DECISION_REPORTS
     comparison = pd.read_csv(run_dir / "model_comparison.csv")
     lines = [f"run_id={run_id}", "decision_metrics:"]
     lines.extend(
-        f"{row.model_name}: decisions={int(row.decisions)} expected={row.mean_expected_score:.2f} "
+        f"{row.decision_model}: decisions={int(row.decisions)} expected={row.mean_expected_score:.2f} "
         f"realized={row.mean_realized_points:.2f} captain_bonus={row.mean_captain_bonus:.2f} "
         f"bank={row.mean_bank_tenths:.1f}"
         for row in metrics.itertuples(index=False)
@@ -178,7 +215,7 @@ def compare_decisions(*, run_id: str, reports_dir: Path | str = DECISION_REPORTS
     if not comparison.empty:
         row = comparison.iloc[0]
         lines.append(
-            f"X2_M3_vs_X2_M5: mean_realized_difference={row['mean_realized_difference']:.2f} "
+            f"{row['left_model']}_vs_{row['right_model']}: mean_realized_difference={row['mean_realized_difference']:.2f} "
             f"captain_agreement={row['captain_agreement']:.3f}"
         )
     return lines
@@ -194,6 +231,7 @@ def inspect_decision_run(*, run_id: str, reports_dir: Path | str = DECISION_REPO
         f"mode={manifest['mode']}",
         f"decisions={len(frozen)}",
         f"models={','.join(manifest['config']['comparison_models'])}",
+        f"optimizer_variants={','.join(manifest['config'].get('optimizer_variants', []))}",
         f"all_legal={bool(audit['legal'].all())}",
         f"max_cost_tenths={int(frozen['cost_tenths'].max())}",
         f"min_bank_tenths={int(frozen['bank_tenths'].min())}",
@@ -237,9 +275,19 @@ def forecast_decisions_guard(*, season: str, gameweek: int | None, as_of: str) -
     raise ValueError("Current decision optimization requires genuine current xPoints artifacts; none were written.")
 
 
-def _optimize_squad_with_fallback(candidates: pd.DataFrame, rules, config):
-    del config
-    return optimize_squad_milp(candidates, rules, appearance_aware=True)
+def _optimize_squad_with_fallback(candidates: pd.DataFrame, rules, config, *, optimizer_variant: str):
+    if optimizer_variant == "D1_MEAN_ONLY_MILP":
+        return optimize_squad_milp(candidates, rules, appearance_aware=True)
+    if optimizer_variant == "D2_EXPECTED_REALIZED_POINTS":
+        return optimize_squad_expected_realized(
+            candidates,
+            rules,
+            search_limit=config.expected_realized_search_limit,
+            search_iterations=config.expected_realized_search_iterations,
+            max_scenarios=config.expected_realized_scenarios,
+            seed=config.expected_realized_seed,
+        )
+    raise ValueError(f"Unknown optimizer variant: {optimizer_variant}")
 
 
 def _constraint_audit(frozen: pd.DataFrame, rules) -> pd.DataFrame:
