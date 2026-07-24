@@ -5,23 +5,11 @@ decision system. It combines data engineering, statistical football modelling,
 probabilistic FPL point simulation, backtesting, operational publication, and exact squad
 optimization in one reproducible `uv` workspace.
 
-The project is also a technical foundation for later football performance forecasting and player
-valuation work: the current FPL xPoints stack establishes the data lineage, modelling interfaces,
-simulation machinery, and decision constraints needed before moving beyond FPL scoring.
-
 Unofficial project. Not affiliated with, endorsed by, or associated with the Premier League or
 Fantasy Premier League.
 
-## Current Status
-
-Phases 1 through 8 are implemented and covered by offline tests and phase reports. The repository is
-locally operational and prepared for static GitHub Pages publication through the Vite frontend.
-Genuine 2026-27 operation is still guarded until the official FPL payload identifies the target
-season and passes the launch, rule, identity, and model checks. The project should not be described
-as production proven or as evidence of sustained live-season FPL performance.
-
-The latest public frontend preparation deliberately supports a waiting state. GitHub Pages hosts
-only static frontend assets; it does not run the Python forecasting pipeline in the browser.
+## Status
+Historical backtesting and the local operational pipeline are implemented. Live 2026-27 forecasting remains guarded until the official FPL data identifies the new season. Live-season forecast performance has not yet been validated.
 
 ## What The System Does
 
@@ -123,8 +111,8 @@ Detailed evidence is in the phase reports. These validation seasons are not an u
 holdout; they were used during iterative development. Gameweek 1 results contain only two folds and
 therefore have high uncertainty.
 
-| Layer | Seasons / Mode | Population Or Grain | Selected Evidence |
-| --- | --- | --- | --- |
+| Layer | Evaluation scope | Selected evidence |
+| --- | --- | --- |
 | Team goals | `2023-24`, `2024-25`; rolling; fixture goal sides | T2 improved goal MAE to `0.9489` versus T1 `0.9847` and T0 `1.0269`; block-bootstrap T2 minus T0 goal-MAE difference `-0.0754`, 95% CI `[-0.0967, -0.0538]`. |
 | Team probabilities | `2023-24`, `2024-25`; rolling; fixture/team-fixture | T2 clean-sheet Brier `0.1643` versus T1 `0.1675` and T0 `0.1727`; match-outcome log loss `0.9679` versus T1 `1.0118` and T0 `1.0696`. |
 | Dixon-Coles challenger | `2023-24`, `2024-25`; rolling; fixture | T3 changed scores only marginally: outcome log loss `0.9677` versus T2 `0.9679`, but joint scoreline NLL worsened to `3.0332` versus T2 `3.0324`; T2 remains default. |
@@ -243,22 +231,6 @@ Generated real-data artifacts live under ignored directories such as `data/raw/`
   integration are not implemented.
 - No claims are made about real-world FPL rank, profitability, causal performance, or professional
   club validation.
-
-## Roadmap
-
-Phase A: FPL forecasting and decision system.
-
-- Phases 1-8: data ingestion, identity, leakage-safe backtesting, team models, minutes, xPoints,
-  optimization, operational readiness, and local dashboard contract.
-- Phase 9: public dashboard and clean web publication.
-- Phase 10: xPoints post-mortem after live evidence exists.
-
-Next major branch: B, football performance forecasting and player valuation.
-
-The current FPL xPoints system is the technical foundation. Later work would estimate expected
-on-field contribution, expected minutes, role-adjusted performance, team and opponent context,
-future performance over defined periods, and value relative to age, cost, or contract. That branch
-is not implemented here.
 
 ## Data Sources And Attribution
 
