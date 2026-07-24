@@ -124,6 +124,10 @@ def _historical_player_fixtures_frame(
         "team_a_score",
         "team_h_score",
         "yellow_cards",
+        "defensive_contribution",
+        "clearances_blocks_interceptions",
+        "recoveries",
+        "tackles",
         "mng_clean_sheets",
         "mng_draw",
         "mng_goals_scored",
@@ -149,4 +153,22 @@ def _historical_player_fixtures_frame(
     output["retrieved_at"] = metadata["retrieved_at"]
     output["season"] = season
     output["raw_snapshot_path"] = raw_path
-    return output
+    return _collapse_exact_duplicate_player_fixture_rows(output)
+
+
+def _collapse_exact_duplicate_player_fixture_rows(frame: pd.DataFrame) -> pd.DataFrame:
+    key = ["season", "fixture_id", "player_id"]
+    duplicated = frame.loc[frame.duplicated(key, keep=False)]
+    if duplicated.empty:
+        return frame
+    conflicting = (
+        duplicated.astype("string")
+        .groupby(key, dropna=False)
+        .nunique(dropna=False)
+        .gt(1)
+        .any(axis=1)
+    )
+    if conflicting.any():
+        examples = ["/".join(map(str, key_values)) for key_values in conflicting.loc[conflicting].index[:5]]
+        raise ValueError(f"Historical player-fixture data contains conflicting duplicate keys: {', '.join(examples)}")
+    return frame.drop_duplicates(key).reset_index(drop=True)

@@ -231,6 +231,87 @@ def test_historical_normalization_maps_assistant_manager_element_type(tmp_path):
     assert history.loc[0, "fpl_position"] == "AM"
 
 
+def test_historical_normalization_collapses_exact_duplicate_player_fixture_rows(tmp_path):
+    raw_dir = tmp_path / "raw" / "vaastav"
+    normalized_dir = tmp_path / "normalized"
+    merged = (
+        "name,position,team,element,fixture,round,minutes,total_points,value,"
+        "was_home,opponent_team,kickoff_time\n"
+        "Duplicate Player,MID,Arsenal,11,101,1,90,5,75,true,2,2025-08-01T12:00:00Z\n"
+        "Duplicate Player,MID,Arsenal,11,101,1,90,5,75,true,2,2025-08-01T12:00:00Z\n"
+    )
+    players = "id,code,first_name,second_name,web_name,team,element_type,now_cost\n11,1001,Duplicate,Player,Dup,1,3,75\n"
+    write_raw_snapshot(
+        raw_dir,
+        season="2025-26",
+        endpoint_name="merged_gw",
+        content=merged.encode(),
+        source_url="https://example.test/merged_gw.csv",
+        http_status=200,
+        response_headers={},
+        source="vaastav",
+        source_version="abc123",
+        content_type="csv",
+    )
+    write_raw_snapshot(
+        raw_dir,
+        season="2025-26",
+        endpoint_name="players_raw",
+        content=players.encode(),
+        source_url="https://example.test/players_raw.csv",
+        http_status=200,
+        response_headers={},
+        source="vaastav",
+        source_version="abc123",
+        content_type="csv",
+    )
+
+    outputs = normalize_historical(season="2025-26", raw_dir=raw_dir, normalized_dir=normalized_dir)
+    history = pd.read_parquet(outputs[0])
+
+    assert len(history) == 1
+    assert history.duplicated(["season", "fixture_id", "player_id"]).sum() == 0
+
+
+def test_historical_normalization_rejects_conflicting_duplicate_player_fixture_rows(tmp_path):
+    raw_dir = tmp_path / "raw" / "vaastav"
+    normalized_dir = tmp_path / "normalized"
+    merged = (
+        "name,position,team,element,fixture,round,minutes,total_points,value,"
+        "was_home,opponent_team,kickoff_time\n"
+        "Duplicate Player,MID,Arsenal,11,101,1,90,5,75,true,2,2025-08-01T12:00:00Z\n"
+        "Duplicate Player,MID,Arsenal,11,101,1,45,2,75,true,2,2025-08-01T12:00:00Z\n"
+    )
+    players = "id,code,first_name,second_name,web_name,team,element_type,now_cost\n11,1001,Duplicate,Player,Dup,1,3,75\n"
+    write_raw_snapshot(
+        raw_dir,
+        season="2025-26",
+        endpoint_name="merged_gw",
+        content=merged.encode(),
+        source_url="https://example.test/merged_gw.csv",
+        http_status=200,
+        response_headers={},
+        source="vaastav",
+        source_version="abc123",
+        content_type="csv",
+    )
+    write_raw_snapshot(
+        raw_dir,
+        season="2025-26",
+        endpoint_name="players_raw",
+        content=players.encode(),
+        source_url="https://example.test/players_raw.csv",
+        http_status=200,
+        response_headers={},
+        source="vaastav",
+        source_version="abc123",
+        content_type="csv",
+    )
+
+    with pytest.raises(ValueError, match="conflicting duplicate keys"):
+        normalize_historical(season="2025-26", raw_dir=raw_dir, normalized_dir=normalized_dir)
+
+
 def test_vaastav_missing_required_columns_fails(tmp_path):
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/merged_gw.csv"):

@@ -1,7 +1,7 @@
 # FPL Forecast frontend
 
 A basic static Vite, React and TypeScript view of the latest successful
-`phase8_frontend_v1` publication. The Python pipeline remains responsible for data ingestion,
+`phase9_frontend_v1` publication. The Python pipeline remains responsible for data ingestion,
 modeling, validation and atomic publication.
 
 ## Requirements
@@ -31,12 +31,15 @@ npm run preview
 seven frontend contract artifacts into `public/data/`. The generated data files, `node_modules/`
 and `dist/` are ignored by Git. Original operational outputs are never modified.
 
-The current operational publication uses representative mocked target-season data, so the UI
-displays a prominent `DEMO DATA` warning. When generated artifacts are absent, including on the
-initial GitHub Pages build, the UI displays a safe waiting state instead of forecast recommendations.
+Local operational publications can be either mocked or official-current. Mocked publications display
+a prominent `DEMO DATA` warning. Official-current publications display player prices, opponents,
+home/away context, forecast timestamps, and source/disclaimer text without the demo banner. When
+generated artifacts are absent, including on the initial GitHub Pages build, the UI displays a safe
+waiting state instead of forecast recommendations.
 
 The manual Pages workflow builds the frontend without running `sync-data`, so locally synchronized
-demo artifacts are never included in the public artifact. See `docs/deployment/github-pages.md`
+forecast artifacts are never included in the public artifact unless a later deployment workflow
+explicitly adds that step. See `docs/deployment/github-pages.md`
 from the repository root for setup and deployment steps.
 
 The repository documentation link defaults to the repository URL found in Git configuration. It

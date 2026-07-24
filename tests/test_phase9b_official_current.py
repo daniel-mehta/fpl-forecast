@@ -6,7 +6,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from fpl_forecast.operations.model_chain import run_operational_model_chain
+from fpl_forecast.operations.model_chain import _add_gameweek_fixture_metadata, _gameweek_fixture_metadata, run_operational_model_chain
+from fpl_forecast.operations.training_seasons import resolve_historical_training_seasons
 
 
 def test_official_mode_uses_current_inputs_and_contains_no_mock_markers(tmp_path, phase8_normalized_dir) -> None:
@@ -52,7 +53,7 @@ def test_mock_mode_remains_explicitly_mocked(tmp_path, phase8_normalized_dir) ->
 
 def test_official_mode_excludes_assistant_managers(tmp_path, phase8_normalized_dir) -> None:
     normalized_dir = _copy_phase8_normalized(tmp_path, phase8_normalized_dir)
-    _write_official_current_tables(normalized_dir, include_assistant_manager=True)
+    _write_official_current_tables(normalized_dir, include_assistant_manager=True, include_unselectable=True)
 
     result = run_operational_model_chain(
         season="2026-27",
@@ -63,6 +64,9 @@ def test_official_mode_excludes_assistant_managers(tmp_path, phase8_normalized_d
     )
 
     assert "player_code_99999999" not in set(result.decision_candidates["player_uid"])
+    assert "player_code_99999998" not in set(result.decision_candidates["player_uid"])
+    exclusions = pd.read_parquet(normalized_dir / "2026-27" / "current_player_exclusions.parquet")
+    assert set(exclusions["exclusion_reason"]) == {"non_player_entity", "official_can_select_false"}
 
 
 def test_official_mode_fails_closed_on_invalid_prices(tmp_path, phase8_normalized_dir) -> None:
@@ -107,10 +111,127 @@ def test_official_mode_fails_closed_on_ambiguous_team_identity(tmp_path, phase8_
         )
 
 
+def test_training_season_resolution_includes_2025_26_and_excludes_target_season(tmp_path) -> None:
+    normalized_dir = _write_training_season_artifacts(tmp_path, ["2022-23", "2023-24", "2024-25", "2025-26", "2026-27"])
+
+    seasons = resolve_historical_training_seasons(target_season="2026-27", normalized_dir=normalized_dir)
+
+    assert seasons == ["2022-23", "2023-24", "2024-25", "2025-26"]
+
+
+def test_training_season_resolution_fails_when_phase2_artifact_lacks_required_season(tmp_path) -> None:
+    normalized_dir = _write_training_season_artifacts(tmp_path, ["2022-23", "2023-24", "2024-25", "2025-26"])
+    phase2 = normalized_dir / "phase2"
+    pd.DataFrame({"season": ["2022-23", "2023-24", "2024-25"]}).to_parquet(
+        phase2 / "features_player_fixture.parquet",
+        index=False,
+    )
+
+    with pytest.raises(ValueError, match="2025-26"):
+        resolve_historical_training_seasons(target_season="2026-27", normalized_dir=normalized_dir)
+
+
+def test_gameweek_fixture_metadata_formats_home_away_double_blank_and_postponed() -> None:
+    target_rows = pd.DataFrame(
+        [
+            _target_row("player_home", "fixture_1", "2026-08-15T12:30:00Z", "team_arsenal", "Arsenal", "ARS", "H"),
+            _target_row("player_away", "fixture_2", "2026-08-15T15:00:00Z", "team_chelsea", "Chelsea", "CHE", "A"),
+            _target_row("player_double", "fixture_3", "2026-08-16T14:00:00Z", "team_arsenal", "Arsenal", "ARS", "H"),
+            _target_row("player_double", "fixture_4", "2026-08-17T20:00:00Z", "team_chelsea", "Chelsea", "CHE", "A"),
+            _target_row("player_postponed", "fixture_5", pd.NaT, "team_brighton", "Brighton", "BHA", "H"),
+            _target_row("player_double", "fixture_4", "2026-08-17T20:00:00Z", "team_chelsea", "Chelsea", "CHE", "A"),
+        ]
+    )
+
+    metadata = _gameweek_fixture_metadata(target_rows).set_index("player_uid")
+    blank = pd.DataFrame(
+        [
+            {
+                "season": "2026-27",
+                "gameweek": 1,
+                "player_uid": "player_blank",
+                "model_name": "X",
+                "pre_deadline_population": "pre_deadline_history_active",
+                "expected_points": 0.0,
+            }
+        ]
+    )
+    blank_with_metadata = _add_gameweek_fixture_metadata(blank, target_rows)
+
+    assert metadata.loc["player_home", "opponent_display"] == "ARS (H)"
+    assert metadata.loc["player_away", "opponent_display"] == "CHE (A)"
+    assert metadata.loc["player_double", "opponent_display"] == "ARS (H), CHE (A)"
+    assert metadata.loc["player_double", "fixture_count"] == 2
+    assert metadata.loc["player_postponed", "opponent_display"] == "BHA (H)"
+    assert blank_with_metadata.iloc[0]["fixture_count"] == 0
+    assert blank_with_metadata.iloc[0]["opponent_display"] == "No fixture"
+
+
+def test_gameweek_fixture_metadata_handles_missing_optional_opponent_fields() -> None:
+    target_rows = pd.DataFrame(
+        [
+            {
+                "season": "2026-27",
+                "gameweek": 1,
+                "player_uid": "player_missing",
+                "fixture_key": "fixture_1",
+                "kickoff_time": "2026-08-15T12:30:00Z",
+            }
+        ]
+    )
+
+    metadata = _gameweek_fixture_metadata(target_rows)
+
+    assert metadata.iloc[0]["fixture_count"] == 1
+    assert metadata.iloc[0]["opponent_display"] == "No fixture"
+
+
 def _copy_phase8_normalized(tmp_path: Path, source: Path) -> Path:
     target = tmp_path / "normalized"
     shutil.copytree(source, target)
     return target
+
+
+def _write_training_season_artifacts(tmp_path: Path, seasons: list[str]) -> Path:
+    normalized_dir = tmp_path / "normalized"
+    for season in seasons:
+        season_dir = normalized_dir / season
+        season_dir.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame({"season": [season]}).to_parquet(season_dir / "historical_player_fixtures.parquet", index=False)
+    historical = [season for season in seasons if season != "2026-27"]
+    phase2 = normalized_dir / "phase2"
+    phase2.mkdir(parents=True, exist_ok=True)
+    for filename in [
+        "dim_fixture.parquet",
+        "fact_player_fixture.parquet",
+        "features_player_fixture.parquet",
+        "team_season_map.parquet",
+        "player_season_map.parquet",
+    ]:
+        pd.DataFrame({"season": historical}).to_parquet(phase2 / filename, index=False)
+    return normalized_dir
+
+
+def _target_row(
+    player_uid: str,
+    fixture_key: str,
+    kickoff_time,
+    opponent_team_uid: str,
+    opponent_official_name: str,
+    opponent_short_name: str,
+    home_away: str,
+) -> dict[str, object]:
+    return {
+        "season": "2026-27",
+        "gameweek": 1,
+        "player_uid": player_uid,
+        "fixture_key": fixture_key,
+        "kickoff_time": kickoff_time,
+        "opponent_team_uid": opponent_team_uid,
+        "opponent_official_name": opponent_official_name,
+        "opponent_short_name": opponent_short_name,
+        "home_away": home_away,
+    }
 
 
 def _write_official_current_tables(
@@ -120,12 +241,14 @@ def _write_official_current_tables(
     invalid_price: bool = False,
     duplicate_player_code: bool = False,
     duplicate_team_name: bool = False,
+    include_unselectable: bool = False,
 ) -> None:
     season_dir = normalized_dir / "2026-27"
     season_dir.mkdir(parents=True, exist_ok=True)
     teams = _current_teams(duplicate_team_name=duplicate_team_name)
     players = _current_players(
         include_assistant_manager=include_assistant_manager,
+        include_unselectable=include_unselectable,
         invalid_price=invalid_price,
         duplicate_player_code=duplicate_player_code,
     )
@@ -181,6 +304,7 @@ def _current_teams(*, duplicate_team_name: bool) -> pd.DataFrame:
 def _current_players(
     *,
     include_assistant_manager: bool,
+    include_unselectable: bool,
     invalid_price: bool,
     duplicate_player_code: bool,
 ) -> pd.DataFrame:
@@ -213,6 +337,9 @@ def _current_players(
                         "chance_of_playing_this_round": pd.NA,
                         "selected_by_percent": 0.0,
                         "form": 0.0,
+                        "can_select": True,
+                        "can_transact": True,
+                        "removed": False,
                         "minutes": 0,
                         "total_points": 0,
                         "source": "fpl_api",
@@ -232,6 +359,16 @@ def _current_players(
                 "position_id": 5,
                 "position": "AM",
                 "entity_type": "assistant_manager",
+            }
+        )
+    if include_unselectable:
+        rows.append(
+            {
+                **rows[1],
+                "player_id": 9998,
+                "player_code": 99999998,
+                "web_name": "Official Unselectable",
+                "can_select": False,
             }
         )
     return pd.DataFrame(rows)

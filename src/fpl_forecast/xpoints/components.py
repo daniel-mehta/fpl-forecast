@@ -17,6 +17,7 @@ EVENT_COLUMNS = [
     "own_goals",
     "bonus",
     "bps",
+    "defensive_contribution",
 ]
 
 
@@ -32,7 +33,7 @@ def fit_component_priors(train: pd.DataFrame, config: XPointsConfig) -> dict[str
             minutes = float(group["minutes"].sum())
             rates[position] = 0.0 if minutes <= 0 else float(group["value"].sum() * 90.0 / minutes)
         pos_rates[column] = rates
-    player_rates = _player_rates(frame, config)
+    player_rates = _player_rates(frame, pos_rates, config)
     team_goal_history = _team_goal_history(frame)
     assisted_rate = _safe_ratio(frame["assists"].sum(), frame["goals_scored"].sum(), config.assisted_goal_prior)
     return {
@@ -57,6 +58,15 @@ def player_component_rates(test: pd.DataFrame, priors: dict[str, object], config
         output[f"{column}_per90"] = (
             merged["rate_per90"].fillna(fallback).astype(float).clip(lower=0).to_numpy()
         )
+        if "transferred_player" in test.columns:
+            transferred = test["transferred_player"].astype(bool).to_numpy()
+            output.loc[transferred, f"{column}_per90"] = (
+                output.loc[transferred, f"{column}_per90"].to_numpy(dtype=float) * 0.72
+                + fallback.loc[transferred].to_numpy(dtype=float) * 0.28
+            )
+        if "cold_start_no_history" in test.columns:
+            cold = test["cold_start_no_history"].astype(bool).to_numpy()
+            output.loc[cold, f"{column}_per90"] = fallback.loc[cold].to_numpy(dtype=float)
         output[f"{column}_fallback"] = merged["rate_per90"].isna().to_numpy()
     output["assisted_goal_rate"] = float(priors["assisted_goal_rate"])
     return output
@@ -73,6 +83,7 @@ def attacking_shares(rates: pd.DataFrame, minutes: pd.DataFrame, config: XPoints
                 "p_appearance",
                 "p_start",
                 "cold_start_no_history",
+                "transferred_player",
             ]
         ],
         on=["season", "stable_fixture_uid", "player_uid"],
@@ -80,7 +91,12 @@ def attacking_shares(rates: pd.DataFrame, minutes: pd.DataFrame, config: XPoints
     )
     expected_minutes = pd.to_numeric(frame["expected_minutes"], errors="coerce").fillna(0).clip(0, 90)
     appearance = pd.to_numeric(frame["p_appearance"], errors="coerce").fillna(0).clip(0, 1)
-    frame["active_weight"] = np.maximum(expected_minutes / 90, appearance * 0.05)
+    cold_start = frame.get("cold_start_no_history", pd.Series(False, index=frame.index)).astype(bool)
+    frame["active_weight"] = np.maximum(expected_minutes / 90, appearance * 0.10)
+    frame.loc[cold_start, "active_weight"] = np.maximum(
+        frame.loc[cold_start, "active_weight"],
+        frame.loc[cold_start, "p_appearance"].fillna(0).clip(0, 1) * 0.35,
+    )
     frame["goal_weight"] = (
         pd.to_numeric(frame["goals_scored_per90"], errors="coerce").fillna(0).clip(lower=0)
         * frame["active_weight"]
@@ -100,6 +116,15 @@ def attacking_shares(rates: pd.DataFrame, minutes: pd.DataFrame, config: XPoints
     frame["assist_share"] = frame["assist_weight"] / frame.groupby(groups)["assist_weight"].transform("sum").replace(0, np.nan)
     frame["goal_share"] = frame["goal_share"].fillna(0)
     frame["assist_share"] = frame["assist_share"].fillna(0)
+    for share_col, prefix in (("goal_share", "goal"), ("assist_share", "assist")):
+        share_sum_sq = frame.groupby(groups)[share_col].transform(lambda values: float((values.astype(float) ** 2).sum()))
+        frame[f"{prefix}_share_hhi"] = share_sum_sq
+        frame[f"effective_{prefix}_attackers"] = np.where(share_sum_sq > 0, 1.0 / share_sum_sq, 0.0)
+        weight_col = f"{prefix}_weight"
+        frame[f"nonzero_{prefix}_weight_players"] = frame.groupby(groups)[weight_col].transform(
+            lambda values: int(pd.to_numeric(values, errors="coerce").fillna(0).gt(0).sum())
+        )
+    frame["attacking_share_hhi"] = frame[["goal_share_hhi", "assist_share_hhi"]].max(axis=1)
     return frame
 
 
@@ -128,19 +153,41 @@ def award_bonus_from_bps(frame: pd.DataFrame) -> pd.Series:
     return bonus
 
 
-def _player_rates(frame: pd.DataFrame, config: XPointsConfig) -> dict[str, pd.DataFrame]:
+def _player_rates(
+    frame: pd.DataFrame,
+    pos_rates: dict[str, dict[str, float]],
+    config: XPointsConfig,
+) -> dict[str, pd.DataFrame]:
     rows = {}
     minutes = frame.groupby("player_uid")["minutes"].sum()
+    positions = (
+        frame.sort_values(["season", "gameweek"])
+        .groupby("player_uid")["fpl_position"]
+        .agg(lambda values: values.dropna().astype(str).iloc[-1] if len(values.dropna()) else "MID")
+    )
     for column in EVENT_COLUMNS:
         totals = pd.to_numeric(frame[column], errors="coerce").fillna(0).groupby(frame["player_uid"]).sum()
         table = pd.DataFrame({"player_uid": totals.index, "event_total": totals.values})
         table["minutes"] = table["player_uid"].map(minutes).fillna(0)
+        table["fpl_position"] = table["player_uid"].map(positions).fillna("MID")
+        table["position_prior_per90"] = table["fpl_position"].map(pos_rates[column]).fillna(
+            _safe_ratio(frame[column].sum() * 90, frame["minutes"].sum(), 0.0)
+        )
         table["raw_rate_per90"] = np.where(table["minutes"] > 0, table["event_total"] * 90 / table["minutes"], 0)
-        league_rate = _safe_ratio(frame[column].sum() * 90, frame["minutes"].sum(), 0.0)
         table["rate_per90"] = (
-            (table["event_total"] * 90) + (league_rate * config.component_shrink_minutes)
+            (table["event_total"] * 90) + (table["position_prior_per90"] * config.component_shrink_minutes)
         ) / (table["minutes"] + config.component_shrink_minutes)
-        rows[column] = table[["player_uid", "rate_per90", "minutes"]]
+        table["shrink_minutes"] = config.component_shrink_minutes
+        rows[column] = table[
+            [
+                "player_uid",
+                "rate_per90",
+                "raw_rate_per90",
+                "position_prior_per90",
+                "shrink_minutes",
+                "minutes",
+            ]
+        ]
     return rows
 
 

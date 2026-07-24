@@ -16,6 +16,7 @@ POINT_COMPONENTS = [
     "points_goals_conceded",
     "points_cards",
     "points_own_goals",
+    "points_defensive_contribution",
     "points_bonus",
 ]
 
@@ -60,20 +61,38 @@ def simulate_component_points(
         yellow = rng.binomial(1, _clip(row.expected_yellow_cards), config.draw_count) * app
         red = rng.binomial(1, _clip(row.expected_red_cards), config.draw_count) * app
         own = rng.binomial(1, _clip(row.expected_own_goals), config.draw_count) * app
+        expected_defensive_contribution = getattr(row, "expected_defensive_contribution", 0)
+        defensive_contribution = rng.poisson(max(expected_defensive_contribution, 0), config.draw_count) * app
+        defensive_threshold = int(getattr(row, "defensive_contribution_threshold", 10**9) or 10**9)
+        defensive_points = (defensive_contribution >= defensive_threshold).astype(int) * int(
+            getattr(row, "defensive_contribution_points", 0) or 0
+        )
         bonus = np.minimum(rng.poisson(max(row.expected_bonus, 0), config.draw_count), 3) * app
-        gc_deduct = rng.poisson(max(row.expected_goals_conceded_deduction_events, 0), config.draw_count)
+        gc_deduct = rng.poisson(max(row.expected_goals_conceded_deduction_events, 0), config.draw_count) * reached_60
         pos = row.fpl_position
-        points = app + reached_60
-        points += goals * {"GKP": 6, "DEF": 6, "MID": 5, "FWD": 4}.get(pos, 0)
-        points += assists * 3
-        points += clean * (4 if pos in {"GKP", "DEF"} else 1 if pos == "MID" else 0)
-        points += (saves // 3)
-        points += pen_saved * 5 - pen_missed * 2
-        points -= gc_deduct * (1 if pos in {"GKP", "DEF"} else 0)
-        points -= yellow + red * 3 + own * 2
-        points += bonus
+        points = np.zeros(config.draw_count, dtype=int)
+        component_draws = {
+            "expected_points_appearance": app + reached_60,
+            "expected_points_goals": goals * {"GKP": 6, "DEF": 6, "MID": 5, "FWD": 4}.get(pos, 0),
+            "expected_points_assists": assists * 3,
+            "expected_points_clean_sheets": clean * (4 if pos in {"GKP", "DEF"} else 1 if pos == "MID" else 0),
+            "expected_points_saves": saves // 3,
+            "expected_points_penalties": pen_saved * 5 - pen_missed * 2,
+            "expected_points_goals_conceded": -gc_deduct * (1 if pos in {"GKP", "DEF"} else 0),
+            "expected_points_cards": -(yellow + red * 3),
+            "expected_points_own_goals": -(own * 2),
+            "expected_points_defensive_contribution": defensive_points,
+            "expected_points_bonus": bonus,
+        }
+        for component_points in component_draws.values():
+            points += component_points
         draws[idx, :] = points.astype(np.int16)
-        summaries.append(summarize_draws(draws[idx, :]))
+        summary = summarize_draws(draws[idx, :])
+        for component, component_points in component_draws.items():
+            summary[component] = float(component_points.mean())
+        summary["component_points_sum"] = float(sum(summary[component] for component in component_draws))
+        summary["component_reconciliation_error"] = float(summary["component_points_sum"] - summary["expected_points"])
+        summaries.append(summary)
     return pd.DataFrame(summaries, index=frame.index), draws
 
 

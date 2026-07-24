@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from fpl_forecast.xpoints.components import award_bonus_from_bps
+from fpl_forecast.xpoints.components import attacking_shares, award_bonus_from_bps
 from fpl_forecast.xpoints.config import load_xpoints_config
 from fpl_forecast.xpoints.data import assert_frozen_target_free
 from fpl_forecast.xpoints.scoring import reconstruction_audit, score_frame
@@ -50,6 +50,22 @@ def test_scoring_engine_hand_calculates_all_components():
     points = score_frame(frame)
 
     assert points.tolist() == [13, 3]
+
+
+def test_scoring_engine_applies_defensive_contribution_thresholds():
+    frame = pd.DataFrame(
+        [
+            {"fpl_position": "DEF", "minutes": 90, "defensive_contribution": 10},
+            {"fpl_position": "MID", "minutes": 90, "defensive_contribution": 11},
+            {"fpl_position": "MID", "minutes": 90, "defensive_contribution": 12},
+            {"fpl_position": "FWD", "minutes": 90, "defensive_contribution": 12},
+            {"fpl_position": "GKP", "minutes": 90, "defensive_contribution": 20},
+        ]
+    )
+
+    points = score_frame(frame)
+
+    assert points.tolist() == [4, 2, 4, 4, 2]
 
 
 def test_scoring_reconstruction_audit_exact_on_real_like_rows():
@@ -150,6 +166,106 @@ def test_simulation_outputs_are_deterministic_finite_and_monotonic():
     assert np.array_equal(first_draws, second_draws)
     assert first.iloc[0]["points_p10"] <= first.iloc[0]["points_p50"] <= first.iloc[0]["points_p90"]
     assert np.isfinite(first.to_numpy()).all()
+    assert first.iloc[0]["component_reconciliation_error"] == pytest.approx(0.0)
+    assert first.iloc[0]["component_points_sum"] == pytest.approx(first.iloc[0]["expected_points"])
+
+
+def test_simulated_non_appearance_produces_exactly_zero_points():
+    config = load_xpoints_config()
+    frame = pd.DataFrame(
+        [
+            {
+                "fpl_position": "DEF",
+                "p_appearance": 0.0,
+                "p_reached_60": 0.0,
+                "expected_goals": 2.0,
+                "expected_assists": 2.0,
+                "clean_sheet_probability": 1.0,
+                "expected_saves": 10.0,
+                "expected_penalty_saves": 1.0,
+                "expected_penalty_misses": 1.0,
+                "expected_yellow_cards": 1.0,
+                "expected_red_cards": 1.0,
+                "expected_own_goals": 1.0,
+                "expected_defensive_contribution": 20.0,
+                "defensive_contribution_threshold": 10,
+                "defensive_contribution_points": 2,
+                "expected_bonus": 3.0,
+                "expected_goals_conceded_deduction_events": 5.0,
+            }
+        ]
+    )
+
+    summary, draws = simulate_component_points(frame, config=config, seed=9)
+
+    assert summary.iloc[0]["expected_points"] == 0.0
+    assert summary.iloc[0]["component_points_sum"] == 0.0
+    assert np.array_equal(draws[0], np.zeros(config.draw_count, dtype=np.int16))
+
+
+def test_attacking_shares_do_not_let_transferred_player_absorb_cold_start_team():
+    config = load_xpoints_config()
+    rates = pd.DataFrame(
+        [
+            {
+                "season": "2026-27",
+                "stable_fixture_uid": "fixture_1",
+                "player_uid": "transfer",
+                "fpl_position": "MID",
+                "player_team_uid": "team_promoted",
+                "goals_scored_per90": 0.45,
+                "assists_per90": 0.25,
+            },
+            *[
+                {
+                    "season": "2026-27",
+                    "stable_fixture_uid": "fixture_1",
+                    "player_uid": f"cold_{idx}",
+                    "fpl_position": "MID" if idx % 2 else "FWD",
+                    "player_team_uid": "team_promoted",
+                    "goals_scored_per90": 0.0,
+                    "assists_per90": 0.0,
+                }
+                for idx in range(8)
+            ],
+        ]
+    )
+    minutes = pd.DataFrame(
+        [
+            {
+                "season": "2026-27",
+                "stable_fixture_uid": "fixture_1",
+                "player_uid": "transfer",
+                "expected_minutes": 65.0,
+                "p_appearance": 0.85,
+                "p_start": 0.70,
+                "cold_start_no_history": False,
+                "transferred_player": True,
+            },
+            *[
+                {
+                    "season": "2026-27",
+                    "stable_fixture_uid": "fixture_1",
+                    "player_uid": f"cold_{idx}",
+                    "expected_minutes": 22.0,
+                    "p_appearance": 0.35,
+                    "p_start": 0.18,
+                    "cold_start_no_history": True,
+                    "transferred_player": False,
+                }
+                for idx in range(8)
+            ],
+        ]
+    )
+
+    shares = attacking_shares(rates, minutes, config)
+    transfer = shares.loc[shares["player_uid"].eq("transfer")].iloc[0]
+
+    assert transfer["goal_share"] < 0.75
+    assert transfer["assist_share"] < 0.75
+    assert transfer["effective_goal_attackers"] > 2.0
+    assert shares["goal_share"].sum() == pytest.approx(1.0)
+    assert shares["assist_share"].sum() == pytest.approx(1.0)
 
 
 def test_gameweek_aggregation_sums_draws_not_percentiles():

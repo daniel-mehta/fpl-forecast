@@ -9,7 +9,9 @@ Unofficial project. Not affiliated with, endorsed by, or associated with the Pre
 Fantasy Premier League.
 
 ## Status
-Historical backtesting and the local operational pipeline are implemented. Live 2026-27 forecasting remains guarded until the official FPL data identifies the new season. Live-season forecast performance has not yet been validated.
+Historical backtesting and the local operational pipeline are implemented. The official 2026-27
+launch payload is now recognized locally, but the first real GW1 forecast is still for review only:
+live-season forecast performance has not yet been validated, and public automation remains gated.
 
 ## What The System Does
 
@@ -65,7 +67,7 @@ flowchart LR
   B --> D["Normalized player-fixture<br/>and fixture tables"]
   D --> E["Identity, feature, cutoff,<br/>and leakage-audit layer"]
   E --> F["Team probabilities<br/>T0/T1/T2 and T3 challenger"]
-  E --> G["Expected-minutes models<br/>M0-M6"]
+  E --> G["Expected-minutes models<br/>M0-M7"]
   F --> H["Component xPoints simulation<br/>X0/X1/X2"]
   G --> H
   H --> I["MILP decision layer<br/>squad, lineup, captain, bench"]
@@ -78,8 +80,12 @@ flowchart LR
 Default model chain used by the current operational adapter:
 
 - `T2_REGULARIZED_ATTACK_DEFENCE`: weighted ridge-penalized independent Poisson team model.
-- `M3_EWMA_MINUTES`: deterministic expected-minutes baseline with strong rolling performance.
-- `X2_TEAM_CONSTRAINED_SIM_M3`: team-goal-constrained xPoints simulation using M3 minutes.
+- `M7_HIERARCHICAL_AVAILABILITY_STATE`: explicit DNP, substitute, start-under-60, start-60-to-89,
+  and start-90 state model used for official GW1 operation because it gives coherent GW1
+  appearance/start/reached-60 probabilities.
+- `X2_TEAM_CONSTRAINED_SIM_M7`: team-goal-constrained xPoints simulation using M7 minutes,
+  hierarchical attacking-rate shrinkage, current-squad share allocation, and draw-level component
+  reconciliation.
 - SciPy HiGHS MILP: full-candidate weekly squad, lineup, captain, vice-captain, and bench
   optimization.
 
@@ -87,7 +93,7 @@ Experimental challengers:
 
 - `T3_DIXON_COLES`: low-score dependence correction, retained for research but not promoted over T2.
 - `M5_REGULARIZED_STATE_SOFTMAX` and `M6_NONLINEAR_RECENCY_ENSEMBLE`: learned minutes/state
-  challengers.
+  challengers. M5 remains competitive and is retained as the main operational challenger.
 - `X2_TEAM_CONSTRAINED_SIM_M5`: xPoints challenger with M5 state probabilities.
 
 Diagnostic baselines:
@@ -95,6 +101,9 @@ Diagnostic baselines:
 - Phase 3 point baselines such as global mean, position mean, recent form, recent minutes, and
   empirical-Bayes points per 90.
 - Phase 4 team baselines `T0_LEAGUE_HOME_AWAY` and `T1_SHRUNK_ROLLING_TEAM_RATE`.
+- `M3_EWMA_MINUTES`, retained as a deterministic expected-minutes baseline. Its historical rolling
+  MAE is strong, but its mechanically derived appearance/start probabilities are not treated as
+  calibrated state probabilities.
 - Phase 7 `D0_PRICE_VALUE_BASELINE` for market-price comparison in decision backtests.
 
 Operational safeguards:
@@ -102,8 +111,12 @@ Operational safeguards:
 - Launch detection rejects stale current-season payloads.
 - Rule drift enters review instead of silently running changed FPL rules.
 - Team/player identity ambiguity enters review.
+- Teams without Premier League history use a fold-fitted newly observed/promoted-team prior instead
+  of an exact neutral attack/defence effect.
+- Expected component points are aggregated from the same simulation draws as total expected points,
+  so component means reconcile with total xPoints within floating-point tolerance.
 - Publication is atomic and preserves the last-known-good output on failure.
-- Frontend artifacts use a stable `phase8_frontend_v1` contract.
+- Frontend artifacts use a stable `phase9_frontend_v1` contract.
 
 ## Backtesting And Selected Results
 
@@ -120,11 +133,12 @@ therefore have high uncertainty.
 | xPoints distribution | `2023-24`, `2024-25`; rolling; player rows | X2-M3 conserved expected team goals with max absolute error `4.44e-16`; X2-M5 had better 5+ point Brier and zero-rate calibration but was not selected as the default MAE frontier. |
 | Decision optimization | `2023-24`, `2024-25`; rolling weekly-reset benchmark | 380 MILP decisions solved with status `optimal`, max gap `2.96e-16`, mean runtime `0.0892s`; all squads legal. X2-M3 had the highest realized rolling weekly-reset score in this pass, but paired intervals versus X2-M5 crossed zero. |
 | Operations | Mocked 2026-27 launch and GW1-to-GW2 transition | Mocked target-season runs execute the real T2, minutes, xPoints, and MILP chain; injected failures preserve latest-successful artifacts. Genuine 2026-27 production evidence is still pending. |
+| Phase 9B1.2 GW1 hardening | `2023-24`-`2025-26`; GW1 folds; 1,964 rows | M7 worsened GW1 MAE versus M5 (`1.3032` vs `1.2517`) but improved RMSE (`2.1463`), Spearman (`0.4895`), 5+ Brier (`0.0805`), and central-80 coverage (`0.8819`). It is the official GW1 operational choice with caveats, not a universal rolling winner. |
 
 ## Frontend And Dashboard
 
 The frontend in `frontend/` is Vite, React, TypeScript, and ordinary CSS. It reads static copies of
-the latest `phase8_frontend_v1` artifacts from `frontend/public/data/`. It does not execute Python,
+the latest `phase9_frontend_v1` artifacts from `frontend/public/data/`. It does not execute Python,
 fetch live FPL data, run optimization, or modify operational outputs.
 
 The manual GitHub Pages workflow builds the frontend without `npm run sync-data`, so the initial
@@ -220,11 +234,15 @@ Generated real-data artifacts live under ignored directories such as `data/raw/`
 ## Known Limitations
 
 - Genuine 2026-27 operation is not yet proven.
+- The current optimizer still values the starting XI and captain more than bench/autosub
+  contingencies; bench hardening is intentionally deferred to Phase 9B1.3.
+- M7 is selected for official GW1 coherence, but M3/M5 remain important challengers. M7 performs
+  worse on rolling all-row MAE and should not be treated as broadly superior.
 - Historical candidate universes are reconstructed from observed player-fixture rows, not complete
   archived pre-deadline squad-registration snapshots.
 - Historical fixture schedules from Vaastav are retrospective, so result leakage is controlled but
   original deadline-time fixture uncertainty can remain.
-- GW1 validation has only two folds.
+- GW1 validation has only three folds.
 - Transfer planning is proven only for small no-chip cases; full manager-state transfer backtesting
   needs bank, purchase prices, free transfers, and transfer history.
 - Chips, hosted scheduling, authentication, production monitoring, and commercial data-provider

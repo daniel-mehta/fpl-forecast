@@ -71,6 +71,11 @@ def fit_predict_models(
                 "rho_upper_bound": fit.parameters.get("rho_upper_bound"),
                 "minimum_tau": fit.parameters.get("minimum_tau"),
                 "solver": fit.parameters.get("solver"),
+                "unseen_attack_effect": fit.parameters.get("unseen_attack_effect"),
+                "unseen_defence_effect": fit.parameters.get("unseen_defence_effect"),
+                "unseen_prior_fixture_count": fit.parameters.get("unseen_prior_fixture_count"),
+                "unseen_prior_team_count": fit.parameters.get("unseen_prior_team_count"),
+                "unseen_prior_source": fit.parameters.get("unseen_prior_source"),
             }
         )
     return pd.concat(predictions, ignore_index=True), pd.concat(ratings, ignore_index=True), diagnostics
@@ -148,6 +153,7 @@ def fit_t2(train: pd.DataFrame, *, cutoff: pd.Timestamp, config: TeamModelConfig
     fit = _fit_t2_poisson_parameters(valid, weights, all_teams, base_home, base_away, config)
     attack = fit["attack"]
     defence = fit["defence"]
+    unseen_prior = _newly_observed_team_prior(valid, config=config)
     rows = []
     for team in all_teams:
         team_mask = valid["home_team_uid"].eq(team) | valid["away_team_uid"].eq(team)
@@ -172,6 +178,11 @@ def fit_t2(train: pd.DataFrame, *, cutoff: pd.Timestamp, config: TeamModelConfig
             "home_advantage": fit["home_advantage"],
             "attack": attack,
             "defence": defence,
+            "unseen_attack_effect": unseen_prior["attack_effect"],
+            "unseen_defence_effect": unseen_prior["defence_effect"],
+            "unseen_prior_fixture_count": unseen_prior["fixture_count"],
+            "unseen_prior_team_count": unseen_prior["team_count"],
+            "unseen_prior_source": unseen_prior["source"],
             "solver": "deterministic_newton_line_search",
             "recency_weight_source": "source_available_time",
             "loss": (
@@ -289,10 +300,16 @@ def predict_with_fit(fit: ModelFit, test: pd.DataFrame, *, config: TeamModelConf
             defence = fit.parameters["defence"]
             intercept = float(fit.parameters["intercept"])
             home_advantage = float(fit.parameters["home_advantage"])
+            unseen_attack = float(fit.parameters.get("unseen_attack_effect", 0.0))
+            unseen_defence = float(fit.parameters.get("unseen_defence_effect", 0.0))
+            home_attack = attack.get(home_team, unseen_attack)
+            away_attack = attack.get(away_team, unseen_attack)
+            home_defence = defence.get(home_team, unseen_defence)
+            away_defence = defence.get(away_team, unseen_defence)
             home_lambda = math.exp(
-                intercept + home_advantage + attack.get(home_team, 0.0) + defence.get(away_team, 0.0)
+                intercept + home_advantage + home_attack + away_defence
             )
-            away_lambda = math.exp(intercept + attack.get(away_team, 0.0) + defence.get(home_team, 0.0))
+            away_lambda = math.exp(intercept + away_attack + home_defence)
         home_count = _team_count(fit.ratings, home_team)
         away_count = _team_count(fit.ratings, away_team)
         rows.append(
@@ -333,6 +350,60 @@ def _weighted_mean(series: pd.Series, weights: pd.Series, *, fallback: float) ->
 def _shrunk_rate(series: pd.Series, prior: float, shrink_matches: int) -> float:
     values = pd.to_numeric(series, errors="coerce").dropna()
     return float((values.sum() + shrink_matches * prior) / (len(values) + shrink_matches))
+
+
+def _newly_observed_team_prior(train: pd.DataFrame, *, config: TeamModelConfig) -> dict[str, object]:
+    valid = train.loc[train["result_valid"].astype(bool)].copy()
+    if valid.empty:
+        return {
+            "attack_effect": 0.0,
+            "defence_effect": 0.0,
+            "fixture_count": 0,
+            "team_count": 0,
+            "source": "league_average_no_training_rows",
+        }
+    valid["source_available_time"] = pd.to_datetime(valid["source_available_time"], utc=True)
+    league_for = float(pd.concat([valid["home_goals"], valid["away_goals"]], ignore_index=True).mean())
+    league_against = league_for
+    first_cutoff = valid["source_available_time"].min() + pd.Timedelta(days=300)
+    candidate_rows = []
+    all_teams = sorted(set(valid["home_team_uid"]) | set(valid["away_team_uid"]))
+    for team in all_teams:
+        team_rows = valid.loc[valid["home_team_uid"].eq(team) | valid["away_team_uid"].eq(team)].copy()
+        if team_rows.empty or team_rows["source_available_time"].min() <= first_cutoff:
+            continue
+        team_rows = team_rows.sort_values("source_available_time").head(38)
+        for row in team_rows.itertuples(index=False):
+            if row.home_team_uid == team:
+                goals_for = row.home_goals
+                goals_against = row.away_goals
+            else:
+                goals_for = row.away_goals
+                goals_against = row.home_goals
+            candidate_rows.append({"team_uid": team, "goals_for": goals_for, "goals_against": goals_against})
+    if not candidate_rows:
+        return {
+            "attack_effect": 0.0,
+            "defence_effect": 0.0,
+            "fixture_count": 0,
+            "team_count": 0,
+            "source": "league_average_no_newly_observed_examples",
+        }
+    sample = pd.DataFrame(candidate_rows)
+    shrink = float(config.t2_low_history_threshold * 3)
+    fixture_count = int(len(sample))
+    team_count = int(sample["team_uid"].nunique())
+    goals_for = (float(sample["goals_for"].sum()) + shrink * league_for) / (fixture_count + shrink)
+    goals_against = (float(sample["goals_against"].sum()) + shrink * league_against) / (fixture_count + shrink)
+    attack_effect = math.log(max(goals_for / max(league_for, 1e-9), 1e-9))
+    defence_effect = math.log(max(goals_against / max(league_against, 1e-9), 1e-9))
+    return {
+        "attack_effect": float(attack_effect),
+        "defence_effect": float(defence_effect),
+        "fixture_count": fixture_count,
+        "team_count": team_count,
+        "source": "first_38_fixtures_of_teams_first_observed_after_initial_training_window",
+    }
 
 
 def _recency_weights(frame: pd.DataFrame, *, cutoff: pd.Timestamp, half_life_days: int) -> pd.Series:

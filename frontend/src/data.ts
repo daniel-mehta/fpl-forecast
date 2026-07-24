@@ -8,6 +8,11 @@ export interface ProjectionRow {
   team: string;
   position: string;
   price_tenths: string;
+  fixture_count?: string;
+  opponent_display?: string;
+  opponent_short_names?: string;
+  opponent_official_names?: string;
+  home_away_sequence?: string;
   expected_points: string;
   expected_minutes: string;
   p_appearance: string;
@@ -23,6 +28,11 @@ export interface SquadRow {
   player_team_uid: string;
   fpl_position: string;
   price_tenths: string;
+  fixture_count?: string;
+  opponent_display?: string;
+  opponent_short_names?: string;
+  opponent_official_names?: string;
+  home_away_sequence?: string;
   expected_points: string;
   selected_role: string;
   bench_order: string;

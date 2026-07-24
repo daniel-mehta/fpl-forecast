@@ -40,6 +40,7 @@ def score_predictions(predictions: pd.DataFrame, outcomes: pd.DataFrame) -> pd.D
         "own_goals",
         "bonus",
         "bps",
+        "defensive_contribution",
         "minutes",
     ]
     scored = predictions.merge(
@@ -169,6 +170,7 @@ def _component_metrics(frame: pd.DataFrame) -> pd.DataFrame:
         "yellow_cards": ("expected_yellow_cards", "yellow_cards"),
         "red_cards": ("expected_red_cards", "red_cards"),
         "own_goals": ("expected_own_goals", "own_goals"),
+        "defensive_contribution": ("expected_defensive_contribution", "defensive_contribution"),
     }
     rows = []
     for model_name, group in frame.groupby("model_name"):

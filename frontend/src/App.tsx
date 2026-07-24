@@ -45,7 +45,7 @@ function App() {
     return data.projections
       .filter((row) => position === "ALL" || row.position === position)
       .filter((row) => {
-        const haystack = `${row.player} ${formatTeam(row.team)}`.toLowerCase();
+        const haystack = `${row.player} ${formatTeam(row.team)} ${row.opponent_display ?? ""}`.toLowerCase();
         return !query || haystack.includes(query);
       })
       .sort((left, right) => {
@@ -181,6 +181,7 @@ function App() {
                   <th scope="col">Player</th>
                   <th scope="col">Position</th>
                   <th scope="col">Team</th>
+                  <th scope="col">Opponent</th>
                   <th scope="col" className="numeric">Price</th>
                   <th scope="col" className="numeric">Expected points</th>
                   <th scope="col">Selected role</th>
@@ -195,6 +196,11 @@ function App() {
                     <th scope="row">{player.player_name}</th>
                     <td>{player.fpl_position}</td>
                     <td>{formatTeam(player.player_team_uid)}</td>
+                    <td>
+                      <span aria-label={`Opponent fixture: ${player.opponent_display || "No fixture"}`}>
+                        {player.opponent_display || "No fixture"}
+                      </span>
+                    </td>
                     <td className="numeric">{formatPrice(player.price_tenths)}</td>
                     <td className="numeric">{formatNumber(player.expected_points)}</td>
                     <td>
@@ -248,6 +254,7 @@ function App() {
                   <th scope="col">Player</th>
                   <th scope="col">Team</th>
                   <th scope="col">Position</th>
+                  <th scope="col">Opponent</th>
                   <th scope="col" className="numeric">Price</th>
                   <th scope="col" className="numeric">Expected points</th>
                   <th scope="col" className="numeric">Expected minutes</th>
@@ -263,6 +270,11 @@ function App() {
                     <th scope="row">{player.player}</th>
                     <td>{formatTeam(player.team)}</td>
                     <td>{player.position}</td>
+                    <td>
+                      <span aria-label={`Opponent fixture: ${player.opponent_display || "No fixture"}`}>
+                        {player.opponent_display || "No fixture"}
+                      </span>
+                    </td>
                     <td className="numeric">{formatPrice(player.price_tenths)}</td>
                     <td className="numeric">{formatNumber(player.expected_points)}</td>
                     <td className="numeric">{formatNumber(player.expected_minutes, 1)}</td>
@@ -315,8 +327,8 @@ function App() {
             an exact optimization model for this weekly forecast.
           </p>
           <p>
-            Current data may remain mocked until the target FPL season launches. This project is
-            experimental and the displayed recommendations should be interpreted accordingly.
+            Current official FPL data are joined to historical model features when available. This
+            project is experimental and the displayed recommendations should be interpreted accordingly.
           </p>
           <p>
             Unofficial project. Not affiliated with, endorsed by, or associated with the Premier

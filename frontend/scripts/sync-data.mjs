@@ -8,7 +8,7 @@ const operationalRoot = path.join(projectRoot, "outputs", "operational");
 const runsRoot = path.join(operationalRoot, "runs");
 const pointerPath = path.join(operationalRoot, "latest_successful.json");
 const destination = path.join(projectRoot, "frontend", "public", "data");
-const schemaVersion = "phase8_frontend_v1";
+const schemaVersion = "phase9_frontend_v1";
 const artifacts = [
   "operational_status.json",
   "player_gameweek_projections.csv",

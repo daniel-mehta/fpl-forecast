@@ -27,6 +27,7 @@ OUTCOME_COLUMNS = {
     "own_goals",
     "bonus",
     "bps",
+    "defensive_contribution",
 }
 
 
@@ -50,6 +51,7 @@ def load_minutes_predictions(*, mode: str, config: XPointsConfig) -> pd.DataFram
     keep_models = {
         "M3_EWMA_MINUTES": "M3",
         "M5_REGULARIZED_STATE_SOFTMAX": "M5",
+        "M7_HIERARCHICAL_AVAILABILITY_STATE": "M7",
     }
     minutes = minutes.loc[minutes["model_name"].isin(keep_models)].copy()
     minutes["minutes_variant"] = minutes["model_name"].map(keep_models)

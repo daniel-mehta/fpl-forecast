@@ -8,10 +8,10 @@
     "minimum_retrieval_delay_minutes": 0,
     "source_available_rule": "retrieved_at_after_finished_and_provisional"
   },
-  "frontend_schema_version": "phase8_frontend_v1",
+  "frontend_schema_version": "phase9_frontend_v1",
   "default_models": {
     "team": "T2_REGULARIZED_ATTACK_DEFENCE",
-    "xpoints": "X2_TEAM_CONSTRAINED_SIM_M3",
+    "xpoints": "X2_TEAM_CONSTRAINED_SIM_M7",
     "xpoints_challenger": "X2_TEAM_CONSTRAINED_SIM_M5"
   }
 }

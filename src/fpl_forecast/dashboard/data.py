@@ -9,7 +9,7 @@ import pandas as pd
 from fpl_forecast.operations.config import LATEST_SUCCESSFUL_PATH
 
 
-FRONTEND_SCHEMA_VERSION = "phase8_frontend_v1"
+FRONTEND_SCHEMA_VERSION = "phase9_frontend_v1"
 
 
 @dataclass(frozen=True)

@@ -19,6 +19,7 @@ COMPONENT_COLUMNS = [
     "red_cards",
     "own_goals",
     "bonus",
+    "defensive_contribution",
 ]
 
 
@@ -47,6 +48,13 @@ def score_frame(frame: pd.DataFrame, *, rules: ScoringRules | None = None) -> pd
     points += _num(frame, "red_cards") * rules.red_card
     points += _num(frame, "own_goals") * rules.own_goal
     points += _num(frame, "bonus")
+    thresholds = pos.map(rules.defensive_contribution_thresholds)
+    defensive_contribution = _num(frame, "defensive_contribution")
+    points += np.where(
+        thresholds.notna() & defensive_contribution.ge(thresholds.fillna(10**9).astype(int)),
+        rules.defensive_contribution_points,
+        0,
+    )
     return pd.Series(points, index=frame.index).astype(int)
 
 
@@ -69,6 +77,13 @@ def component_points(frame: pd.DataFrame, *, rules: ScoringRules | None = None) 
     output["points_cards"] = -_num(frame, "yellow_cards") - 3 * _num(frame, "red_cards")
     output["points_own_goals"] = -2 * _num(frame, "own_goals")
     output["points_bonus"] = _num(frame, "bonus")
+    thresholds = pos.map(rules.defensive_contribution_thresholds)
+    defensive_contribution = _num(frame, "defensive_contribution")
+    output["points_defensive_contribution"] = np.where(
+        thresholds.notna() & defensive_contribution.ge(thresholds.fillna(10**9).astype(int)),
+        rules.defensive_contribution_points,
+        0,
+    )
     return output
 
 
@@ -93,8 +108,11 @@ def reconstruction_audit(frame: pd.DataFrame, *, rules: ScoringRules | None = No
     diff_counts = (
         players["point_difference"].value_counts().rename_axis("point_difference").reset_index(name="rows")
     ).sort_values("point_difference")
+    component_frame = players[["season", "fpl_position"]].copy()
+    for column in COMPONENT_COLUMNS:
+        component_frame[column] = players[column] if column in players.columns else 0
     component_nulls = (
-        players[["season", "fpl_position", *COMPONENT_COLUMNS]]
+        component_frame[["season", "fpl_position", *COMPONENT_COLUMNS]]
         .groupby(["season", "fpl_position"], as_index=False)
         .agg({column: lambda values: int(values.isna().sum()) for column in COMPONENT_COLUMNS})
     )

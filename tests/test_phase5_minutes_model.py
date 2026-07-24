@@ -93,6 +93,108 @@ def test_lineup_adjustment_preserves_ranking_and_sums_to_eleven_when_complete():
     assert adjusted["p_start"].rank().equals(base["p_start"].rank())
 
 
+def test_m7_established_starter_one_recent_dnp_does_not_collapse_role():
+    config = load_minutes_config()
+    train = _state_training_rows()
+    test = pd.DataFrame(
+        [
+            _m7_target(
+                "established",
+                prior_minutes=2953,
+                prior_apps=35,
+                prior_starts=34,
+                history_fixtures=38,
+                lag5_app=0.6,
+                lag3_app=2 / 3,
+                lag5_start=0.6,
+                lag3_start=2 / 3,
+                lag5_minutes=54,
+                price=155,
+            )
+        ]
+    )
+
+    predictions, _ = fit_predict_minutes_models(
+        train,
+        test,
+        config=config,
+        models=["M7_HIERARCHICAL_AVAILABILITY_STATE"],
+    )
+    row = predictions.iloc[0]
+
+    assert row["p_appearance"] > 0.70
+    assert row["p_start"] > 0.60
+    assert row["p_start"] < row["p_appearance"]
+    assert row["predicted_minutes"] > 50
+
+
+def test_m7_substitute_role_has_appearance_above_start():
+    config = load_minutes_config()
+    train = _state_training_rows()
+    test = pd.DataFrame(
+        [
+            _m7_target(
+                "sub_role",
+                prior_minutes=480,
+                prior_apps=24,
+                prior_starts=2,
+                history_fixtures=38,
+                lag5_app=0.8,
+                lag3_app=1.0,
+                lag5_start=0.1,
+                lag3_start=0.0,
+                lag5_minutes=18,
+                price=50,
+            )
+        ]
+    )
+
+    predictions, _ = fit_predict_minutes_models(
+        train,
+        test,
+        config=config,
+        models=["M7_HIERARCHICAL_AVAILABILITY_STATE"],
+    )
+    row = predictions.iloc[0]
+
+    assert row["p_appearance"] > row["p_start"] + 0.15
+    assert row["prob_state_sub_under_60"] > 0
+    assert row["predicted_minutes"] < 45
+
+
+def test_m7_cold_start_and_unavailable_priors_are_non_extreme():
+    config = load_minutes_config()
+    train = _state_training_rows()
+    test = pd.DataFrame(
+        [
+            _m7_target("cold", prior_minutes=0, prior_apps=0, prior_starts=0, history_fixtures=0, price=45, cold=True),
+            _m7_target(
+                "unavailable",
+                prior_minutes=2500,
+                prior_apps=32,
+                prior_starts=30,
+                history_fixtures=38,
+                status="u",
+                price=80,
+            ),
+        ]
+    )
+
+    predictions, _ = fit_predict_minutes_models(
+        train,
+        test,
+        config=config,
+        models=["M7_HIERARCHICAL_AVAILABILITY_STATE"],
+    )
+    cold = predictions.loc[predictions["player_uid"].eq("cold")].iloc[0]
+    unavailable = predictions.loc[predictions["player_uid"].eq("unavailable")].iloc[0]
+
+    assert 0.05 < cold["p_appearance"] < 0.60
+    assert 0.0 < cold["p_start"] < cold["p_appearance"]
+    assert unavailable["prob_state_dnp"] == pytest.approx(1.0)
+    assert unavailable["predicted_minutes"] == pytest.approx(0.0)
+
+
 def test_current_minutes_inputs_reject_mismatched_current_season(tmp_path):
     season_dir = tmp_path / "2026-27"
     phase2_dir = tmp_path / "phase2"
@@ -221,3 +323,107 @@ def _player_map() -> pd.DataFrame:
             {"season": "2023-24", "player_uid": "player_2", "source_team": "B", "fpl_position": "FWD"},
         ]
     )
+
+
+def _state_training_rows() -> pd.DataFrame:
+    rows = []
+    for position in ("GKP", "DEF", "MID", "FWD"):
+        for idx in range(12):
+            rows.append(_training_state_row(f"{position}_starter_{idx}", position, "START_90", 90, 1))
+        for idx in range(5):
+            rows.append(_training_state_row(f"{position}_sub_{idx}", position, "SUB_UNDER_60", 20, 0))
+        for idx in range(8):
+            rows.append(_training_state_row(f"{position}_dnp_{idx}", position, "DNP", 0, 0))
+    return pd.DataFrame(rows)
+
+
+def _training_state_row(player_uid: str, position: str, state: str, minutes: int, start: int) -> dict[str, object]:
+    return {
+        "season": "2024-25",
+        "gameweek": 1,
+        "player_uid": player_uid,
+        "stable_fixture_uid": f"fixture_{player_uid}",
+        "fixture_key": f"fixture_{player_uid}",
+        "player_name": player_uid,
+        "player_team_uid": "team_a",
+        "opponent_team_uid": "team_b",
+        "fpl_position": position,
+        "was_home": True,
+        "kickoff_time": "2024-08-01T12:00:00Z",
+        "information_cutoff": "2024-08-01T10:00:00Z",
+        "max_feature_source_available_time": "2024-07-01T00:00:00Z",
+        "source_available_time": "2024-08-01T15:00:00Z",
+        "actual_minutes": minutes,
+        "actual_appearance": int(minutes > 0),
+        "actual_start": start,
+        "actual_reached_60": int(minutes >= 60),
+        "actual_played_90": int(minutes >= 90),
+        "actual_state": state,
+        "evaluation_population": "pre_deadline_history_active",
+        "primary_data_quality_population": "all_observed_players",
+        "pre_deadline_history_active": True,
+        "cold_start_no_history": False,
+        "transferred_player": False,
+        "position_change": False,
+        "starts_exact_available": True,
+    }
+
+
+def _m7_target(
+    player_uid: str,
+    *,
+    prior_minutes: float,
+    prior_apps: float,
+    prior_starts: float,
+    history_fixtures: float,
+    lag5_app: float = 0.0,
+    lag3_app: float = 0.0,
+    lag5_start: float = 0.0,
+    lag3_start: float = 0.0,
+    lag5_minutes: float = 0.0,
+    price: int = 55,
+    status: str = "a",
+    cold: bool = False,
+) -> dict[str, object]:
+    return {
+        "season": "2026-27",
+        "gameweek": 1,
+        "player_uid": player_uid,
+        "stable_fixture_uid": "fixture_1",
+        "fixture_key": "fixture_1",
+        "player_name": player_uid,
+        "player_team_uid": "team_a",
+        "opponent_team_uid": "team_b",
+        "fpl_position": "FWD",
+        "was_home": True,
+        "kickoff_time": "2026-08-01T12:00:00Z",
+        "information_cutoff": "2026-08-01T10:00:00Z",
+        "max_feature_source_available_time": "2026-07-01T00:00:00Z",
+        "lag1_minutes_mean": 0.0,
+        "lag3_minutes_mean": lag5_minutes,
+        "lag5_minutes_mean": lag5_minutes,
+        "lag10_minutes_mean": max(lag5_minutes, prior_minutes / max(prior_apps, 1)),
+        "lag3_appearance_rate": lag3_app,
+        "lag5_appearance_rate": lag5_app,
+        "lag3_start_rate": lag3_start,
+        "lag5_start_rate": lag5_start,
+        "season_minutes_before": 0.0,
+        "season_appearance_before": 0.0,
+        "season_starts_before": 0.0,
+        "prior_season_minutes": prior_minutes,
+        "prior_season_appearances": prior_apps,
+        "prior_season_starts": prior_starts,
+        "history_fixture_count": history_fixtures,
+        "days_since_last_source": 90.0,
+        "evaluation_population": "cold_start_no_history" if cold else "pre_deadline_history_active",
+        "primary_data_quality_population": "all_observed_players",
+        "pre_deadline_history_active": not cold,
+        "cold_start_no_history": cold,
+        "transferred_player": False,
+        "position_change": False,
+        "starts_exact_available": False,
+        "price_tenths": price,
+        "status": status,
+        "can_select": True,
+        "removed": False,
+    }

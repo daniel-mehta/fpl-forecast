@@ -16,6 +16,7 @@ MODEL_NAMES = (
     "M4_PREVIOUS_SEASON_ROLE_GW1",
     "M5_REGULARIZED_STATE_SOFTMAX",
     "M6_NONLINEAR_RECENCY_ENSEMBLE",
+    "M7_HIERARCHICAL_AVAILABILITY_STATE",
 )
 
 NUMERIC_FEATURES = (
@@ -101,9 +102,14 @@ def _predict_model(
         return _prediction_frame(test, model_name, probs, config), ModelDiagnostic(
             model_name, "regularized_multinomial_softmax", len(train), details
         )
-    probs, details = _nonlinear_recency_ensemble(train, test, config)
+    if model_name == "M6_NONLINEAR_RECENCY_ENSEMBLE":
+        probs, details = _nonlinear_recency_ensemble(train, test, config)
+        return _prediction_frame(test, model_name, probs, config), ModelDiagnostic(
+            model_name, "nonlinear_shrunk_bucket_ensemble", len(train), details
+        )
+    probs, details = _hierarchical_availability_state(train, test, config)
     return _prediction_frame(test, model_name, probs, config), ModelDiagnostic(
-        model_name, "nonlinear_shrunk_bucket_ensemble", len(train), details
+        model_name, "hierarchical_availability_state", len(train), details
     )
 
 
@@ -255,6 +261,233 @@ def _nonlinear_recency_ensemble(
                 row_probs.append(table[key])
         probs.append(np.mean(np.vstack(row_probs), axis=0))
     return _normalize_probs(np.vstack(probs)), {"ensembles": len(lookups), "min_leaf": config.ensemble_min_leaf}
+
+
+def _hierarchical_availability_state(
+    train: pd.DataFrame,
+    test: pd.DataFrame,
+    config: MinutesModelConfig,
+) -> tuple[np.ndarray, dict[str, object]]:
+    sampled = _recent_training_sample(train, config)
+    priors = _hierarchical_state_priors(sampled, config)
+    rows = []
+    state_index = {state: index for index, state in enumerate(config.state_order)}
+    for row in test.itertuples(index=False):
+        position = str(getattr(row, "fpl_position", "MID") or "MID")
+        base = priors["position_state"].get(position, priors["global_state"]).copy()
+        long_app, long_start, history_fixtures = _long_role_probabilities(row, priors, position, config)
+        recent_app, recent_start = _recent_role_probabilities(row)
+        established = _is_established_role(row, history_fixtures)
+        cold_start = bool(getattr(row, "cold_start_no_history", False))
+        if cold_start:
+            app_prob, start_prob = _cold_start_probabilities(row, priors, position, config)
+        else:
+            long_weight = 0.72 if established else 0.55
+            app_prob = long_weight * long_app + (1 - long_weight) * recent_app
+            start_prob = long_weight * long_start + (1 - long_weight) * recent_start
+            if established:
+                app_prob = max(app_prob, 0.62 * long_app)
+                start_prob = max(start_prob, 0.62 * long_start)
+        app_prob, start_prob = _apply_current_availability(row, app_prob, start_prob)
+        start_prob = float(np.clip(min(start_prob, app_prob), 0, 1))
+        app_prob = float(np.clip(app_prob, 0, 1))
+        sub_prob = max(app_prob - start_prob, 0.0)
+        start_state_mix = _starting_state_mix(row, base, established=established, config=config)
+        sub_state_mix = _sub_state_mix(base)
+        probs = np.zeros(len(config.state_order), dtype=float)
+        probs[state_index["DNP"]] = 1 - app_prob
+        probs[state_index["SUB_UNDER_60"]] = sub_prob * sub_state_mix[0]
+        probs[state_index["SUB_60_PLUS"]] = sub_prob * sub_state_mix[1]
+        probs[state_index["START_UNDER_60"]] = start_prob * start_state_mix[0]
+        probs[state_index["START_60_TO_89"]] = start_prob * start_state_mix[1]
+        probs[state_index["START_90"]] = start_prob * start_state_mix[2]
+        rows.append(probs)
+    details = {
+        "state_space": list(config.state_order),
+        "historical_training_rows": int(len(sampled)),
+        "source_availability": {
+            "historical_minutes_and_starts": "available before cutoff through source_available_time",
+            "current_status_and_can_select": "current inference modifier only",
+            "historical_status_news_chance": "forbidden unless pre-deadline snapshots are proven",
+            "price_tenths": "current inference weak role prior only when present",
+        },
+        "position_prior_counts": priors["position_counts"],
+    }
+    return _normalize_probs(np.vstack(rows)), details
+
+
+def _hierarchical_state_priors(train: pd.DataFrame, config: MinutesModelConfig) -> dict[str, object]:
+    frame = train.loc[train["actual_state"].isin(config.state_order)].copy()
+    global_state = _state_distribution(frame, config)
+    position_state: dict[str, np.ndarray] = {}
+    position_counts: dict[str, int] = {}
+    position_rates: dict[str, dict[str, float]] = {}
+    for position, group in frame.groupby("fpl_position", dropna=False):
+        position = str(position)
+        position_counts[position] = int(len(group))
+        weight = len(group) / (len(group) + config.shrink_matches)
+        position_state[position] = weight * _state_distribution(group, config) + (1 - weight) * global_state
+        appearance = pd.to_numeric(group["actual_appearance"], errors="coerce").fillna(0)
+        start = pd.to_numeric(group["actual_start"], errors="coerce").fillna(0)
+        minutes = pd.to_numeric(group["actual_minutes"], errors="coerce").fillna(0)
+        position_rates[position] = {
+            "appearance": float(appearance.mean()),
+            "start": float(start.mean()),
+            "start_reached_60": _conditional_rate(group, "actual_reached_60", start.gt(0)),
+            "start_90": _conditional_rate(group, "actual_played_90", start.gt(0)),
+            "sub_60_plus": _conditional_rate(group, "actual_reached_60", appearance.gt(0) & start.eq(0)),
+            "minutes": float(minutes.mean()),
+        }
+    return {
+        "global_state": global_state,
+        "position_state": position_state,
+        "position_counts": position_counts,
+        "position_rates": position_rates,
+    }
+
+
+def _long_role_probabilities(
+    row,
+    priors: dict[str, object],
+    position: str,
+    config: MinutesModelConfig,
+) -> tuple[float, float, float]:
+    prior_apps = _num(row, "prior_season_appearances")
+    season_apps = _num(row, "season_appearance_before")
+    prior_minutes = _num(row, "prior_season_minutes")
+    season_starts = _num(row, "season_starts_before")
+    prior_starts = _num(row, "prior_season_starts")
+    if prior_starts <= 0 and prior_minutes > 0:
+        prior_starts = min(prior_apps, max(prior_minutes - prior_apps * 18.0, 0.0) / 72.0)
+    history_fixtures = _num(row, "history_fixture_count")
+    if history_fixtures <= 0:
+        gameweek = max(_num(row, "gameweek") - 1, 0.0)
+        history_fixtures = max(prior_apps, prior_minutes / 90.0, gameweek)
+    pos_rates = priors["position_rates"].get(position, {})
+    pos_app = float(pos_rates.get("appearance", 0.25))
+    pos_start = float(pos_rates.get("start", 0.18))
+    denom = history_fixtures + config.shrink_matches
+    app_prob = (prior_apps + season_apps + pos_app * config.shrink_matches) / max(denom, 1e-9)
+    start_prob = (prior_starts + season_starts + pos_start * config.shrink_matches) / max(denom, 1e-9)
+    return float(np.clip(app_prob, 0, 0.995)), float(np.clip(start_prob, 0, 0.995)), history_fixtures
+
+
+def _recent_role_probabilities(row) -> tuple[float, float]:
+    lag5_app = _num(row, "lag5_appearance_rate")
+    lag3_app = _num(row, "lag3_appearance_rate")
+    lag5_start = _num(row, "lag5_start_rate")
+    lag3_start = _num(row, "lag3_start_rate")
+    if lag5_app <= 0 and lag3_app <= 0 and _num(row, "prior_season_appearances") > 0:
+        lag5_app = _num(row, "prior_season_appearances") / max(_num(row, "history_fixture_count"), 38.0)
+    return (
+        float(np.clip(0.65 * lag5_app + 0.35 * lag3_app, 0, 1)),
+        float(np.clip(0.65 * lag5_start + 0.35 * lag3_start, 0, 1)),
+    )
+
+
+def _cold_start_probabilities(
+    row,
+    priors: dict[str, object],
+    position: str,
+    config: MinutesModelConfig,
+) -> tuple[float, float]:
+    pos_rates = priors["position_rates"].get(position, {})
+    pos_app = float(pos_rates.get("appearance", 0.20))
+    pos_start = float(pos_rates.get("start", 0.12))
+    price = _num(row, "price_tenths")
+    price_signal = float(np.clip((price - 40.0) / 80.0, 0.0, 1.0)) if price > 0 else 0.25
+    promoted = str(getattr(row, "lineage_note", "")).lower().find("promoted") >= 0
+    transfer = bool(getattr(row, "transferred_player", False))
+    multiplier = 0.72 + 0.32 * price_signal
+    if promoted:
+        multiplier *= 0.95
+    if transfer:
+        multiplier *= 1.05
+    app_prob = pos_app * multiplier
+    start_prob = pos_start * multiplier
+    lower_app = 0.06 if position != "GKP" else 0.035
+    upper_app = 0.58 if position != "GKP" else 0.42
+    upper_start = 0.38 if position != "GKP" else 0.30
+    return (
+        float(np.clip(app_prob, lower_app, upper_app)),
+        float(np.clip(start_prob, 0.015, min(upper_start, app_prob))),
+    )
+
+
+def _apply_current_availability(row, app_prob: float, start_prob: float) -> tuple[float, float]:
+    status = str(getattr(row, "status", "") or "").lower()
+    removed = bool(getattr(row, "removed", False)) if pd.notna(getattr(row, "removed", pd.NA)) else False
+    can_select = getattr(row, "can_select", pd.NA)
+    selectable_false = pd.notna(can_select) and not bool(can_select)
+    if removed or selectable_false or status in {"u", "s"}:
+        return 0.0, 0.0
+    chance_values = [
+        _num(row, "chance_of_playing_next_round"),
+        _num(row, "chance_of_playing_this_round"),
+    ]
+    chance = max(chance_values)
+    if chance > 0:
+        cap = float(np.clip(chance / 100.0, 0, 1))
+        app_prob = min(app_prob, cap)
+        start_prob = min(start_prob, cap)
+    if status in {"d", "i"}:
+        app_prob *= 0.55
+        start_prob *= 0.45
+    return app_prob, start_prob
+
+
+def _starting_state_mix(row, state_prior: np.ndarray, *, established: bool, config: MinutesModelConfig) -> tuple[float, float, float]:
+    idx = {state: index for index, state in enumerate(config.state_order)}
+    prior = np.array(
+        [
+            state_prior[idx["START_UNDER_60"]],
+            state_prior[idx["START_60_TO_89"]],
+            state_prior[idx["START_90"]],
+        ],
+        dtype=float,
+    )
+    prior = prior / prior.sum() if prior.sum() > 0 else np.array([0.08, 0.28, 0.64])
+    long_minutes = _num(row, "prior_season_minutes") / max(_num(row, "prior_season_appearances"), 1.0)
+    if established and long_minutes >= 78:
+        target = np.array([0.04, 0.20, 0.76])
+    elif long_minutes >= 60:
+        target = np.array([0.08, 0.42, 0.50])
+    else:
+        target = np.array([0.18, 0.52, 0.30])
+    mix = 0.55 * prior + 0.45 * target
+    mix = mix / mix.sum()
+    return float(mix[0]), float(mix[1]), float(mix[2])
+
+
+def _sub_state_mix(state_prior: np.ndarray) -> tuple[float, float]:
+    sub = np.array([state_prior[1], state_prior[2]], dtype=float)
+    if sub.sum() <= 0:
+        return 0.92, 0.08
+    sub = sub / sub.sum()
+    return float(sub[0]), float(sub[1])
+
+
+def _conditional_rate(group: pd.DataFrame, column: str, mask: pd.Series) -> float:
+    if not mask.any():
+        return 0.0
+    return float(pd.to_numeric(group.loc[mask, column], errors="coerce").fillna(0).mean())
+
+
+def _is_established_role(row, history_fixtures: float) -> bool:
+    return _num(row, "prior_season_minutes") >= 1200 or _num(row, "prior_season_appearances") >= 20 or history_fixtures >= 30
+
+
+def _num(row, column: str) -> float:
+    value = getattr(row, column, 0.0)
+    try:
+        if pd.isna(value):
+            return 0.0
+    except TypeError:
+        return 0.0
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _recent_training_sample(train: pd.DataFrame, config: MinutesModelConfig) -> pd.DataFrame:

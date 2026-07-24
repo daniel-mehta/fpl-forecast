@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 
 import pandas as pd
@@ -153,6 +154,11 @@ def test_t2_sign_convention_and_unseen_fallback_are_finite():
             "home_advantage": 0.1,
             "attack": {"team_a": 0.0, "team_b": 0.4},
             "defence": {"team_a": 0.0, "team_b": 0.5},
+            "unseen_attack_effect": -0.2,
+            "unseen_defence_effect": 0.3,
+            "unseen_prior_fixture_count": 12,
+            "unseen_prior_team_count": 3,
+            "unseen_prior_source": "test_prior",
         },
         pd.DataFrame(
             [
@@ -166,6 +172,8 @@ def test_t2_sign_convention_and_unseen_fallback_are_finite():
 
     assert pred.loc[0, "expected_home_goals"] > pred.loc[0, "expected_away_goals"]
     assert pred.loc[1, "away_unseen_or_promoted_flag"]
+    assert pred.loc[1, "expected_home_goals"] == pytest.approx(math.exp(0.1 + 0.3))
+    assert pred.loc[1, "expected_away_goals"] == pytest.approx(math.exp(-0.2))
     assert pred[["expected_home_goals", "expected_away_goals"]].ge(0).all().all()
 
 

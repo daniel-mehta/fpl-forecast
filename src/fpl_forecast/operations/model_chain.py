@@ -16,6 +16,7 @@ from fpl_forecast.minutes_model.data import load_minutes_frame
 from fpl_forecast.minutes_model.models import fit_predict_minutes_models
 from fpl_forecast.panel.common import normalize_name, phase2_dir, uid_from_slug
 from fpl_forecast.panel.teams import TEAM_ALIAS_TEMPLATE, read_team_aliases
+from fpl_forecast.operations.training_seasons import resolve_historical_training_seasons
 from fpl_forecast.team_model.config import load_team_model_config
 from fpl_forecast.team_model.data import load_historical_team_fixtures
 from fpl_forecast.team_model.models import fit_predict_models
@@ -24,9 +25,6 @@ from fpl_forecast.xpoints.config import load_xpoints_config
 from fpl_forecast.xpoints.data import load_xpoints_frame
 from fpl_forecast.xpoints.models import predict_xpoints_models
 from fpl_forecast.xpoints.simulation import aggregate_gameweek_draws
-
-
-PRICE_SENSITIVITY_PLAYER_UIDS = frozenset({"player_code_223094", "player_code_164511", "player_code_233420"})
 
 
 @dataclass(frozen=True)
@@ -70,6 +68,7 @@ def run_operational_model_chain(
         completed_team_fixtures=completed_team_fixtures,
         information_cutoff=as_of,
     )
+    training_seasons = resolve_historical_training_seasons(target_season=season, normalized_dir=normalized_dir)
     if source_mode == "official_current_season":
         target_fixtures = _official_target_fixtures(official_context, as_of=as_of)
         target_players = _official_target_players(
@@ -90,7 +89,7 @@ def run_operational_model_chain(
     target_rows = _target_player_fixture_rows(target_fixtures, target_players, as_of=as_of)
 
     team_config = load_team_model_config()
-    team_train = load_historical_team_fixtures(seasons=["2022-23", "2023-24", "2024-25"], normalized_dir=normalized_dir)
+    team_train = load_historical_team_fixtures(seasons=training_seasons, normalized_dir=normalized_dir)
     team_train = team_train.loc[team_train["result_valid"].astype(bool)].copy()
     if completed_team_fixtures is not None and not completed_team_fixtures.empty:
         team_train = pd.concat([team_train, _completed_team_training_frame(completed_team_fixtures)], ignore_index=True)
@@ -104,7 +103,7 @@ def run_operational_model_chain(
     team_predictions = add_probability_columns(team_predictions, team_config)
 
     minutes_config = load_minutes_config()
-    minutes_train = load_minutes_frame(seasons=["2022-23", "2023-24", "2024-25"], normalized_dir=normalized_dir)
+    minutes_train = load_minutes_frame(seasons=training_seasons, normalized_dir=normalized_dir)
     if completed_player_fixtures is not None and not completed_player_fixtures.empty:
         minutes_train = pd.concat(
             [minutes_train, _completed_minutes_training_frame(completed_player_fixtures)],
@@ -115,14 +114,18 @@ def run_operational_model_chain(
         minutes_train,
         target_minutes_frame,
         config=minutes_config,
-        models=["M3_EWMA_MINUTES", "M5_REGULARIZED_STATE_SOFTMAX"],
+        models=["M3_EWMA_MINUTES", "M5_REGULARIZED_STATE_SOFTMAX", "M7_HIERARCHICAL_AVAILABILITY_STATE"],
     )
     minutes_predictions["minutes_variant"] = minutes_predictions["model_name"].map(
-        {"M3_EWMA_MINUTES": "M3", "M5_REGULARIZED_STATE_SOFTMAX": "M5"}
+        {
+            "M3_EWMA_MINUTES": "M3",
+            "M5_REGULARIZED_STATE_SOFTMAX": "M5",
+            "M7_HIERARCHICAL_AVAILABILITY_STATE": "M7",
+        }
     )
 
     xpoints_config = load_xpoints_config()
-    xpoints_train = load_xpoints_frame(seasons=["2022-23", "2023-24", "2024-25"], normalized_dir=normalized_dir)
+    xpoints_train = load_xpoints_frame(seasons=training_seasons, normalized_dir=normalized_dir)
     if completed_player_fixtures is not None and not completed_player_fixtures.empty:
         xpoints_train = pd.concat([xpoints_train, _completed_xpoints_training_frame(completed_player_fixtures)], ignore_index=True)
     xpoints_test = _target_xpoints_frame(target_rows)
@@ -141,9 +144,10 @@ def run_operational_model_chain(
         draws,
         key_columns=["season", "gameweek", "player_uid", "model_name", "pre_deadline_population"],
     )
+    gameweek_predictions = _add_gameweek_fixture_metadata(gameweek_predictions, target_rows)
     decision_candidates = _decision_candidates(gameweek_predictions, target_players, minutes_predictions)
     selected_candidates = decision_candidates.loc[
-        decision_candidates["model_name"].eq("X2_TEAM_CONSTRAINED_SIM_M3")
+        decision_candidates["model_name"].eq("X2_TEAM_CONSTRAINED_SIM_M7")
     ].copy()
     solution = optimize_squad_milp(selected_candidates, default_rules())
     optimized_squad = _squad_table(solution, selected_candidates)
@@ -152,7 +156,7 @@ def run_operational_model_chain(
             {
                 "season": season,
                 "gameweek": target_gameweek,
-                "model_name": "X2_TEAM_CONSTRAINED_SIM_M3",
+                "model_name": "X2_TEAM_CONSTRAINED_SIM_M7",
                 "lineup": ",".join(solution.lineup_decision.lineup),
                 "captain": solution.lineup_decision.captain,
                 "vice_captain": solution.lineup_decision.vice_captain,
@@ -175,9 +179,18 @@ def run_operational_model_chain(
         "xpoints_model_run_id": f"{run_id}_xpoints_current",
         "decision_run_id": f"{run_id}_decision_current",
         "team_model": "T2_REGULARIZED_ATTACK_DEFENCE",
-        "minutes_models": ["M3_EWMA_MINUTES", "M5_REGULARIZED_STATE_SOFTMAX"],
-        "xpoints_models": ["X2_TEAM_CONSTRAINED_SIM_M3", "X2_TEAM_CONSTRAINED_SIM_M5"],
+        "minutes_models": [
+            "M3_EWMA_MINUTES",
+            "M5_REGULARIZED_STATE_SOFTMAX",
+            "M7_HIERARCHICAL_AVAILABILITY_STATE",
+        ],
+        "xpoints_models": [
+            "X2_TEAM_CONSTRAINED_SIM_M3",
+            "X2_TEAM_CONSTRAINED_SIM_M5",
+            "X2_TEAM_CONSTRAINED_SIM_M7",
+        ],
         "source_mode": source_mode,
+        "training_seasons": training_seasons,
         "target_gameweek": target_gameweek,
         "target_deadline": as_of.isoformat(),
         "fixture_variant": fixture_variant,
@@ -255,6 +268,8 @@ def _target_fixtures(
                 "source_away_team_id": index * 2 + 2,
                 "home_team_name": home,
                 "away_team_name": away,
+                "home_team_short_name": str(home).removeprefix("team_").upper()[:3],
+                "away_team_short_name": str(away).removeprefix("team_").upper()[:3],
                 "kickoff_time": pd.Timestamp(
                     f"{season[:4]}-08-{15 + (target_gameweek - 1) * 7 + index // 5:02d}T15:00:00Z"
                 ),
@@ -379,7 +394,18 @@ def _official_target_fixtures(context: dict[str, Any], *, as_of: pd.Timestamp) -
     away = team_identity[["team_id", "team_uid", "team_name"]].rename(
         columns={"team_id": "away_team_id", "team_uid": "away_team_uid", "team_name": "away_team_name"}
     )
-    frame = fixtures.merge(home, on="home_team_id", how="left").merge(away, on="away_team_id", how="left")
+    home_short = team_identity[["team_id", "short_name"]].rename(
+        columns={"team_id": "home_team_id", "short_name": "home_team_short_name"}
+    )
+    away_short = team_identity[["team_id", "short_name"]].rename(
+        columns={"team_id": "away_team_id", "short_name": "away_team_short_name"}
+    )
+    frame = (
+        fixtures.merge(home, on="home_team_id", how="left")
+        .merge(away, on="away_team_id", how="left")
+        .merge(home_short, on="home_team_id", how="left")
+        .merge(away_short, on="away_team_id", how="left")
+    )
     if frame[["home_team_uid", "away_team_uid"]].isna().any().any():
         raise ValueError("Official target fixtures reference teams without stable current identities.")
     frame["stable_fixture_uid"] = frame["season"].astype(str) + ":official_fixture_" + frame["fixture_id"].astype(str)
@@ -408,6 +434,8 @@ def _official_target_fixtures(context: dict[str, Any], *, as_of: pd.Timestamp) -
             "source_away_team_id",
             "home_team_name",
             "away_team_name",
+            "home_team_short_name",
+            "away_team_short_name",
             "kickoff_time",
             "information_cutoff",
             "source_available_time",
@@ -430,7 +458,19 @@ def _official_target_players(
     season_dir = Path(normalized_dir) / season
     players = pd.read_parquet(season_dir / "current_players.parquet")
     entity_type = players["entity_type"] if "entity_type" in players.columns else pd.Series("player", index=players.index)
-    football = players.loc[entity_type.eq("player")].copy()
+    exclusion_reason = pd.Series("", index=players.index, dtype="string")
+    exclusion_reason.loc[~entity_type.eq("player")] = "non_player_entity"
+    if "can_select" in players.columns:
+        can_select = players["can_select"].astype("boolean")
+        exclusion_reason.loc[can_select.notna() & ~can_select] = "official_can_select_false"
+    if "removed" in players.columns:
+        removed = players["removed"].astype("boolean")
+        exclusion_reason.loc[removed.fillna(False)] = "official_removed_true"
+    excluded = players.loc[exclusion_reason.ne("")].copy()
+    if not excluded.empty:
+        excluded["exclusion_reason"] = exclusion_reason.loc[excluded.index].to_numpy()
+    _write_current_player_exclusions(season_dir, excluded)
+    football = players.loc[exclusion_reason.eq("")].copy()
     if football.empty:
         raise ValueError("Official current player population is empty.")
     duplicate_codes = football.loc[football["player_code"].notna() & football["player_code"].duplicated(keep=False)]
@@ -453,6 +493,12 @@ def _official_target_players(
     frame["fpl_position"] = frame["position"].astype(str)
     frame["status"] = frame["status"].fillna("a").astype(str)
     frame["news"] = frame["news"].fillna("").astype(str) if "news" in frame.columns else ""
+    for optional_column in ("can_select", "can_transact", "removed"):
+        if optional_column not in frame.columns:
+            frame[optional_column] = pd.NA
+    for optional_column in ("chance_of_playing_next_round", "chance_of_playing_this_round"):
+        if optional_column not in frame.columns:
+            frame[optional_column] = pd.NA
     frame["cold_start_no_history"] = frame["historical_player_team_uid"].isna()
     frame["fallback_flag"] = frame["cold_start_no_history"]
     frame["transferred_player"] = frame["historical_player_team_uid"].notna() & frame["historical_player_team_uid"].ne(frame["player_team_uid"])
@@ -511,10 +557,45 @@ def _official_target_players(
             "player_code",
             "team_id",
             "position_id",
+            "can_select",
+            "can_transact",
+            "removed",
+            "chance_of_playing_next_round",
+            "chance_of_playing_this_round",
             "source_version",
             "raw_snapshot_path",
         ]
     ].drop_duplicates("player_uid")
+
+
+def _write_current_player_exclusions(season_dir: Path, excluded: pd.DataFrame) -> None:
+    keep = [
+        "season",
+        "player_id",
+        "player_code",
+        "web_name",
+        "team_id",
+        "position_id",
+        "position",
+        "entity_type",
+        "can_select",
+        "can_transact",
+        "removed",
+        "status",
+        "news",
+        "exclusion_reason",
+        "source",
+        "source_version",
+        "retrieved_at",
+        "raw_snapshot_path",
+    ]
+    if excluded.empty:
+        pd.DataFrame(columns=keep).to_parquet(season_dir / "current_player_exclusions.parquet", index=False)
+        return
+    excluded[[column for column in keep if column in excluded.columns]].to_parquet(
+        season_dir / "current_player_exclusions.parquet",
+        index=False,
+    )
 
 
 def _latest_player_history(normalized_dir: Path | str) -> pd.DataFrame:
@@ -701,7 +782,7 @@ def _price_for(position: str, team_index: int, player_uid: str, variant: str) ->
     base = {"GKP": 45, "DEF": 48, "MID": 55, "FWD": 60}[position] + (team_index % 5)
     if variant == "discount_target" and position != "GKP" and team_index < 3:
         return max(40, base - 15)
-    if variant == "premium_target" and player_uid in PRICE_SENSITIVITY_PLAYER_UIDS:
+    if variant == "premium_target" and position != "GKP" and team_index < 3:
         return base + 300
     return base
 
@@ -727,6 +808,9 @@ def _target_player_fixture_rows(fixtures: pd.DataFrame, players: pd.DataFrame, *
                         "player_name": player.player_name,
                         "player_team_uid": team,
                         "opponent_team_uid": opponent,
+                        "opponent_official_name": fixture.away_team_name if was_home else fixture.home_team_name,
+                        "opponent_short_name": fixture.away_team_short_name if was_home else fixture.home_team_short_name,
+                        "home_away": "H" if was_home else "A",
                         "fpl_position": player.fpl_position,
                         "entity_type": "player",
                         "was_home": was_home,
@@ -741,12 +825,109 @@ def _target_player_fixture_rows(fixtures: pd.DataFrame, players: pd.DataFrame, *
                         "price_tenths": player.price_tenths,
                         "status": player.status,
                         "news": player.news,
+                        "can_select": getattr(player, "can_select", pd.NA),
+                        "can_transact": getattr(player, "can_transact", pd.NA),
+                        "removed": getattr(player, "removed", pd.NA),
+                        "chance_of_playing_next_round": getattr(player, "chance_of_playing_next_round", pd.NA),
+                        "chance_of_playing_this_round": getattr(player, "chance_of_playing_this_round", pd.NA),
                         "cold_start_no_history": bool(player.cold_start_no_history),
                         "fallback_flag": bool(player.fallback_flag),
                         "lineage_note": player.lineage_note,
                     }
                 )
     return pd.DataFrame(rows)
+
+
+def _add_gameweek_fixture_metadata(gameweek: pd.DataFrame, target_rows: pd.DataFrame) -> pd.DataFrame:
+    if gameweek.empty:
+        return gameweek
+    metadata = _gameweek_fixture_metadata(target_rows)
+    output = gameweek.merge(metadata, on=["season", "gameweek", "player_uid"], how="left")
+    fill_values = {
+        "fixture_count": 0,
+        "opponent_display": "No fixture",
+        "opponent_short_names": "",
+        "opponent_official_names": "",
+        "opponent_team_uids": "",
+        "home_away_sequence": "",
+        "kickoff_times": "",
+    }
+    for column, value in fill_values.items():
+        if column not in output.columns:
+            output[column] = value
+        else:
+            output[column] = output[column].fillna(value)
+    output["fixture_count"] = pd.to_numeric(output["fixture_count"], errors="coerce").fillna(0).astype(int)
+    return output
+
+
+def _gameweek_fixture_metadata(target_rows: pd.DataFrame) -> pd.DataFrame:
+    columns = [
+        "season",
+        "gameweek",
+        "player_uid",
+        "fixture_count",
+        "opponent_display",
+        "opponent_short_names",
+        "opponent_official_names",
+        "opponent_team_uids",
+        "home_away_sequence",
+        "kickoff_times",
+    ]
+    if target_rows.empty:
+        return pd.DataFrame(columns=columns)
+    frame = target_rows.copy()
+    for column in ("opponent_team_uid", "opponent_official_name", "opponent_short_name", "home_away"):
+        if column not in frame.columns:
+            frame[column] = ""
+    frame = frame[
+        [
+            "season",
+            "gameweek",
+            "player_uid",
+            "fixture_key",
+            "kickoff_time",
+            "opponent_team_uid",
+            "opponent_official_name",
+            "opponent_short_name",
+            "home_away",
+        ]
+    ].drop_duplicates(["season", "gameweek", "player_uid", "fixture_key"])
+    frame["kickoff_time"] = pd.to_datetime(frame["kickoff_time"], utc=True, errors="coerce")
+    rows = []
+    for key, group in frame.sort_values(["kickoff_time", "fixture_key"], na_position="last").groupby(
+        ["season", "gameweek", "player_uid"],
+        dropna=False,
+    ):
+        entries = [_fixture_display_entry(row) for row in group.itertuples(index=False)]
+        kickoff_times = ["" if pd.isna(value) else str(value) for value in group["kickoff_time"]]
+        rows.append(
+            {
+                "season": key[0],
+                "gameweek": key[1],
+                "player_uid": key[2],
+                "fixture_count": int(group["fixture_key"].nunique()),
+                "opponent_display": ", ".join(entries) if entries else "No fixture",
+                "opponent_short_names": ",".join(group["opponent_short_name"].astype(str)),
+                "opponent_official_names": ",".join(group["opponent_official_name"].astype(str)),
+                "opponent_team_uids": ",".join(group["opponent_team_uid"].astype(str)),
+                "home_away_sequence": ",".join(group["home_away"].astype(str)),
+                "kickoff_times": ",".join(kickoff_times),
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
+
+
+def _fixture_display_entry(row) -> str:
+    short_name = str(row.opponent_short_name or "").strip()
+    if short_name.lower() in {"nan", "nat", "none", "<na>"}:
+        short_name = ""
+    if not short_name:
+        short_name = str(row.opponent_official_name or row.opponent_team_uid or "").strip()
+    home_away = str(row.home_away or "").strip()
+    if home_away:
+        return f"{short_name} ({home_away})"
+    return short_name or "No fixture"
 
 
 def _target_minutes_frame(target_rows: pd.DataFrame, train: pd.DataFrame) -> pd.DataFrame:
@@ -777,6 +958,8 @@ def _target_minutes_frame(target_rows: pd.DataFrame, train: pd.DataFrame) -> pd.
                 "season_starts_before": 0.0,
                 "prior_season_minutes": float(hist_minutes.sum()),
                 "prior_season_appearances": float(hist_minutes.gt(0).sum()),
+                "prior_season_starts": float(hist_start.sum()) if prior_seen else 0.0,
+                "history_fixture_count": float(len(history)),
                 "days_since_last_source": 90.0 if prior_seen else 999.0,
                 "evaluation_population": "pre_deadline_history_active" if prior_seen else "cold_start_no_history",
                 "primary_data_quality_population": "all_observed_players",
@@ -784,6 +967,14 @@ def _target_minutes_frame(target_rows: pd.DataFrame, train: pd.DataFrame) -> pd.
                 "cold_start_no_history": bool(row.cold_start_no_history) or not prior_seen,
                 "transferred_player": row.lineage_note == "transferred_player",
                 "position_change": row.lineage_note == "position_change",
+                "price_tenths": getattr(row, "price_tenths", pd.NA),
+                "status": getattr(row, "status", "a"),
+                "news": getattr(row, "news", ""),
+                "can_select": getattr(row, "can_select", pd.NA),
+                "can_transact": getattr(row, "can_transact", pd.NA),
+                "removed": getattr(row, "removed", pd.NA),
+                "chance_of_playing_next_round": getattr(row, "chance_of_playing_next_round", pd.NA),
+                "chance_of_playing_this_round": getattr(row, "chance_of_playing_this_round", pd.NA),
                 "starts_exact_available": False,
             }
         )
@@ -831,15 +1022,23 @@ def _decision_candidates(gameweek: pd.DataFrame, players: pd.DataFrame, minutes:
         ]
     ].drop_duplicates("player_uid")
     probs = (
-        minutes.groupby(["season", "gameweek", "player_uid"], as_index=False)
+        minutes.groupby(["season", "gameweek", "player_uid", "minutes_variant"], as_index=False)
         .agg(
             expected_minutes=("predicted_minutes", "mean"),
             p_appearance=("p_appearance", "mean"),
             p_start=("p_start", "mean"),
         )
     )
+    probs["model_name"] = probs["minutes_variant"].map(
+        {
+            "M3": "X2_TEAM_CONSTRAINED_SIM_M3",
+            "M5": "X2_TEAM_CONSTRAINED_SIM_M5",
+            "M7": "X2_TEAM_CONSTRAINED_SIM_M7",
+        }
+    )
+    probs = probs.dropna(subset=["model_name"])
     out = gameweek.merge(meta, on="player_uid", how="left")
-    out = out.merge(probs, on=["season", "gameweek", "player_uid"], how="left")
+    out = out.merge(probs, on=["season", "gameweek", "player_uid", "model_name"], how="left")
     return out
 
 
@@ -862,19 +1061,26 @@ def _model_comparison(candidates: pd.DataFrame) -> pd.DataFrame:
         values="expected_points",
         aggfunc="first",
     )
-    if {"X2_TEAM_CONSTRAINED_SIM_M3", "X2_TEAM_CONSTRAINED_SIM_M5"}.issubset(pivot.columns):
-        diff = pivot["X2_TEAM_CONSTRAINED_SIM_M3"] - pivot["X2_TEAM_CONSTRAINED_SIM_M5"]
-        return pd.DataFrame(
-            [
+    rows = []
+    comparisons = [
+        ("X2_TEAM_CONSTRAINED_SIM_M7", "X2_TEAM_CONSTRAINED_SIM_M3"),
+        ("X2_TEAM_CONSTRAINED_SIM_M7", "X2_TEAM_CONSTRAINED_SIM_M5"),
+        ("X2_TEAM_CONSTRAINED_SIM_M3", "X2_TEAM_CONSTRAINED_SIM_M5"),
+    ]
+    for left, right in comparisons:
+        if {left, right}.issubset(pivot.columns):
+            diff = pivot[left] - pivot[right]
+            rows.append(
                 {
-                    "left_model": "X2_TEAM_CONSTRAINED_SIM_M3",
-                    "right_model": "X2_TEAM_CONSTRAINED_SIM_M5",
+                    "left_model": left,
+                    "right_model": right,
                     "players": int(diff.notna().sum()),
                     "mean_expected_difference": float(diff.mean()),
                     "max_abs_expected_difference": float(diff.abs().max()),
                 }
-            ]
-        )
+            )
+    if rows:
+        return pd.DataFrame(rows)
     return pd.DataFrame()
 
 

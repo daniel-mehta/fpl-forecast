@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pandas as pd
 
@@ -33,8 +35,11 @@ def predict_xpoints_models(
     for variant, model_name, offset in (
         ("M3", "X2_TEAM_CONSTRAINED_SIM_M3", 2),
         ("M5", "X2_TEAM_CONSTRAINED_SIM_M5", 3),
+        ("M7", "X2_TEAM_CONSTRAINED_SIM_M7", 4),
     ):
         minutes = _minutes_variant(minutes_predictions, variant)
+        if minutes.empty:
+            continue
         base = _component_base(test, minutes, team_predictions, priors, config, team_constrained=True)
         pred, draws = _finalize_model(
             base,
@@ -104,7 +109,22 @@ def _component_base(
     if team_constrained:
         shares = attacking_shares(rates, base, config)
         base = base.merge(
-            shares[["season", "stable_fixture_uid", "player_uid", "goal_share", "assist_share"]],
+            shares[
+                [
+                    "season",
+                    "stable_fixture_uid",
+                    "player_uid",
+                    "goal_share",
+                    "assist_share",
+                    "goal_weight",
+                    "assist_weight",
+                    "attacking_share_hhi",
+                    "effective_goal_attackers",
+                    "effective_assist_attackers",
+                    "nonzero_goal_weight_players",
+                    "nonzero_assist_weight_players",
+                ]
+            ],
             on=["season", "stable_fixture_uid", "player_uid"],
             how="left",
         )
@@ -129,6 +149,11 @@ def _component_base(
     base["expected_yellow_cards"] = (base["yellow_cards_per90"] * exposure).clip(0, 0.5)
     base["expected_red_cards"] = (base["red_cards_per90"] * exposure).clip(0, 0.15)
     base["expected_own_goals"] = (base["own_goals_per90"] * exposure).clip(0, 0.15)
+    base["expected_defensive_contribution"] = (base["defensive_contribution_per90"] * exposure).clip(lower=0)
+    base["defensive_contribution_threshold"] = base["fpl_position"].map(
+        {"DEF": 10, "MID": 12, "FWD": 12}
+    ).fillna(10**9)
+    base["defensive_contribution_points"] = np.where(base["defensive_contribution_threshold"].lt(10**9), 2, 0)
     base["expected_bonus"] = (base["bonus_per90"] * exposure).clip(0, 3)
     base["predicted_bps"] = base["bps_per90"] * exposure
     base["expected_points_appearance"] = base["p_appearance"].fillna(0) + base["p_reached_60"].fillna(0)
@@ -144,6 +169,13 @@ def _component_base(
     ].isin(["GKP", "DEF"]).astype(int)
     base["expected_points_cards"] = -base["expected_yellow_cards"] - 3 * base["expected_red_cards"]
     base["expected_points_own_goals"] = -2 * base["expected_own_goals"]
+    base["expected_points_defensive_contribution"] = (
+        _poisson_tail_probability(
+            base["expected_defensive_contribution"],
+            base["defensive_contribution_threshold"],
+        )
+        * base["defensive_contribution_points"]
+    )
     base["expected_points_bonus"] = base["expected_bonus"]
     return base
 
@@ -159,16 +191,42 @@ def _finalize_model(
     output = pd.concat([base[_id_columns(base)], summaries], axis=1)
     output["model_name"] = model_name
     output["phase4_team_model"] = "T2_REGULARIZED_ATTACK_DEFENCE" if model_name.startswith("X2") else "none"
-    output["phase5_minutes_model"] = "M5_REGULARIZED_STATE_SOFTMAX" if model_name.endswith("M5") else "M3_EWMA_MINUTES"
+    output["phase5_minutes_model"] = _minutes_model_name_for_xpoints(model_name)
     output["component_model"] = "team_constrained_component_sim" if model_name.startswith("X2") else "independent_component_rates"
     for column in _component_output_columns():
+        if column in output.columns and column.startswith("expected_points_"):
+            continue
         output[column] = base[column].to_numpy(dtype=float)
+    output["component_points_sum"] = summaries.get("component_points_sum", pd.Series(0, index=base.index)).to_numpy(dtype=float)
+    output["component_reconciliation_error"] = summaries.get(
+        "component_reconciliation_error",
+        pd.Series(0, index=base.index),
+    ).to_numpy(dtype=float)
     output["team_expected_goals"] = base["team_expected_goals"].to_numpy(dtype=float)
     output["opponent_expected_goals"] = base["opponent_expected_goals"].to_numpy(dtype=float)
     output["team_clean_sheet_probability"] = base["team_clean_sheet_probability"].to_numpy(dtype=float)
     output["goal_share"] = base.get("goal_share", pd.Series(0, index=base.index)).to_numpy(dtype=float)
     output["assist_share"] = base.get("assist_share", pd.Series(0, index=base.index)).to_numpy(dtype=float)
+    for column in (
+        "goal_weight",
+        "assist_weight",
+        "attacking_share_hhi",
+        "effective_goal_attackers",
+        "effective_assist_attackers",
+        "nonzero_goal_weight_players",
+        "nonzero_assist_weight_players",
+    ):
+        if column in base.columns:
+            output[column] = base[column].to_numpy(dtype=float)
     return output, draws
+
+
+def _minutes_model_name_for_xpoints(model_name: str) -> str:
+    if model_name.endswith("M7"):
+        return "M7_HIERARCHICAL_AVAILABILITY_STATE"
+    if model_name.endswith("M5"):
+        return "M5_REGULARIZED_STATE_SOFTMAX"
+    return "M3_EWMA_MINUTES"
 
 
 def _attach_team_context(base: pd.DataFrame, team_predictions: pd.DataFrame) -> pd.DataFrame:
@@ -203,20 +261,23 @@ def _attach_team_context(base: pd.DataFrame, team_predictions: pd.DataFrame) -> 
 
 def _minutes_variant(minutes_predictions: pd.DataFrame, variant: str) -> pd.DataFrame:
     frame = minutes_predictions.loc[minutes_predictions["minutes_variant"].eq(variant)].copy()
-    return frame.rename(columns={"predicted_minutes": "expected_minutes"})[
-        [
-            "season",
-            "stable_fixture_uid",
-            "player_uid",
-            "expected_minutes",
-            "p_appearance",
-            "p_start",
-            "p_reached_60",
-            "p_played_90",
-            "cold_start_no_history",
-            "evaluation_population",
-        ]
+    frame = frame.rename(columns={"predicted_minutes": "expected_minutes"})
+    if "transferred_player" not in frame.columns:
+        frame["transferred_player"] = False
+    columns = [
+        "season",
+        "stable_fixture_uid",
+        "player_uid",
+        "expected_minutes",
+        "p_appearance",
+        "p_start",
+        "p_reached_60",
+        "p_played_90",
+        "cold_start_no_history",
+        "transferred_player",
+        "evaluation_population",
     ]
+    return frame[columns]
 
 
 def _conservation_diagnostics(predictions: pd.DataFrame, team_predictions: pd.DataFrame) -> pd.DataFrame:
@@ -266,6 +327,7 @@ def _id_columns(frame: pd.DataFrame) -> list[str]:
         "p_reached_60",
         "p_played_90",
         "cold_start_no_history",
+        "transferred_player",
     ]
     return [column for column in columns if column in frame.columns]
 
@@ -281,6 +343,7 @@ def _component_output_columns() -> list[str]:
         "expected_yellow_cards",
         "expected_red_cards",
         "expected_own_goals",
+        "expected_defensive_contribution",
         "expected_bonus",
         "expected_points_appearance",
         "expected_points_goals",
@@ -291,5 +354,18 @@ def _component_output_columns() -> list[str]:
         "expected_points_goals_conceded",
         "expected_points_cards",
         "expected_points_own_goals",
+        "expected_points_defensive_contribution",
         "expected_points_bonus",
     ]
+
+
+def _poisson_tail_probability(lam: pd.Series, threshold: pd.Series) -> pd.Series:
+    values = pd.to_numeric(lam, errors="coerce").fillna(0).clip(lower=0)
+    thresholds = pd.to_numeric(threshold, errors="coerce").fillna(10**9).astype(int)
+    output = pd.Series(0.0, index=values.index)
+    valid = thresholds.lt(10**9)
+    for idx in values.loc[valid].index:
+        k = int(thresholds.loc[idx])
+        cumulative = sum(float(np.exp(-values.loc[idx]) * values.loc[idx] ** count / math.factorial(count)) for count in range(k))
+        output.loc[idx] = float(np.clip(1.0 - cumulative, 0.0, 1.0))
+    return output

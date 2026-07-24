@@ -47,6 +47,10 @@ from fpl_forecast.decision.runner import (
 )
 from fpl_forecast.dashboard.app import run_dashboard
 from fpl_forecast.operations.event_live_audit import audit_cached_event_live
+from fpl_forecast.operations.frozen_evaluation import (
+    frozen_evaluation_lines,
+    run_frozen_out_of_time_evaluation,
+)
 from fpl_forecast.operations.launch import check_season_launch as check_season_launch_run
 from fpl_forecast.operations.orchestrator import (
     operational_status_lines,
@@ -820,6 +824,24 @@ def refresh_operational(
     console.print(f"manifest={result.manifest_path}")
     console.print(f"no_op={result.no_op}")
     console.print(f"reason={result.status.reason}")
+
+
+@app.command("frozen-oot-evaluation")
+def frozen_oot_evaluation(
+    run_id: Annotated[str, typer.Option(help="Deterministic frozen evaluation run id.")],
+    evaluation_season: Annotated[str, typer.Option(help="Out-of-time evaluation season.")] = "2025-26",
+    training_seasons: Annotated[
+        str,
+        typer.Option(help="Comma-separated completed training seasons ending before the evaluation season."),
+    ] = "2022-23,2023-24,2024-25",
+) -> None:
+    result = run_frozen_out_of_time_evaluation(
+        run_id=run_id,
+        evaluation_season=evaluation_season,
+        training_seasons=tuple(parse_seasons(training_seasons)),
+    )
+    for line in frozen_evaluation_lines(result):
+        console.print(line)
 
 
 @app.command("operational-status")

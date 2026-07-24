@@ -231,7 +231,7 @@ def verify_operational_readiness() -> list[str]:
         f"status_exists={status_exists}",
         f"latest_successful_run_id={pointer.get('run_id') if pointer else None}",
         f"runs_dir_exists={runs_dir_exists}",
-        "dashboard_contract=phase8_frontend_v1",
+        "dashboard_contract=phase9_frontend_v1",
     ]
 
 
@@ -292,6 +292,13 @@ def _build_frontend_artifacts(
         "team",
         "position",
         "price_tenths",
+        "fixture_count",
+        "opponent_display",
+        "opponent_short_names",
+        "opponent_official_names",
+        "opponent_team_uids",
+        "home_away_sequence",
+        "kickoff_times",
         "expected_points",
         "points_std",
         "points_p10",
@@ -405,7 +412,17 @@ def _validate_frontend_artifacts(paths: dict[str, Path]) -> None:
     }:
         raise ValueError("Frontend artifact contract is incomplete.")
     projections = pd.read_csv(paths["player_gameweek_projections"])
-    required_columns = {"schema_version", "stable_player_id", "player", "team", "position", "price_tenths", "expected_points"}
+    required_columns = {
+        "schema_version",
+        "stable_player_id",
+        "player",
+        "team",
+        "position",
+        "price_tenths",
+        "fixture_count",
+        "opponent_display",
+        "expected_points",
+    }
     missing = required_columns.difference(projections.columns)
     if missing:
         raise ValueError(f"Projection artifact missing columns: {', '.join(sorted(missing))}")
