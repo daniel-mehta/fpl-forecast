@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 from itertools import combinations, permutations
 
 import numpy as np
@@ -12,7 +13,9 @@ from fpl_forecast.decision.rules import DecisionRules, POSITIONS
 
 @dataclass(frozen=True)
 class ExpectedRealizedBreakdown:
+    nominal_starting_xi_xpoints: float
     expected_nominal_starting_xi_points: float
+    expected_active_starter_points: float
     expected_autosub_contribution: float
     expected_captain_bonus: float
     expected_vice_captain_contingency: float
@@ -22,6 +25,7 @@ class ExpectedRealizedBreakdown:
     probability_unreplaced_starter: float
     expected_bench_points_used: float
     scenario_count: int
+    probability_mass: float
     analytic_method: str
 
     def to_dict(self) -> dict[str, float | int | str]:
@@ -36,56 +40,59 @@ def evaluate_expected_realized_points(
     max_scenarios: int | None = None,
     seed: int = 9113,
 ) -> ExpectedRealizedBreakdown:
+    # Retained for API compatibility. D2 always evaluates the complete state space.
+    _ = (max_scenarios, seed)
     frame = _records(squad)
-    ordered_ids = list(frame)
     starters = tuple(decision.lineup)
     bench = tuple(decision.bench)
     _validate_decision(starters, bench, frame, rules)
+    ordered_ids = [*starters, *bench]
     probabilities = np.array([frame[player]["p_appearance"] for player in ordered_ids], dtype=float)
-    scenarios, weights, method = _appearance_scenarios(probabilities, max_scenarios=max_scenarios, seed=seed)
-    id_index = {player: index for index, player in enumerate(ordered_ids)}
-    totals = {
-        "nominal": 0.0,
-        "autosub": 0.0,
-        "captain": 0.0,
-        "vice": 0.0,
-        "autosub_count": 0.0,
-        "unreplaced": 0.0,
-        "all_starters": 0.0,
-    }
-    for appearance, weight in zip(scenarios, weights, strict=True):
-        if weight <= 0:
-            continue
-        appeared = {player for player in ordered_ids if bool(appearance[id_index[player]])}
-        active, used_bench, unreplaced = _active_after_autosubs(starters, bench, appeared, frame, rules)
-        nominal_points = sum(_conditional_points(frame[player]) for player in starters if player in appeared)
-        autosub_points = sum(_conditional_points(frame[player]) for player in used_bench)
-        captain_bonus = 0.0
-        vice_bonus = 0.0
-        if decision.captain in active and decision.captain in appeared:
-            captain_bonus = _conditional_points(frame[decision.captain])
-        elif decision.vice_captain in active and decision.vice_captain in appeared:
-            vice_bonus = _conditional_points(frame[decision.vice_captain])
-        totals["nominal"] += weight * nominal_points
-        totals["autosub"] += weight * autosub_points
-        totals["captain"] += weight * captain_bonus
-        totals["vice"] += weight * vice_bonus
-        totals["autosub_count"] += weight * len(used_bench)
-        totals["unreplaced"] += weight * float(unreplaced > 0)
-        totals["all_starters"] += weight * float(all(player in appeared for player in starters))
-    realized = totals["nominal"] + totals["autosub"] + totals["captain"] + totals["vice"]
+    scenarios = _exact_appearance_states(len(ordered_ids))
+    weights = np.where(scenarios, probabilities, 1.0 - probabilities).prod(axis=1)
+    probability_mass = float(weights.sum())
+    if not np.isclose(probability_mass, 1.0, atol=1e-12):
+        raise ValueError(f"Independent appearance state probability mass is {probability_mass:.16f}, expected 1.")
+
+    starter_conditional = np.array([_conditional_points(frame[player]) for player in starters], dtype=float)
+    bench_conditional = np.array([_conditional_points(frame[player]) for player in bench], dtype=float)
+    used_bench, unreplaced = _exact_autosub_outcomes(
+        tuple(str(frame[player]["position"]) for player in starters),
+        tuple(str(frame[player]["position"]) for player in bench),
+        tuple(sorted(rules.min_starters.items())),
+        tuple(sorted(rules.max_starters.items())),
+    )
+    nominal_by_state = scenarios[:, : rules.lineup_size] @ starter_conditional
+    autosub_by_state = used_bench @ bench_conditional
+    captain_index = ordered_ids.index(decision.captain)
+    vice_index = ordered_ids.index(decision.vice_captain)
+    captain_by_state = scenarios[:, captain_index] * _conditional_points(frame[decision.captain])
+    vice_by_state = (
+        ~scenarios[:, captain_index]
+        & scenarios[:, vice_index]
+    ) * _conditional_points(frame[decision.vice_captain])
+
+    expected_active_starters = float(weights @ nominal_by_state)
+    expected_autosubs = float(weights @ autosub_by_state)
+    expected_captain = float(weights @ captain_by_state)
+    expected_vice = float(weights @ vice_by_state)
+    realized = expected_active_starters + expected_autosubs + expected_captain + expected_vice
+    nominal_xpoints = float(sum(float(frame[player]["expected_points"]) for player in starters))
     return ExpectedRealizedBreakdown(
-        expected_nominal_starting_xi_points=float(totals["nominal"]),
-        expected_autosub_contribution=float(totals["autosub"]),
-        expected_captain_bonus=float(totals["captain"]),
-        expected_vice_captain_contingency=float(totals["vice"]),
+        nominal_starting_xi_xpoints=nominal_xpoints,
+        expected_nominal_starting_xi_points=expected_active_starters,
+        expected_active_starter_points=expected_active_starters,
+        expected_autosub_contribution=expected_autosubs,
+        expected_captain_bonus=expected_captain,
+        expected_vice_captain_contingency=expected_vice,
         expected_realized_total=float(realized),
-        probability_all_starters_appear=float(totals["all_starters"]),
-        expected_automatic_substitutions=float(totals["autosub_count"]),
-        probability_unreplaced_starter=float(totals["unreplaced"]),
-        expected_bench_points_used=float(totals["autosub"]),
+        probability_all_starters_appear=float(weights @ scenarios[:, : rules.lineup_size].all(axis=1)),
+        expected_automatic_substitutions=float(weights @ used_bench.sum(axis=1)),
+        probability_unreplaced_starter=float(weights @ (unreplaced > 0)),
+        expected_bench_points_used=expected_autosubs,
         scenario_count=int(len(weights)),
-        analytic_method=method,
+        probability_mass=probability_mass,
+        analytic_method="exact_32768_state_independent_appearance_enumeration",
     )
 
 
@@ -93,9 +100,9 @@ def optimize_lineup_expected_realized(
     squad: pd.DataFrame,
     rules: DecisionRules,
     *,
-    max_scenarios: int | None = 2048,
+    max_scenarios: int | None = None,
     seed: int = 9113,
-    shortlist: int = 80,
+    shortlist: int = 8,
 ) -> tuple[LineupDecision, ExpectedRealizedBreakdown]:
     if len(squad) != rules.squad_size:
         raise ValueError("Expected-realized lineup optimization requires a full 15-player squad.")
@@ -174,23 +181,53 @@ def _records(squad: pd.DataFrame) -> dict[str, dict[str, float | str]]:
     return rows
 
 
-def _appearance_scenarios(
-    probabilities: np.ndarray,
-    *,
-    max_scenarios: int | None,
-    seed: int,
-) -> tuple[np.ndarray, np.ndarray, str]:
-    n_players = len(probabilities)
-    exact_count = 2**n_players
-    if max_scenarios is None or max_scenarios >= exact_count:
-        masks = np.arange(exact_count, dtype=np.uint32)
-        bits = ((masks[:, None] >> np.arange(n_players, dtype=np.uint32)) & 1).astype(bool)
-        probs = np.where(bits, probabilities, 1.0 - probabilities).prod(axis=1)
-        return bits, probs, "exact_independent_appearance_enumeration"
-    generator = np.random.default_rng(seed)
-    draws = generator.random((max_scenarios, n_players)) < probabilities
-    weights = np.full(max_scenarios, 1.0 / max_scenarios, dtype=float)
-    return draws, weights, f"deterministic_monte_carlo_independent_appearance_{max_scenarios}"
+@lru_cache(maxsize=4)
+def _exact_appearance_states(n_players: int) -> np.ndarray:
+    masks = np.arange(2**n_players, dtype=np.uint32)
+    return ((masks[:, None] >> np.arange(n_players, dtype=np.uint32)) & 1).astype(bool)
+
+
+@lru_cache(maxsize=128)
+def _exact_autosub_outcomes(
+    starter_positions: tuple[str, ...],
+    bench_positions: tuple[str, ...],
+    min_starters: tuple[tuple[str, int], ...],
+    max_starters: tuple[tuple[str, int], ...],
+) -> tuple[np.ndarray, np.ndarray]:
+    scenarios = _exact_appearance_states(len(starter_positions) + len(bench_positions))
+    used_bench = np.zeros((len(scenarios), len(bench_positions)), dtype=bool)
+    unreplaced = np.zeros(len(scenarios), dtype=np.uint8)
+    minimums = dict(min_starters)
+    maximums = dict(max_starters)
+    frame = {
+        **{f"s{index}": {"position": position} for index, position in enumerate(starter_positions)},
+        **{f"b{index}": {"position": position} for index, position in enumerate(bench_positions)},
+    }
+    starters = tuple(f"s{index}" for index in range(len(starter_positions)))
+    bench = tuple(f"b{index}" for index in range(len(bench_positions)))
+    rules = _AutosubRules(
+        lineup_size=len(starter_positions),
+        min_starters=minimums,
+        max_starters=maximums,
+    )
+    for scenario_index, appearance in enumerate(scenarios):
+        appeared = {
+            player
+            for index, player in enumerate((*starters, *bench))
+            if bool(appearance[index])
+        }
+        _, used, missing = _active_after_autosubs(starters, bench, appeared, frame, rules)
+        for player in used:
+            used_bench[scenario_index, int(player[1:])] = True
+        unreplaced[scenario_index] = missing
+    return used_bench, unreplaced
+
+
+@dataclass(frozen=True)
+class _AutosubRules:
+    lineup_size: int
+    min_starters: dict[str, int]
+    max_starters: dict[str, int]
 
 
 def _active_after_autosubs(

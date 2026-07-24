@@ -45,15 +45,16 @@ def compare_models(scored: pd.DataFrame, *, left: str, right: str) -> pd.DataFra
     keys = ["season", "gameweek"]
     label_column = "decision_model" if "decision_model" in scored.columns else "model_name"
     left_frame = scored.loc[scored[label_column].eq(left)][
-        keys + ["realized_points", "captain", "vice_captain", "lineup", "bench"]
+        keys + ["expected_realized_total", "realized_points", "captain", "vice_captain", "squad", "lineup", "bench"]
     ]
     right_frame = scored.loc[scored[label_column].eq(right)][
-        keys + ["realized_points", "captain", "vice_captain", "lineup", "bench"]
+        keys + ["expected_realized_total", "realized_points", "captain", "vice_captain", "squad", "lineup", "bench"]
     ]
     merged = left_frame.merge(right_frame, on=keys, suffixes=("_left", "_right"))
     if merged.empty:
         return pd.DataFrame()
     differences = merged["realized_points_left"] - merged["realized_points_right"]
+    expected_differences = merged["expected_realized_total_left"] - merged["expected_realized_total_right"]
     bootstrap = _paired_gameweek_bootstrap(differences)
     return pd.DataFrame(
         [
@@ -61,6 +62,8 @@ def compare_models(scored: pd.DataFrame, *, left: str, right: str) -> pd.DataFra
                 "left_model": left,
                 "right_model": right,
                 "matched_decisions": int(len(merged)),
+                "mean_expected_realized_difference": float(expected_differences.mean()),
+                "median_expected_realized_difference": float(expected_differences.median()),
                 "mean_realized_difference": float(differences.mean()),
                 "median_realized_difference": float(differences.median()),
                 "improved_rate": float(differences.gt(0).mean()),
@@ -70,6 +73,13 @@ def compare_models(scored: pd.DataFrame, *, left: str, right: str) -> pd.DataFra
                 "bootstrap_ci_high": bootstrap[1],
                 "captain_agreement": float(merged["captain_left"].eq(merged["captain_right"]).mean()),
                 "vice_captain_agreement": float(merged["vice_captain_left"].eq(merged["vice_captain_right"]).mean()),
+                "mean_squad_overlap": float(
+                    merged.apply(
+                        lambda row: len(set(str(row["squad_left"]).split(",")) & set(str(row["squad_right"]).split(",")))
+                        / 15,
+                        axis=1,
+                    ).mean()
+                ),
                 "mean_lineup_overlap": float(
                     merged.apply(
                         lambda row: len(set(str(row["lineup_left"]).split(",")) & set(str(row["lineup_right"]).split(",")))

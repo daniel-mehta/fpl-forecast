@@ -45,7 +45,9 @@ export interface LineupRow {
   bench: string;
   formation: string;
   optimizer_variant?: string;
+  nominal_starting_xi_xpoints?: string;
   expected_nominal_starting_xi_points?: string;
+  expected_active_starter_points?: string;
   expected_autosub_contribution?: string;
   expected_captain_bonus?: string;
   expected_vice_captain_contingency?: string;
@@ -56,7 +58,9 @@ export interface LineupRow {
   solver_status: string;
   optimality_scope?: string;
   evaluated_squads?: string;
+  probability_mass?: string;
   analytic_method?: string;
+  termination_reason?: string;
 }
 
 export interface FrontendData {

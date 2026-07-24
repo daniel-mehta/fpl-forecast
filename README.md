@@ -89,7 +89,9 @@ Default model chain used by the current operational adapter:
 - `D2_EXPECTED_REALIZED_POINTS`: full-candidate D1 MILP seed plus deterministic one-swap
   expected-realized search. It scores ordinary automatic substitutions, bench order, goalkeeper-only
   goalkeeper replacement, captain non-appearance, and vice-captain fallback from M7 appearance
-  probabilities. D2 is a heuristic challenger for the expected-realized objective, not a global proof.
+  probabilities by enumerating all 32,768 squad appearance states under an explicit independence
+  assumption. The evaluator is exact under that assumption; D2 remains a bounded heuristic search,
+  not a global optimizer proof.
 
 Experimental challengers:
 
@@ -239,9 +241,9 @@ Generated real-data artifacts live under ignored directories such as `data/raw/`
 ## Known Limitations
 
 - Genuine 2026-27 operation is not yet proven.
-- D2 models ordinary bench and captain contingency, but it still uses independent appearance
-  scenarios and a bounded local search after the exact D1 seed. It is not a transfer-aware season
-  optimizer.
+- D2 exactly enumerates independent appearance states for ordinary bench and captain contingency,
+  but player absences can be correlated in reality. Its full-pool one-swap search is bounded after
+  the exact D1 seed and is not a transfer-aware season optimizer.
 - M7 is selected for official GW1 coherence, but M3/M5 remain important challengers. M7 performs
   worse on rolling all-row MAE and should not be treated as broadly superior.
 - Historical candidate universes are reconstructed from observed player-fixture rows, not complete

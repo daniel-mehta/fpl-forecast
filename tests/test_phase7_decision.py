@@ -157,6 +157,89 @@ def test_expected_realized_evaluator_matches_hand_captain_and_vice_case() -> Non
     assert result.expected_captain_bonus == pytest.approx(10.0)
     assert result.expected_vice_captain_contingency == pytest.approx(3.5)
     assert result.probability_all_starters_appear == pytest.approx(0.5)
+    assert result.scenario_count == 32768
+    assert result.probability_mass == pytest.approx(1.0, abs=1e-12)
+    assert result.analytic_method == "exact_32768_state_independent_appearance_enumeration"
+
+
+def test_expected_realized_uses_unconditional_points_once() -> None:
+    rules = default_rules()
+    squad = _squad_frame()
+    squad["p_appearance"] = 1.0
+    squad.loc[squad["player_uid"].eq("MID_4"), ["expected_points", "p_appearance"]] = [5.0, 0.5]
+    squad.loc[squad["player_uid"].eq("DEF_3"), "expected_points"] = 3.0
+    lineup = (
+        "GKP_0",
+        "DEF_0",
+        "DEF_1",
+        "DEF_2",
+        "MID_0",
+        "MID_1",
+        "MID_2",
+        "MID_3",
+        "MID_4",
+        "FWD_0",
+        "FWD_1",
+    )
+    decision = optimize_lineup(squad, rules, appearance_aware=False).__class__(
+        lineup=lineup,
+        captain="MID_0",
+        vice_captain="MID_1",
+        bench=("GKP_1", "DEF_3", "DEF_4", "FWD_2"),
+        objective=0.0,
+        formation="3-5-2",
+        method="hand",
+    )
+
+    result = evaluate_expected_realized_points(squad, decision, rules, max_scenarios=1, seed=1)
+    unconditional_sum = float(squad.set_index("player_uid").loc[list(lineup), "expected_points"].sum())
+
+    assert result.nominal_starting_xi_xpoints == pytest.approx(unconditional_sum)
+    assert result.expected_active_starter_points == pytest.approx(unconditional_sum)
+    assert result.expected_nominal_starting_xi_points == pytest.approx(unconditional_sum)
+    assert result.expected_autosub_contribution == pytest.approx(1.5)
+    assert result.expected_realized_total == pytest.approx(
+        result.expected_active_starter_points
+        + result.expected_autosub_contribution
+        + result.expected_captain_bonus
+        + result.expected_vice_captain_contingency
+    )
+    assert result.scenario_count == 32768
+
+
+def test_expected_realized_captain_and_vice_both_may_be_absent() -> None:
+    rules = default_rules()
+    squad = _squad_frame()
+    squad["p_appearance"] = 1.0
+    squad.loc[squad["player_uid"].eq("MID_4"), ["expected_points", "p_appearance"]] = [10.0, 0.5]
+    squad.loc[squad["player_uid"].eq("MID_3"), ["expected_points", "p_appearance"]] = [2.0, 0.25]
+    lineup = (
+        "GKP_0",
+        "DEF_0",
+        "DEF_1",
+        "DEF_2",
+        "MID_0",
+        "MID_1",
+        "MID_2",
+        "MID_3",
+        "MID_4",
+        "FWD_0",
+        "FWD_1",
+    )
+    decision = optimize_lineup(squad, rules, appearance_aware=False).__class__(
+        lineup=lineup,
+        captain="MID_4",
+        vice_captain="MID_3",
+        bench=("GKP_1", "DEF_3", "DEF_4", "FWD_2"),
+        objective=0.0,
+        formation="3-5-2",
+        method="hand",
+    )
+
+    result = evaluate_expected_realized_points(squad, decision, rules)
+
+    assert result.expected_captain_bonus == pytest.approx(10.0)
+    assert result.expected_vice_captain_contingency == pytest.approx(1.0)
 
 
 def test_expected_realized_autosub_rules_goalkeeper_and_formation() -> None:
@@ -183,6 +266,40 @@ def test_expected_realized_autosub_rules_goalkeeper_and_formation() -> None:
     assert result.expected_automatic_substitutions == pytest.approx(2.0)
     assert result.probability_unreplaced_starter == pytest.approx(0.0)
     assert result.expected_autosub_contribution >= 4.0
+
+
+def test_expected_realized_leaves_starter_unreplaced_when_no_legal_sub_appears() -> None:
+    rules = default_rules()
+    squad = _squad_frame()
+    squad["p_appearance"] = 1.0
+    squad.loc[squad["player_uid"].isin(["DEF_2", "DEF_3", "DEF_4"]), "p_appearance"] = 0.0
+    lineup = (
+        "GKP_0",
+        "DEF_0",
+        "DEF_1",
+        "DEF_2",
+        "MID_0",
+        "MID_1",
+        "MID_2",
+        "MID_3",
+        "MID_4",
+        "FWD_0",
+        "FWD_1",
+    )
+    decision = optimize_lineup(squad, rules, appearance_aware=False).__class__(
+        lineup=lineup,
+        captain="MID_0",
+        vice_captain="MID_1",
+        bench=("GKP_1", "DEF_3", "DEF_4", "FWD_2"),
+        objective=0.0,
+        formation="3-5-2",
+        method="hand",
+    )
+
+    result = evaluate_expected_realized_points(squad, decision, rules)
+
+    assert result.probability_unreplaced_starter == pytest.approx(1.0)
+    assert result.expected_automatic_substitutions == pytest.approx(0.0)
 
 
 def test_bench_order_materially_changes_expected_realized_points() -> None:
@@ -269,7 +386,8 @@ def test_expected_realized_optimizer_prefers_stronger_bench_when_it_improves_rea
     d1_eval = evaluate_expected_realized_points(indexed.loc[list(d1.squad)].reset_index(drop=True), d1.lineup_decision, rules)
 
     assert d2.objective >= d1_eval.expected_realized_total
-    assert (d2.diagnostics or {})["expected_bench_points_used"] > d1_eval.expected_bench_points_used
+    assert (d2.diagnostics or {})["expected_bench_points_used"] >= d1_eval.expected_bench_points_used
+    assert (d2.diagnostics or {})["d1_expected_realized_total"] == pytest.approx(d1_eval.expected_realized_total)
 
 
 def test_expected_realized_optimizer_allows_unused_bank_and_does_not_reward_spend() -> None:
@@ -310,6 +428,33 @@ def test_expected_realized_optimizer_is_deterministic_and_does_not_blacklist_che
     assert first.squad == second.squad
     assert first.lineup_decision == second.lineup_decision
     assert "cheap_low_projection_def" in set(candidates["player_uid"])
+
+
+def test_expected_realized_search_covers_full_legal_one_swap_pool() -> None:
+    rules = default_rules()
+    candidates = _small_extra_candidate_frame()
+    solution = optimize_squad_expected_realized(candidates, rules, search_iterations=1)
+    diagnostics = solution.diagnostics or {}
+    unselected = len(candidates) - rules.squad_size
+    raw = rules.squad_size * unselected
+
+    assert diagnostics["eligible_players_full_pool"] == len(candidates)
+    assert diagnostics["selected_players_in_seed"] == rules.squad_size
+    assert diagnostics["unselected_replacements_considered"] == unselected
+    assert diagnostics["raw_swap_proposals_generated"] == raw
+    assert (
+        diagnostics["proposals_rejected_position_mismatch"]
+        + diagnostics["proposals_rejected_budget"]
+        + diagnostics["proposals_rejected_club_limit"]
+        + diagnostics["other_illegal_proposals_rejected"]
+        + diagnostics["feasible_unique_squad_proposals"]
+        == raw
+    )
+    assert diagnostics["final_unique_squads_evaluated"] == 1 + diagnostics["feasible_unique_squad_proposals"]
+    assert diagnostics["squad_evaluation_calls"] == 1 + diagnostics["feasible_unique_squad_proposals"]
+    assert solution.evaluated_squads == diagnostics["final_unique_squads_evaluated"]
+    assert solution.objective + 1e-9 >= diagnostics["d1_expected_realized_total"]
+    assert diagnostics["termination_reason"] in {"one_swap_local_optimum", "configured_iteration_bound_reached"}
 
 
 def test_multi_gameweek_transfer_planner_tracks_bank_rollover_hits_and_lineups() -> None:

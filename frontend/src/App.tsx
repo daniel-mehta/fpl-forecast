@@ -172,6 +172,9 @@ function App() {
             {lineupSummary && (
               <p className="section-note">
                 {lineupSummary.formation} formation · {formatLabel(lineupSummary.solver_status)}
+                {lineupSummary.termination_reason
+                  ? ` · ${formatLabel(lineupSummary.termination_reason)}`
+                  : ""}
               </p>
             )}
           </div>
@@ -200,6 +203,10 @@ function App() {
               <div>
                 <dt>Expected subs</dt>
                 <dd>{formatNumber(lineupSummary.expected_automatic_substitutions, 2)}</dd>
+              </div>
+              <div>
+                <dt>Legal squads scored</dt>
+                <dd>{formatNumber(lineupSummary.evaluated_squads, 0)}</dd>
               </div>
               <div>
                 <dt>Unreplaced risk</dt>

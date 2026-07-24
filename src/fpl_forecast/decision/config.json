@@ -24,9 +24,9 @@
     "D1_MEAN_ONLY_MILP",
     "D2_EXPECTED_REALIZED_POINTS"
   ],
-  "expected_realized_search_limit": 24,
-  "expected_realized_search_iterations": 1,
-  "expected_realized_scenarios": 512,
+  "expected_realized_search_limit": 0,
+  "expected_realized_search_iterations": 3,
+  "expected_realized_scenarios": 32768,
   "expected_realized_seed": 9113,
   "forbidden_frozen_columns": [
     "actual_total_points",

@@ -166,9 +166,11 @@ def run_operational_model_chain(
                 "bank_tenths": solution.bank_tenths,
                 "expected_team_points": solution.objective,
                 "optimizer_variant": "D2_EXPECTED_REALIZED_POINTS",
+                "nominal_starting_xi_xpoints": (solution.diagnostics or {}).get("nominal_starting_xi_xpoints"),
                 "expected_nominal_starting_xi_points": (solution.diagnostics or {}).get(
                     "expected_nominal_starting_xi_points"
                 ),
+                "expected_active_starter_points": (solution.diagnostics or {}).get("expected_active_starter_points"),
                 "expected_autosub_contribution": (solution.diagnostics or {}).get("expected_autosub_contribution"),
                 "expected_captain_bonus": (solution.diagnostics or {}).get("expected_captain_bonus"),
                 "expected_vice_captain_contingency": (solution.diagnostics or {}).get(
@@ -182,8 +184,62 @@ def run_operational_model_chain(
                 "probability_unreplaced_starter": (solution.diagnostics or {}).get("probability_unreplaced_starter"),
                 "expected_bench_points_used": (solution.diagnostics or {}).get("expected_bench_points_used"),
                 "scenario_count": (solution.diagnostics or {}).get("scenario_count"),
+                "probability_mass": (solution.diagnostics or {}).get("probability_mass"),
                 "analytic_method": (solution.diagnostics or {}).get("analytic_method"),
                 "evaluated_squads": solution.evaluated_squads,
+                "eligible_players_full_pool": (solution.diagnostics or {}).get("eligible_players_full_pool"),
+                "raw_swap_proposals_generated": (solution.diagnostics or {}).get("raw_swap_proposals_generated"),
+                "proposals_rejected_position_mismatch": (solution.diagnostics or {}).get(
+                    "proposals_rejected_position_mismatch"
+                ),
+                "proposals_rejected_budget": (solution.diagnostics or {}).get("proposals_rejected_budget"),
+                "proposals_rejected_club_limit": (solution.diagnostics or {}).get(
+                    "proposals_rejected_club_limit"
+                ),
+                "other_illegal_proposals_rejected": (solution.diagnostics or {}).get(
+                    "other_illegal_proposals_rejected"
+                ),
+                "feasible_unique_squad_proposals": (solution.diagnostics or {}).get(
+                    "feasible_unique_squad_proposals"
+                ),
+                "duplicate_feasible_proposals_reevaluated": (solution.diagnostics or {}).get(
+                    "duplicate_feasible_proposals_reevaluated"
+                ),
+                "squad_evaluation_calls": (solution.diagnostics or {}).get("squad_evaluation_calls"),
+                "accepted_improving_moves": (solution.diagnostics or {}).get("accepted_improving_moves"),
+                "local_search_iterations": (solution.diagnostics or {}).get("local_search_iterations"),
+                "termination_reason": (solution.diagnostics or {}).get("termination_reason"),
+                "d1_nominal_starting_xi_xpoints": (solution.diagnostics or {}).get(
+                    "d1_nominal_starting_xi_xpoints"
+                ),
+                "d1_expected_active_starter_points": (solution.diagnostics or {}).get(
+                    "d1_expected_active_starter_points"
+                ),
+                "d1_expected_autosub_contribution": (solution.diagnostics or {}).get(
+                    "d1_expected_autosub_contribution"
+                ),
+                "d1_expected_captain_bonus": (solution.diagnostics or {}).get("d1_expected_captain_bonus"),
+                "d1_expected_vice_captain_contingency": (solution.diagnostics or {}).get(
+                    "d1_expected_vice_captain_contingency"
+                ),
+                "d1_expected_realized_total": (solution.diagnostics or {}).get("d1_expected_realized_total"),
+                "d1_expected_automatic_substitutions": (solution.diagnostics or {}).get(
+                    "d1_expected_automatic_substitutions"
+                ),
+                "d1_probability_all_starters_appear": (solution.diagnostics or {}).get(
+                    "d1_probability_all_starters_appear"
+                ),
+                "d1_probability_unreplaced_starter": (solution.diagnostics or {}).get(
+                    "d1_probability_unreplaced_starter"
+                ),
+                "d1_cost_tenths": (solution.diagnostics or {}).get("d1_cost_tenths"),
+                "d1_bank_tenths": (solution.diagnostics or {}).get("d1_bank_tenths"),
+                "d1_formation": (solution.diagnostics or {}).get("d1_formation"),
+                "d1_squad": (solution.diagnostics or {}).get("d1_squad"),
+                "d1_lineup": (solution.diagnostics or {}).get("d1_lineup"),
+                "d1_captain": (solution.diagnostics or {}).get("d1_captain"),
+                "d1_vice_captain": (solution.diagnostics or {}).get("d1_vice_captain"),
+                "d1_bench_order": (solution.diagnostics or {}).get("d1_bench_order"),
                 "optimality_scope": solution.optimality_scope,
                 "solver_name": solution.solver_name,
                 "solver_message": solution.solver_message,
