@@ -11,7 +11,7 @@ from typing import Any
 
 import pandas as pd
 
-from fpl_forecast.config import PROJECT_ROOT, RAW_FPL_API_DIR
+from fpl_forecast.config import NORMALIZED_DIR, PROJECT_ROOT, RAW_FPL_API_DIR
 from fpl_forecast.operations.config import (
     LATEST_SUCCESSFUL_PATH,
     OPERATIONAL_OUTPUT_DIR,
@@ -49,6 +49,7 @@ def refresh_operational(
     target_gameweek: int = 1,
     completed_player_fixtures: pd.DataFrame | None = None,
     completed_team_fixtures: pd.DataFrame | None = None,
+    normalized_dir: Path | str = NORMALIZED_DIR,
 ) -> RefreshResult:
     _ensure_dirs()
     config = load_operational_config()
@@ -70,6 +71,7 @@ def refresh_operational(
                 target_gameweek=target_gameweek,
                 completed_player_fixtures=completed_player_fixtures,
                 completed_team_fixtures=completed_team_fixtures,
+                normalized_dir=normalized_dir,
             )
             if latest and latest.get("input_fingerprint") == fingerprint and not force:
                 status = OperationalStatus(
@@ -105,6 +107,7 @@ def refresh_operational(
                     target_gameweek=target_gameweek,
                     completed_player_fixtures=completed_player_fixtures,
                     completed_team_fixtures=completed_team_fixtures,
+                    normalized_dir=normalized_dir,
                 )
                 stages.append("frontend_artifacts_built")
                 _validate_frontend_artifacts(frontend)
@@ -240,6 +243,7 @@ def _build_frontend_artifacts(
     target_gameweek: int = 1,
     completed_player_fixtures: pd.DataFrame | None = None,
     completed_team_fixtures: pd.DataFrame | None = None,
+    normalized_dir: Path | str = NORMALIZED_DIR,
 ) -> dict[str, Path]:
     selected_model = config.default_models["xpoints"]
     if completed_player_fixtures is not None and "official_event_total_points" in completed_player_fixtures.columns:
@@ -254,6 +258,7 @@ def _build_frontend_artifacts(
         target_gameweek=target_gameweek,
         completed_player_fixtures=completed_player_fixtures,
         completed_team_fixtures=completed_team_fixtures,
+        normalized_dir=normalized_dir,
     )
 
     projections = result.decision_candidates.loc[result.decision_candidates["model_name"].eq(selected_model)].copy()
@@ -416,12 +421,14 @@ def _input_fingerprint(
     target_gameweek: int = 1,
     completed_player_fixtures: pd.DataFrame | None = None,
     completed_team_fixtures: pd.DataFrame | None = None,
+    normalized_dir: Path | str = NORMALIZED_DIR,
 ) -> str:
     digest = hashlib.sha256()
     digest.update(json.dumps(load_operational_config().__dict__, sort_keys=True, default=str).encode())
     digest.update(_git(["rev-parse", "HEAD"]).encode())
     digest.update(str(mock_launch).encode())
     digest.update(str(target_gameweek).encode())
+    digest.update(str(Path(normalized_dir)).encode())
     for frame in (completed_player_fixtures, completed_team_fixtures):
         if frame is not None and not frame.empty:
             digest.update(pd.util.hash_pandas_object(frame.sort_index(axis=1), index=True).values.tobytes())

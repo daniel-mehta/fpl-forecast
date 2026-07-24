@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from fpl_forecast.config import PROJECT_ROOT
+from fpl_forecast.config import NORMALIZED_DIR, PROJECT_ROOT
 from fpl_forecast.operations.model_chain import OperationalModelChainResult, run_operational_model_chain
 from fpl_forecast.operations.orchestrator import refresh_operational
 from fpl_forecast.operations.publication import latest_successful
@@ -24,7 +24,12 @@ class TransitionResult:
     failure_preserved_latest: bool
 
 
-def run_mock_gw1_to_gw2_transition(*, season: str, run_id: str = "phase8_gw1_to_gw2") -> TransitionResult:
+def run_mock_gw1_to_gw2_transition(
+    *,
+    season: str,
+    run_id: str = "phase8_gw1_to_gw2",
+    normalized_dir: Path | str = NORMALIZED_DIR,
+) -> TransitionResult:
     run_dir = TRANSITION_REPORTS_DIR / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     gw1 = run_operational_model_chain(
@@ -32,6 +37,7 @@ def run_mock_gw1_to_gw2_transition(*, season: str, run_id: str = "phase8_gw1_to_
         run_id=f"{run_id}_gw1_frozen",
         output_dir=run_dir / "gw1_frozen",
         target_gameweek=1,
+        normalized_dir=normalized_dir,
     )
     available_at = pd.Timestamp(f"{season[:4]}-08-18T22:00:00Z")
     completed_players = _mock_completed_players(gw1, available_at=available_at)
@@ -48,6 +54,7 @@ def run_mock_gw1_to_gw2_transition(*, season: str, run_id: str = "phase8_gw1_to_
         target_gameweek=2,
         completed_player_fixtures=completed_players,
         completed_team_fixtures=completed_teams,
+        normalized_dir=normalized_dir,
     )
     no_op = refresh_operational(
         season=season,
@@ -55,6 +62,7 @@ def run_mock_gw1_to_gw2_transition(*, season: str, run_id: str = "phase8_gw1_to_
         target_gameweek=2,
         completed_player_fixtures=completed_players,
         completed_team_fixtures=completed_teams,
+        normalized_dir=normalized_dir,
     )
     latest_before_failure = latest_successful()
     bad_players = completed_players.copy()
@@ -67,6 +75,7 @@ def run_mock_gw1_to_gw2_transition(*, season: str, run_id: str = "phase8_gw1_to_
         target_gameweek=2,
         completed_player_fixtures=bad_players,
         completed_team_fixtures=completed_teams,
+        normalized_dir=normalized_dir,
     )
     latest_after_failure = latest_successful()
     summary = {

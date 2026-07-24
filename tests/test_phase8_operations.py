@@ -4,11 +4,12 @@ import json
 from datetime import UTC, datetime
 
 import pandas as pd
+import pytest
 
 from fpl_forecast.dashboard.app import run_dashboard
 from fpl_forecast.ingest.fpl_api import BOOTSTRAP_STATIC, FIXTURES
 from fpl_forecast.ingest.snapshots import write_raw_snapshot
-from fpl_forecast.operations.config import LATEST_SUCCESSFUL_PATH, LOCK_PATH, STATUS_PATH
+from fpl_forecast.operations.config import LATEST_SUCCESSFUL_PATH, LOCK_PATH
 from fpl_forecast.operations.current_panel import build_current_player_fixture_history
 from fpl_forecast.operations.launch import check_season_launch
 from fpl_forecast.operations.live_results import (
@@ -217,8 +218,12 @@ def test_event_live_reingestion_is_idempotent_and_revised_snapshot_replaces_by_k
     assert int(revised.iloc[0]["total_points"]) == 3
 
 
-def test_mock_gw1_to_gw2_transition_publishes_and_preserves_latest_on_failure() -> None:
-    result = run_mock_gw1_to_gw2_transition(season="2026-27", run_id="phase8_transition_test")
+def test_mock_gw1_to_gw2_transition_publishes_and_preserves_latest_on_failure(phase8_normalized_dir) -> None:
+    result = run_mock_gw1_to_gw2_transition(
+        season="2026-27",
+        run_id="phase8_transition_test",
+        normalized_dir=phase8_normalized_dir,
+    )
     summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
 
     assert result.no_op
@@ -263,8 +268,14 @@ def test_current_panel_rebuild_is_idempotent_and_excludes_assistant_managers() -
     assert panel.iloc[0]["fpl_position"] == "MID"
 
 
-def test_mock_operational_refresh_noop_failure_and_lock_behaviors() -> None:
-    first = refresh_operational(season="2026-27", mock_launch=True, force=True, run_id="phase8_test_success")
+def test_mock_operational_refresh_noop_failure_and_lock_behaviors(phase8_normalized_dir) -> None:
+    first = refresh_operational(
+        season="2026-27",
+        mock_launch=True,
+        force=True,
+        run_id="phase8_test_success",
+        normalized_dir=phase8_normalized_dir,
+    )
     assert first.status.state == OperationalStateName.SUCCEEDED
     before = json.loads(LATEST_SUCCESSFUL_PATH.read_text(encoding="utf-8"))
     manifest = json.loads(first.manifest_path.read_text(encoding="utf-8"))
@@ -273,7 +284,7 @@ def test_mock_operational_refresh_noop_failure_and_lock_behaviors() -> None:
     freshness = json.loads((first.run_dir / "data_freshness.json").read_text(encoding="utf-8"))
     assert freshness["source"] == "mocked target-season production model chain"
 
-    second = refresh_operational(season="2026-27", mock_launch=True)
+    second = refresh_operational(season="2026-27", mock_launch=True, normalized_dir=phase8_normalized_dir)
     assert second.no_op
     assert second.status.state == OperationalStateName.SUCCEEDED
 
@@ -283,19 +294,26 @@ def test_mock_operational_refresh_noop_failure_and_lock_behaviors() -> None:
         force=True,
         run_id="phase8_test_fail",
         fail_stage="modeling",
+        normalized_dir=phase8_normalized_dir,
     )
     after = json.loads(LATEST_SUCCESSFUL_PATH.read_text(encoding="utf-8"))
     assert failed.status.state == OperationalStateName.FAILED_USING_LAST_SUCCESS
     assert before["run_id"] == after["run_id"]
 
     with RefreshLock():
-        locked = refresh_operational(season="2026-27", mock_launch=True)
+        locked = refresh_operational(season="2026-27", mock_launch=True, normalized_dir=phase8_normalized_dir)
     assert locked.status.state == OperationalStateName.FAILED_USING_LAST_SUCCESS
     assert not LOCK_PATH.exists()
 
 
-def test_dashboard_smoke_builds_html_without_server() -> None:
-    refresh_operational(season="2026-27", mock_launch=True, force=True, run_id="phase8_dashboard_smoke")
+def test_dashboard_smoke_builds_html_without_server(phase8_normalized_dir) -> None:
+    refresh_operational(
+        season="2026-27",
+        mock_launch=True,
+        force=True,
+        run_id="phase8_dashboard_smoke",
+        normalized_dir=phase8_normalized_dir,
+    )
 
     path = run_dashboard(smoke=True)
     html = path.read_text(encoding="utf-8")
@@ -306,13 +324,19 @@ def test_dashboard_smoke_builds_html_without_server() -> None:
     assert "phase8_dashboard_smoke_team_current" in html
 
 
-def test_target_fixture_change_moves_team_and_player_forecasts(tmp_path) -> None:
-    base = run_operational_model_chain(season="2026-27", run_id="phase8_fixture_base", output_dir=tmp_path / "base")
+def test_target_fixture_change_moves_team_and_player_forecasts(tmp_path, phase8_normalized_dir) -> None:
+    base = run_operational_model_chain(
+        season="2026-27",
+        run_id="phase8_fixture_base",
+        output_dir=tmp_path / "base",
+        normalized_dir=phase8_normalized_dir,
+    )
     changed = run_operational_model_chain(
         season="2026-27",
         run_id="phase8_fixture_changed",
         output_dir=tmp_path / "changed",
         fixture_variant="opponent_swap",
+        normalized_dir=phase8_normalized_dir,
     )
 
     teams = base.team_predictions.merge(
@@ -335,13 +359,22 @@ def test_target_fixture_change_moves_team_and_player_forecasts(tmp_path) -> None
     assert player_delta.gt(1e-9).any()
 
 
-def test_price_change_can_move_optimized_squad_without_changing_performance_forecasts(tmp_path) -> None:
-    base = run_operational_model_chain(season="2026-27", run_id="phase8_price_base", output_dir=tmp_path / "base")
+def test_price_change_can_move_optimized_squad_without_changing_performance_forecasts(
+    tmp_path,
+    phase8_normalized_dir,
+) -> None:
+    base = run_operational_model_chain(
+        season="2026-27",
+        run_id="phase8_price_base",
+        output_dir=tmp_path / "base",
+        normalized_dir=phase8_normalized_dir,
+    )
     changed = run_operational_model_chain(
         season="2026-27",
         run_id="phase8_price_changed",
         output_dir=tmp_path / "changed",
         price_variant="premium_target",
+        normalized_dir=phase8_normalized_dir,
     )
 
     performance = base.player_gameweek_predictions.merge(
@@ -354,8 +387,16 @@ def test_price_change_can_move_optimized_squad_without_changing_performance_fore
     assert set(base.optimized_squad["player_uid"]) != set(changed.optimized_squad["player_uid"])
 
 
-def test_full_chain_handles_new_transferred_position_change_and_promoted_fallback(tmp_path) -> None:
-    result = run_operational_model_chain(season="2026-27", run_id="phase8_special_cases", output_dir=tmp_path)
+def test_full_chain_handles_new_transferred_position_change_and_promoted_fallback(
+    tmp_path,
+    phase8_normalized_dir,
+) -> None:
+    result = run_operational_model_chain(
+        season="2026-27",
+        run_id="phase8_special_cases",
+        output_dir=tmp_path,
+        normalized_dir=phase8_normalized_dir,
+    )
     candidates = result.decision_candidates.loc[
         result.decision_candidates["model_name"].eq("X2_TEAM_CONSTRAINED_SIM_M3")
     ].copy()
@@ -384,12 +425,41 @@ def test_full_chain_handles_new_transferred_position_change_and_promoted_fallbac
     ).any()
 
 
-def test_real_cached_2026_27_status_is_waiting() -> None:
-    result = refresh_operational(season="2026-27", offline=True, status_only=True)
+def test_cached_old_season_status_is_waiting_from_temp_snapshots(tmp_path) -> None:
+    _write_current_snapshots(tmp_path, stored_season="2026-27", payload_season="2025-26")
+
+    result = check_season_launch(season="2026-27", raw_dir=tmp_path)
 
     assert result.status.state == OperationalStateName.WAITING_FOR_SEASON_LAUNCH
     assert result.status.inferred_official_season == "2025-26"
-    assert STATUS_PATH.exists()
+
+
+def test_operational_chain_uses_explicit_normalized_dir_when_default_phase2_is_absent(
+    tmp_path,
+    phase8_normalized_dir,
+) -> None:
+    missing_default = tmp_path / "repo_default_without_phase2"
+    assert not (missing_default / "phase2" / "dim_team.parquet").exists()
+
+    result = run_operational_model_chain(
+        season="2026-27",
+        run_id="phase8_isolated_normalized",
+        output_dir=tmp_path / "isolated",
+        normalized_dir=phase8_normalized_dir,
+    )
+
+    assert len(result.optimized_squad) == 15
+    assert result.lineage["target_gameweek"] == 1
+
+
+def test_operational_chain_fails_closed_when_required_normalized_artifacts_are_missing(tmp_path) -> None:
+    with pytest.raises(FileNotFoundError, match="dim_team.parquet"):
+        run_operational_model_chain(
+            season="2026-27",
+            run_id="phase8_missing_normalized",
+            output_dir=tmp_path / "missing",
+            normalized_dir=tmp_path / "empty_normalized",
+        )
 
 
 def _write_current_snapshots(
