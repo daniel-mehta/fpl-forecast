@@ -9,9 +9,10 @@ Unofficial project. Not affiliated with, endorsed by, or associated with the Pre
 Fantasy Premier League.
 
 ## Status
-Historical backtesting and the local operational pipeline are implemented. The official 2026-27
-launch payload is now recognized locally, but the first real GW1 forecast is still for review only:
-live-season forecast performance has not yet been validated, and public automation remains gated.
+The first official-data 2026-27 GW1 forecast is published through the manually triggered,
+clean-runner workflow. Launch verification covers the public artifacts and operational lineage, not
+predictive superiority: live-season forecast performance has not yet been established, scheduling
+is disabled, and clean-runner publication after GW1 remains blocked.
 
 ## What The System Does
 
@@ -229,7 +230,8 @@ Generated raw data, normalized data, reports, logs, operational outputs, fronten
 `node_modules/`, and build outputs are ignored by Git.
 
 Manual official publication instructions and failure-preservation behavior are documented in
-`docs/deployment/github-pages.md`.
+`docs/deployment/github-pages.md`. Operational review and recovery procedures are in
+`docs/operations/manual-publication-and-recovery.md`.
 
 ## Repository Structure
 
@@ -249,7 +251,8 @@ Generated real-data artifacts live under ignored directories such as `data/raw/`
 
 ## Known Limitations
 
-- Genuine 2026-27 operation is not yet proven.
+- The verified public forecast covers 2026-27 GW1 only; no sustained live-season accuracy evidence
+  exists yet.
 - D2 exactly enumerates independent appearance states for ordinary bench and captain contingency,
   but player absences can be correlated in reality. Its full-pool one-swap search is bounded after
   the exact D1 seed and is not a transfer-aware season optimizer.
