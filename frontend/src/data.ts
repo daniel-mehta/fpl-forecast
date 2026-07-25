@@ -44,6 +44,8 @@ export interface LineupRow {
   lineup: string;
   bench: string;
   formation: string;
+  cost_tenths?: string;
+  bank_tenths?: string;
   optimizer_variant?: string;
   nominal_starting_xi_xpoints?: string;
   expected_nominal_starting_xi_points?: string;
@@ -61,6 +63,7 @@ export interface LineupRow {
   probability_mass?: string;
   analytic_method?: string;
   termination_reason?: string;
+  lineup_refinement_status?: string;
 }
 
 export interface FrontendData {

@@ -40,12 +40,16 @@ export function formatDate(value: unknown): string {
     return "Not available";
   }
   const date = new Date(value);
-  return Number.isNaN(date.valueOf())
-    ? "Not available"
-    : new Intl.DateTimeFormat(undefined, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(date);
+  if (Number.isNaN(date.valueOf())) {
+    return "Not available";
+  }
+  const month = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    timeZone: "UTC",
+  }).format(date);
+  const hour = String(date.getUTCHours()).padStart(2, "0");
+  const minute = String(date.getUTCMinutes()).padStart(2, "0");
+  return `${month} ${date.getUTCDate()}, ${date.getUTCFullYear()}, ${hour}:${minute} UTC`;
 }
 
 export function formatPlayerStatus(value: string | undefined): string {

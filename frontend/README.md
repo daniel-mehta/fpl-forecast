@@ -23,6 +23,8 @@ Open the Vite URL ending in `/fpl-forecast/`.
 Build and preview the production bundle:
 
 ```bash
+npm test
+npm run lint
 npm run build
 npm run preview
 ```
@@ -36,6 +38,12 @@ a prominent `DEMO DATA` warning. Official-current publications display player pr
 home/away context, forecast timestamps, and source/disclaimer text without the demo banner. When
 generated artifacts are absent, including on the initial GitHub Pages build, the UI displays a safe
 waiting state instead of forecast recommendations.
+
+The projections table supports player/team search, position filtering, and inclusive minimum and
+maximum price filters using official prices. Technical optimizer labels have keyboard- and
+touch-accessible explanations. Publication timestamps are shown explicitly in UTC, and the
+recommended squad is separated into the starting XI and ordered bench with total cost and remaining
+bank.
 
 The manual official Pages workflow runs `sync-data` only after clean-runner reconstruction, an
 official forecast, and fail-closed publication validation. Frontend-only CI still does not deploy,

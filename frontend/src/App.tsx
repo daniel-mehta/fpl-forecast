@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { type FrontendData, type JsonRecord, loadFrontendData } from "./data";
 import {
+  availablePrices,
+  filterProjections,
+  groupSquad,
+  latestOfficialRetrievalTimestamp,
+  normalizePriceRange,
+  squadRoleLabel,
+  timestampLine,
+} from "./dashboard";
+import { InfoTooltip, InformationLabel } from "./InfoTooltip";
+import {
   formatDate,
   formatComparisonValue,
   formatLabel,
@@ -26,33 +36,41 @@ function isDemoData(data: FrontendData): boolean {
   );
 }
 
-function App() {
-  const [data, setData] = useState<FrontendData | null>(null);
+interface AppProps {
+  initialData?: FrontendData;
+}
+
+function App({ initialData }: AppProps) {
+  const [data, setData] = useState<FrontendData | null>(initialData ?? null);
   const [waiting, setWaiting] = useState(false);
   const [search, setSearch] = useState("");
   const [position, setPosition] = useState("ALL");
+  const [minPriceTenths, setMinPriceTenths] = useState<number | null>(null);
+  const [maxPriceTenths, setMaxPriceTenths] = useState<number | null>(null);
   const [descending, setDescending] = useState(true);
 
   useEffect(() => {
+    if (initialData) {
+      return;
+    }
     loadFrontendData().then(setData).catch(() => setWaiting(true));
-  }, []);
+  }, [initialData]);
 
   const projections = useMemo(() => {
     if (!data) {
       return [];
     }
-    const query = search.trim().toLowerCase();
-    return data.projections
-      .filter((row) => position === "ALL" || row.position === position)
-      .filter((row) => {
-        const haystack = `${row.player} ${formatTeam(row.team)} ${row.opponent_display ?? ""}`.toLowerCase();
-        return !query || haystack.includes(query);
-      })
+    return filterProjections(data.projections, {
+      search,
+      position,
+      minPriceTenths,
+      maxPriceTenths,
+    })
       .sort((left, right) => {
         const difference = Number(right.expected_points) - Number(left.expected_points);
         return descending ? difference : -difference;
       });
-  }, [data, descending, position, search]);
+  }, [data, descending, maxPriceTenths, minPriceTenths, position, search]);
 
   if (waiting) {
     return (
@@ -90,6 +108,35 @@ function App() {
   const gameweek = textValue(data.status, "target_gameweek");
   const state = textValue(data.status, "state");
   const lineupSummary = data.lineup[0];
+  const prices = availablePrices(data.projections);
+  const { starters, bench } = groupSquad(data.squad);
+  const officialRetrievalLine = timestampLine(
+    "Official data retrieved",
+    latestOfficialRetrievalTimestamp(data.freshness),
+  );
+  const forecastGenerationLine = timestampLine(
+    "Forecast generated",
+    data.freshness.generated_at,
+  );
+  const officialSuccess =
+    state.toLowerCase() === "succeeded" &&
+    textValue(data.freshness, "source_mode") === "official_current_season";
+
+  function updatePrice(changed: "min" | "max", value: string) {
+    const normalized = normalizePriceRange(changed, value === "" ? null : Number(value), {
+      minPriceTenths,
+      maxPriceTenths,
+    });
+    setMinPriceTenths(normalized.minPriceTenths);
+    setMaxPriceTenths(normalized.maxPriceTenths);
+  }
+
+  function resetFilters() {
+    setSearch("");
+    setPosition("ALL");
+    setMinPriceTenths(null);
+    setMaxPriceTenths(null);
+  }
 
   return (
     <>
@@ -144,15 +191,27 @@ function App() {
             </article>
             <article className="summary-card">
               <h3>Data freshness</h3>
-              <p>{data.freshness.stale === true ? "Stale" : "Current publication"}</p>
+              {officialRetrievalLine && <p>{officialRetrievalLine}</p>}
+              {forecastGenerationLine && <p>{forecastGenerationLine}</p>}
+              {!officialRetrievalLine && !forecastGenerationLine && (
+                <p>{data.freshness.stale === true ? "Stale data" : "Timestamp not available"}</p>
+              )}
             </article>
             <article className="summary-card">
-              <h3>Model variant</h3>
+              <h3>
+                <InformationLabel label="Model variant">
+                  The forecasting model used to produce the displayed player projections.
+                </InformationLabel>
+              </h3>
               <p>{formatLabel(modelVariant)}</p>
             </article>
             <article className="summary-card">
               <h3>Forecast status</h3>
-              <p>{textValue(data.status, "reason") || "No status detail available."}</p>
+              <p>
+                {officialSuccess
+                  ? "Official data validated and forecast published successfully."
+                  : textValue(data.status, "reason") || "No status detail available."}
+              </p>
             </article>
           </div>
           {(warning || demo) && (
@@ -170,96 +229,136 @@ function App() {
               <h2 id="squad-heading">Recommended squad</h2>
             </div>
             {lineupSummary && (
-              <p className="section-note">
-                {lineupSummary.formation} formation · {formatLabel(lineupSummary.solver_status)}
-                {lineupSummary.termination_reason
-                  ? ` · ${formatLabel(lineupSummary.termination_reason)}`
-                  : ""}
-              </p>
+              <div className="section-note optimizer-status-line">
+                <span>Formation: {lineupSummary.formation}</span>
+                <span>
+                  Squad search: {formatLabel(lineupSummary.solver_status)}{" "}
+                  <InfoTooltip label="Heuristic feasible">
+                    The squad is legal and improved through deterministic search, but is not
+                    guaranteed to be the global optimum.
+                  </InfoTooltip>
+                </span>
+                {lineupSummary.lineup_refinement_status && (
+                  <span>
+                    Lineup refinement: {formatLabel(lineupSummary.lineup_refinement_status)}{" "}
+                    <InfoTooltip label="Lineup refinement status">
+                      The selected squad's lineup and bench order were refined within the documented
+                      fixed-squad candidate space.
+                    </InfoTooltip>
+                  </span>
+                )}
+                {lineupSummary.termination_reason && (
+                  <span>
+                    Search limit: {formatLabel(lineupSummary.termination_reason)}{" "}
+                    <InfoTooltip label="Configured iteration bound reached">
+                      The squad search stopped after reaching its configured search limit.
+                    </InfoTooltip>
+                  </span>
+                )}
+              </div>
             )}
           </div>
           {lineupSummary && (
             <dl className="optimizer-summary" aria-label="Optimizer expected-realized diagnostics">
               <div>
-                <dt>Optimizer</dt>
+                <dt>
+                  <InformationLabel label="Optimizer">
+                    The decision method used to select the legal squad, lineup, bench order and
+                    captaincy.
+                  </InformationLabel>
+                </dt>
                 <dd>{formatLabel(lineupSummary.optimizer_variant || lineupSummary.solver_name || "available")}</dd>
               </div>
               <div>
-                <dt>Expected realized</dt>
+                <dt>
+                  <InformationLabel label="Expected realized">
+                    Projected points after accounting for appearances, automatic substitutions and
+                    captain fallback.
+                  </InformationLabel>
+                </dt>
                 <dd>{formatNumber(lineupSummary.expected_realized_total, 2)}</dd>
               </div>
               <div>
-                <dt>Autosub value</dt>
+                <dt>
+                  <InformationLabel label="Autosub value">
+                    Expected points contributed by bench players replacing starters who do not
+                    appear.
+                  </InformationLabel>
+                </dt>
                 <dd>{formatNumber(lineupSummary.expected_autosub_contribution, 2)}</dd>
               </div>
               <div>
-                <dt>Captain bonus</dt>
+                <dt>
+                  <InformationLabel label="Captain bonus">
+                    Additional expected points generated by doubling the captain's score.
+                  </InformationLabel>
+                </dt>
                 <dd>{formatNumber(lineupSummary.expected_captain_bonus, 2)}</dd>
               </div>
               <div>
-                <dt>Vice fallback</dt>
+                <dt>
+                  <InformationLabel label="Vice fallback">
+                    Expected captain bonus received when the captain does not play and the
+                    vice-captain does.
+                  </InformationLabel>
+                </dt>
                 <dd>{formatNumber(lineupSummary.expected_vice_captain_contingency, 2)}</dd>
               </div>
               <div>
-                <dt>Expected subs</dt>
+                <dt>
+                  <InformationLabel label="Expected subs">
+                    Average number of automatic substitutions expected for this lineup.
+                  </InformationLabel>
+                </dt>
                 <dd>{formatNumber(lineupSummary.expected_automatic_substitutions, 2)}</dd>
               </div>
               <div>
-                <dt>Legal squads scored</dt>
+                <dt>
+                  <InformationLabel label="Legal squads scored">
+                    Number of legal candidate squads evaluated during optimization.
+                  </InformationLabel>
+                </dt>
                 <dd>{formatNumber(lineupSummary.evaluated_squads, 0)}</dd>
               </div>
               <div>
-                <dt>Unreplaced risk</dt>
+                <dt>
+                  <InformationLabel label="Unreplaced risk">
+                    Probability that at least one absent starter cannot be replaced by an eligible
+                    bench player.
+                  </InformationLabel>
+                </dt>
                 <dd>{formatPercentage(lineupSummary.probability_unreplaced_starter)}</dd>
               </div>
             </dl>
           )}
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th scope="col">Player</th>
-                  <th scope="col">Position</th>
-                  <th scope="col">Team</th>
-                  <th scope="col">Opponent</th>
-                  <th scope="col" className="numeric">Price</th>
-                  <th scope="col" className="numeric">Expected points</th>
-                  <th scope="col">Selected role</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.squad.map((player) => (
-                  <tr
-                    className={`role-${player.selected_role}`}
-                    key={player.player_uid}
-                  >
-                    <th scope="row">{player.player_name}</th>
-                    <td>{player.fpl_position}</td>
-                    <td>{formatTeam(player.player_team_uid)}</td>
-                    <td>
-                      <span aria-label={`Opponent fixture: ${player.opponent_display || "No fixture"}`}>
-                        {player.opponent_display || "No fixture"}
-                      </span>
-                    </td>
-                    <td className="numeric">{formatPrice(player.price_tenths)}</td>
-                    <td className="numeric">{formatNumber(player.expected_points)}</td>
-                    <td>
-                      <span className="role-label">
-                        {formatLabel(player.selected_role)}
-                        {player.bench_order ? ` ${Number(player.bench_order).toFixed(0)}` : ""}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {lineupSummary && (
+            <dl className="squad-meta" aria-label="Squad cost and budget">
+              <div>
+                <dt>Formation</dt>
+                <dd>{lineupSummary.formation}</dd>
+              </div>
+              <div>
+                <dt>Total squad cost</dt>
+                <dd>{formatPrice(lineupSummary.cost_tenths)}</dd>
+              </div>
+              <div>
+                <dt>Remaining bank</dt>
+                <dd>{formatPrice(lineupSummary.bank_tenths)}</dd>
+              </div>
+            </dl>
+          )}
+          <div className="squad-groups">
+            <SquadTable title="Starting XI" players={starters} />
+            <SquadTable title="Bench" players={bench} />
           </div>
         </section>
 
         <section aria-labelledby="projections-heading">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">{projections.length} matching players</p>
+              <p className="eyebrow">
+                {projections.length} matching {projections.length === 1 ? "player" : "players"}
+              </p>
               <h2 id="projections-heading">Player projections</h2>
             </div>
           </div>
@@ -283,8 +382,41 @@ function App() {
                 <option value="FWD">Forwards</option>
               </select>
             </label>
+            <label>
+              Minimum price
+              <select
+                aria-label="Minimum price"
+                value={minPriceTenths ?? ""}
+                onChange={(event) => updatePrice("min", event.target.value)}
+              >
+                <option value="">No minimum</option>
+                {prices.map((price) => (
+                  <option key={price} value={price}>
+                    {formatPrice(price)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Maximum price
+              <select
+                aria-label="Maximum price"
+                value={maxPriceTenths ?? ""}
+                onChange={(event) => updatePrice("max", event.target.value)}
+              >
+                <option value="">No maximum</option>
+                {prices.map((price) => (
+                  <option key={price} value={price}>
+                    {formatPrice(price)}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button type="button" onClick={() => setDescending((current) => !current)}>
               Expected points: {descending ? "high to low" : "low to high"}
+            </button>
+            <button type="button" onClick={resetFilters}>
+              Reset filters
             </button>
           </div>
           <div className="table-scroll">
@@ -381,6 +513,48 @@ function App() {
 
       <SiteFooter />
     </>
+  );
+}
+
+function SquadTable({ title, players }: { title: string; players: FrontendData["squad"] }) {
+  return (
+    <section className="squad-table-group" aria-labelledby={`squad-${title.toLowerCase().replace(" ", "-")}`}>
+      <h3 id={`squad-${title.toLowerCase().replace(" ", "-")}`}>{title}</h3>
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Player</th>
+              <th scope="col">Position</th>
+              <th scope="col">Team</th>
+              <th scope="col">Opponent</th>
+              <th scope="col" className="numeric">Price</th>
+              <th scope="col" className="numeric">Expected points</th>
+              <th scope="col">Selected role</th>
+            </tr>
+          </thead>
+          <tbody>
+            {players.map((player) => (
+              <tr className={`role-${player.selected_role}`} key={player.player_uid}>
+                <th scope="row">{player.player_name}</th>
+                <td>{player.fpl_position}</td>
+                <td>{formatTeam(player.player_team_uid)}</td>
+                <td>
+                  <span aria-label={`Opponent fixture: ${player.opponent_display || "No fixture"}`}>
+                    {player.opponent_display || "No fixture"}
+                  </span>
+                </td>
+                <td className="numeric">{formatPrice(player.price_tenths)}</td>
+                <td className="numeric">{formatNumber(player.expected_points)}</td>
+                <td>
+                  <span className="role-label">{squadRoleLabel(player)}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
