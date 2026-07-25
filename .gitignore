@@ -53,3 +53,5 @@ frontend/public/data/*
 !reports/operational/
 !data/**/.gitkeep
 !frontend/public/data/README.md
+scripts/build_paper_evidence.py
+/paper

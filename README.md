@@ -5,6 +5,8 @@ decision system. It combines data engineering, statistical football modelling,
 probabilistic FPL point simulation, backtesting, operational publication, and squad
 optimization in one reproducible `uv` workspace.
 
+**Public dashboard:** [daniel-mehta.github.io/fpl-forecast](https://daniel-mehta.github.io/fpl-forecast/)
+
 Unofficial project. Not affiliated with, endorsed by, or associated with the Premier League or
 Fantasy Premier League.
 
@@ -12,7 +14,12 @@ Fantasy Premier League.
 The first official-data 2026-27 GW1 forecast is published through the manually triggered,
 clean-runner workflow. Launch verification covers the public artifacts and operational lineage, not
 predictive superiority: live-season forecast performance has not yet been established, scheduling
-is disabled, and clean-runner publication after GW1 remains blocked.
+is disabled, and clean-runner publication after GW1 remains blocked. The promoted preseason
+implementation is commit `365f0009a4e12397555c71cc950c7b4ef80c3ca4`.
+
+The currently deployed dashboard contains the first verified official-data GW1 publication. The
+promoted preseason hybrid simulator is implemented at commit `365f0009`, but will not appear on the
+public dashboard until the official publication workflow is run again.
 
 ## What The System Does
 
@@ -48,8 +55,9 @@ Poisson models estimate fixture score distributions, clean-sheet probabilities, 
 probabilities. A Dixon-Coles low-score dependence model is retained as an experimental challenger
 because audited backtests showed only marginal, mixed differences versus the independent Poisson
 default. Separate expected-minutes models estimate appearance and role duration. The component
-simulation combines team context, minutes, position, and player event rates into discrete FPL point
-distributions.
+model computes analytic, full-precision component expectations and mean xPoints. A deterministic
+joint fixture simulation then combines team context, minutes, position, and player event rates into
+shared scorelines and discrete FPL point distributions.
 
 ### Closed-Loop Execution
 
@@ -69,7 +77,7 @@ flowchart LR
   D --> E["Identity, feature, cutoff,<br/>and leakage-audit layer"]
   E --> F["Team probabilities<br/>T0/T1/T2 and T3 challenger"]
   E --> G["Expected-minutes models<br/>M0-M7"]
-  F --> H["Component xPoints simulation<br/>X0/X1/X2"]
+  F --> H["Hybrid xPoints X2<br/>analytic means + joint fixtures"]
   G --> H
   H --> I["Decision layer<br/>D1 MILP and D2 expected-realized"]
   I --> J["Operational publication<br/>atomic latest-successful artifacts"]
@@ -84,15 +92,19 @@ Default model chain used by the current operational adapter:
 - `M7_HIERARCHICAL_AVAILABILITY_STATE`: explicit DNP, substitute, start-under-60, start-60-to-89,
   and start-90 state model used for official GW1 operation because it gives coherent GW1
   appearance/start/reached-60 probabilities.
-- `X2_TEAM_CONSTRAINED_SIM_M7`: team-goal-constrained xPoints simulation using M7 minutes,
-  hierarchical attacking-rate shrinkage, current-squad share allocation, and draw-level component
-  reconciliation.
+- `X2_TEAM_CONSTRAINED_SIM_M7`: promoted hybrid xPoints model using M7 minutes, hierarchical
+  attacking-rate shrinkage, and current-squad share allocation. Simulator
+  `preseason_hybrid_fixture_v1`, contract `xpoints_hybrid_v1`, calculates analytic full-precision
+  component expectations and mean xPoints, including direct conditional points given appearance.
+  It uses 10,000 joint fixture draws for shared scorelines and player outcome distributions, with
+  team-goal conservation and stable SHA-256-derived random streams.
 - `D2_EXPECTED_REALIZED_POINTS`: full-candidate D1 MILP seed plus deterministic one-swap
   expected-realized search. It scores ordinary automatic substitutions, bench order, goalkeeper-only
   goalkeeper replacement, captain non-appearance, and vice-captain fallback from M7 appearance
   probabilities by enumerating all 32,768 squad appearance states under an explicit independence
   assumption. The evaluator is exact under that assumption; D2 remains a bounded heuristic search,
-  not a global optimizer proof.
+  not a global optimizer proof. This exact appearance-state evaluator is separate from the 10,000
+  player-outcome draws.
 
 Experimental challengers:
 
@@ -120,16 +132,26 @@ Operational safeguards:
 - Team/player identity ambiguity enters review.
 - Teams without Premier League history use a fold-fitted newly observed/promoted-team prior instead
   of an exact neutral attack/defence effect.
-- Expected component points are aggregated from the same simulation draws as total expected points,
-  so component means reconcile with total xPoints within floating-point tolerance.
+- Analytic component expectations reconcile with analytic total xPoints at full precision; joint
+  draws share fixture scorelines and conserve simulated team goals.
 - Publication is atomic and preserves the last-known-good output on failure.
 - Frontend artifacts use a stable `phase9_frontend_v1` contract.
+
+### Preseason Simulation Audit
+
+The preseason audit found and corrected semantic and numerical defects before any 2026-27 outcomes
+existed: appearance was applied more than once to some expectations; clean-sheet and
+goals-conceded eligibility could be discounted more than once; player draws did not share fixture
+scorelines; random streams depended on row order; 80 draws were unstable; and some threshold-based
+scoring used mean/divisor approximations. These were audit corrections, not evidence that the
+hybrid simulator is universally more accurate.
 
 ## Backtesting And Selected Results
 
 Detailed evidence is in the phase reports. These validation seasons are not an untouched final
-holdout; they were used during iterative development. Gameweek 1 results contain only two folds and
-therefore have high uncertainty.
+holdout; they were used during iterative development. Gameweek 1 results contain only three folds
+and therefore have high uncertainty. In particular, 2025-26 informed model hardening and is not an
+untouched final holdout.
 
 | Layer | Evaluation scope | Selected evidence |
 | --- | --- | --- |
@@ -139,9 +161,44 @@ therefore have high uncertainty.
 | xPoints | `2023-24`, `2024-25`; rolling; all observed player rows | Default X2-M3 MAE `0.9060`, RMSE `1.9543`, Spearman `0.7044`; Phase 3 B5 reference MAE `0.9824`, RMSE `2.0295`, Spearman `0.6501`. |
 | xPoints distribution | `2023-24`, `2024-25`; rolling; player rows | X2-M3 conserved expected team goals with max absolute error `4.44e-16`; X2-M5 had better 5+ point Brier and zero-rate calibration but was not selected as the default MAE frontier. |
 | Decision optimization | `2023-24`, `2024-25`; rolling weekly-reset benchmark | 380 MILP decisions solved with status `optimal`, max gap `2.96e-16`, mean runtime `0.0892s`; all squads legal. X2-M3 had the highest realized rolling weekly-reset score in this pass, but paired intervals versus X2-M5 crossed zero. |
-| Operations | Mocked 2026-27 launch and GW1-to-GW2 transition | Mocked target-season runs execute the real T2, minutes, xPoints, and MILP chain; injected failures preserve latest-successful artifacts. Genuine 2026-27 production evidence is still pending. |
-| Phase 9B1.2 GW1 hardening | `2023-24`-`2025-26`; GW1 folds; 1,964 rows | M7 worsened GW1 MAE versus M5 (`1.3032` vs `1.2517`) but improved RMSE (`2.1463`), Spearman (`0.4895`), 5+ Brier (`0.0805`), and central-80 coverage (`0.8819`). It is the official GW1 operational choice with caveats, not a universal rolling winner. |
-| Phase 9B1.3 optimizer hardening | `2023-24`-`2025-26`; GW1 weekly-reset decisions | D2 improved realized GW1 score by `+2.00` points on average versus D1 across three historical folds, with 2 improved, 1 tied, and 0 worse. This is useful acceptance evidence, not a season-long transfer-aware result. |
+| Operations | Official-data 2026-27 GW1 publication | The clean-runner chain published the frozen GW1 forecast successfully. This is operational evidence only; no 2026-27 accuracy result exists. |
+| Phase 9B1.2 GW1 hardening | `2023-24`-`2025-26`; GW1 folds; 1,964 rows | M7 was selected for coherent operational probabilities, not as a universal rolling winner. Its legacy 80-draw evidence is compared with the promoted hybrid below. |
+| Phase 9B1.3 optimizer hardening | `2023-24`-`2025-26`; three GW1 weekly-reset decisions | D2's realized advantage over D1 averaged `+1.67` points (fold differences `+3`, `0`, `+2`). This descriptive result is not proof of season-level superiority. |
+
+### Promoted Hybrid Simulator: Comparable Historical GW1 Evidence
+
+The same 1,964 player rows and three GW1 folds were evaluated with the old 80-draw M7 simulator and
+the promoted hybrid:
+
+| Metric | Old 80-draw M7 | Hybrid |
+| --- | ---: | ---: |
+| MAE | 1.3032 | 1.3726 |
+| RMSE | 2.1463 | 2.1296 |
+| Spearman | 0.4895 | 0.4937 |
+| P(5+) Brier | 0.08051 | 0.07755 |
+| Central 80% coverage | 0.8819 | 0.9078 |
+
+MAE worsened in all three folds. RMSE, P(5+) Brier, and central-80 coverage improved in all three;
+pooled Spearman improved slightly but was mixed by fold. No retuning was performed after observing
+these results. With only three historical GW1 folds, the hybrid's main justification is corrected
+semantics, deterministic behavior, shared fixture coherence, and stronger distributional evidence,
+not universal predictive superiority.
+
+Ten thousand production draws were retained after a deterministic comparison with 20,000 draws:
+the P95 absolute simulated-mean difference was `0.03069` points, the P95 absolute P(5+) difference
+was `0.00525`, rank correlation was `0.999863`, top-15 overlap was `15/15`, and exact reruns were
+identical.
+
+Mean xPoints and component expectations are calculated analytically and therefore do not depend on
+draw count. The 10,000 joint-fixture draws estimate discrete outcome distributions, prediction
+intervals, zero-point probabilities, and tail probabilities such as P(5+).
+
+### Prospective 2026-27 GW1 Example
+
+**Prospective preseason example, not an accuracy result.** The promoted local forecast contains 554
+eligible player projections across 10 fixtures. D2 returns Saka as captain and B.Fernandes as
+vice-captain, with expected-realized objective `55.1146`, squad cost `£100.0m`, bank `£0.0m`, and
+optimizer status `heuristic_feasible`.
 
 ## Frontend And Dashboard
 
@@ -255,14 +312,21 @@ Generated real-data artifacts live under ignored directories such as `data/raw/`
   exists yet.
 - D2 exactly enumerates independent appearance states for ordinary bench and captain contingency,
   but player absences can be correlated in reality. Its full-pool one-swap search is bounded after
-  the exact D1 seed and is not a transfer-aware season optimizer.
+  the exact D1 seed and is not a transfer-aware season optimizer. Its observed `+1.67`-point
+  realized advantage over D1 comes from only three historical GW1 decisions and is descriptive,
+  not proof of superiority.
+- Exact event timing within matches is not simulated. Under official scoring, a player substituted
+  after 60 minutes may retain a clean sheet despite a later concession and incurs goals-conceded
+  deductions only for goals conceded while on the pitch. The simulator approximates these cases
+  with the final simulated scoreline and reached-60 state.
 - M7 is selected for official GW1 coherence, but M3/M5 remain important challengers. M7 performs
   worse on rolling all-row MAE and should not be treated as broadly superior.
 - Historical candidate universes are reconstructed from observed player-fixture rows, not complete
   archived pre-deadline squad-registration snapshots.
 - Historical fixture schedules from Vaastav are retrospective, so result leakage is controlled but
   original deadline-time fixture uncertainty can remain.
-- GW1 validation has only three folds.
+- GW1 validation has only three folds, and 2025-26 is hardening evidence rather than an untouched
+  final holdout.
 - Transfer planning is proven only for small no-chip cases; full manager-state transfer backtesting
   needs bank, purchase prices, free transfers, and transfer history.
 - Chips, hosted scheduling, authentication, production monitoring, and commercial data-provider
