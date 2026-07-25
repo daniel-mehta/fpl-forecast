@@ -1,8 +1,15 @@
 {
   "rules_version": "fpl_standard_2022_2025",
-  "simulation_version": "phase9b13_conditional_sim_v3",
-  "draw_count": 80,
+  "simulation_version": "preseason_hybrid_fixture_v1",
+  "architecture_type": "analytic_means_joint_fixture_monte_carlo",
+  "model_contract_version": "xpoints_hybrid_v1",
+  "draw_count": 10000,
   "random_seed": 6060,
+  "seed_derivation_policy": "sha256(model_offset_seed,simulation_version,model,season,gameweek,fixture_uid,team_uid_or_player_uid,stream)",
+  "mean_median_abs_tolerance": 0.02,
+  "mean_p95_abs_tolerance": 0.05,
+  "probability_p95_abs_tolerance": 0.01,
+  "component_reconciliation_tolerance": 1e-10,
   "reference_phase3_baseline": "B5_EB_POINTS_PER90",
   "default_model": "X2_TEAM_CONSTRAINED_SIM_M7",
   "model_names": [

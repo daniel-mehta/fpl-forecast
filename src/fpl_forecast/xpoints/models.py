@@ -162,16 +162,24 @@ def _component_base(
     base["expected_points_assists"] = base["expected_assists"] * 3
     cs_pts = np.select([base["fpl_position"].isin(["GKP", "DEF"]), base["fpl_position"].eq("MID")], [4, 1], 0)
     base["expected_points_clean_sheets"] = base["clean_sheet_probability"] * cs_pts
-    base["expected_points_saves"] = base["expected_saves"] / 3
+    base["expected_points_saves"] = _expected_poisson_floor_divided(
+        base["expected_saves"],
+        base["p_appearance"],
+        divisor=3,
+    )
     base["expected_points_penalties"] = base["expected_penalty_saves"] * 5 - base["expected_penalty_misses"] * 2
-    base["expected_points_goals_conceded"] = -base["expected_goals_conceded_deduction_events"] * base[
-        "fpl_position"
-    ].isin(["GKP", "DEF"]).astype(int)
+    base["expected_points_goals_conceded"] = -_expected_poisson_floor(
+        base["opponent_expected_goals"].fillna(0).clip(lower=0),
+        divisor=2,
+    ) * base["p_reached_60"].fillna(0) * base["fpl_position"].isin(["GKP", "DEF"]).astype(int)
     base["expected_points_cards"] = -base["expected_yellow_cards"] - 3 * base["expected_red_cards"]
     base["expected_points_own_goals"] = -2 * base["expected_own_goals"]
+    p_app = pd.to_numeric(base["p_appearance"], errors="coerce").fillna(0).clip(0, 1)
+    conditional_defensive_mean = base["expected_defensive_contribution"].div(p_app.where(p_app.gt(0), 1))
     base["expected_points_defensive_contribution"] = (
-        _poisson_tail_probability(
-            base["expected_defensive_contribution"],
+        p_app
+        * _poisson_tail_probability(
+            conditional_defensive_mean,
             base["defensive_contribution_threshold"],
         )
         * base["defensive_contribution_points"]
@@ -187,12 +195,26 @@ def _finalize_model(
     config: XPointsConfig,
     seed: int,
 ) -> tuple[pd.DataFrame, np.ndarray]:
-    summaries, draws = simulate_component_points(base, config=config, seed=seed)
+    summaries, draws = simulate_component_points(
+        base,
+        config=config,
+        seed=seed,
+        seed_namespace=model_name,
+    )
     output = pd.concat([base[_id_columns(base)], summaries], axis=1)
     output["model_name"] = model_name
     output["phase4_team_model"] = "T2_REGULARIZED_ATTACK_DEFENCE" if model_name.startswith("X2") else "none"
     output["phase5_minutes_model"] = _minutes_model_name_for_xpoints(model_name)
-    output["component_model"] = "team_constrained_component_sim" if model_name.startswith("X2") else "independent_component_rates"
+    output["component_model"] = (
+        "analytic_means_joint_fixture_sim_distribution"
+        if model_name.startswith("X2")
+        else "analytic_means_independent_distribution"
+    )
+    output["simulator_version"] = config.simulation_version
+    output["simulation_architecture"] = config.architecture_type
+    output["simulation_draw_count_configured"] = config.draw_count
+    output["simulation_master_seed"] = config.random_seed
+    output["model_contract_version"] = config.model_contract_version
     for column in _component_output_columns():
         if column in output.columns and column.startswith("expected_points_"):
             continue
@@ -369,3 +391,28 @@ def _poisson_tail_probability(lam: pd.Series, threshold: pd.Series) -> pd.Series
         cumulative = sum(float(np.exp(-values.loc[idx]) * values.loc[idx] ** count / math.factorial(count)) for count in range(k))
         output.loc[idx] = float(np.clip(1.0 - cumulative, 0.0, 1.0))
     return output
+
+
+def _expected_poisson_floor(lam: pd.Series, *, divisor: int) -> pd.Series:
+    values = pd.to_numeric(lam, errors="coerce").fillna(0).clip(lower=0)
+    output = pd.Series(0.0, index=values.index)
+    for idx, value in values.items():
+        upper = max(40, int(value + 12 * np.sqrt(value + 1)))
+        probabilities = np.array(
+            [float(np.exp(-value) * value**count / math.factorial(count)) for count in range(upper)]
+        )
+        counts = np.arange(upper)
+        output.loc[idx] = float((probabilities * (counts // divisor)).sum())
+    return output
+
+
+def _expected_poisson_floor_divided(
+    unconditional_mean: pd.Series,
+    appearance_probability: pd.Series,
+    *,
+    divisor: int,
+) -> pd.Series:
+    p_app = pd.to_numeric(appearance_probability, errors="coerce").fillna(0).clip(0, 1)
+    mean = pd.to_numeric(unconditional_mean, errors="coerce").fillna(0).clip(lower=0)
+    conditional = mean.div(p_app.where(p_app.gt(0), 1))
+    return p_app * _expected_poisson_floor(conditional, divisor=divisor)

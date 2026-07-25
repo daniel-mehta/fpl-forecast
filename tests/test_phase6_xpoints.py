@@ -14,7 +14,6 @@ from fpl_forecast.xpoints.simulation import (
     aggregate_gameweek_draws,
     coherent_goal_allocation,
     simulate_component_points,
-    stabilize_conditional_estimates,
 )
 
 
@@ -144,7 +143,7 @@ def test_coherent_goal_allocation_conserves_goals_and_prevents_self_assist():
 
 
 def test_simulation_outputs_are_deterministic_finite_and_monotonic():
-    config = load_xpoints_config()
+    config = replace(load_xpoints_config(), draw_count=500)
     frame = pd.DataFrame(
         [
             {
@@ -181,68 +180,8 @@ def test_simulation_outputs_are_deterministic_finite_and_monotonic():
     assert first.iloc[0]["simulation_draw_count"] == config.draw_count
 
 
-def test_conditional_xpoints_shrink_rare_draws_and_preserve_supported_estimates():
-    config = replace(
-        load_xpoints_config(),
-        draw_count=80,
-        conditional_points_prior_strength=5.0,
-        conditional_points_global_prior=2.0,
-    )
-    summaries = pd.DataFrame(
-        {
-            "expected_points": [0.125, 1.0, 4.0],
-        }
-    )
-    stabilized = stabilize_conditional_estimates(
-        summaries,
-        positions=pd.Series(["GKP", "GKP", "MID"]),
-        appearance_counts=np.array([1, 40, 80]),
-        appearance_point_sums=np.array([10.0, 80.0, 320.0]),
-        config=config,
-    )
-
-    rare = stabilized.iloc[0]
-    supported = stabilized.iloc[2]
-    assert rare["raw_expected_points_given_appearance"] == pytest.approx(10.0)
-    assert rare["conditional_points_prior"] == pytest.approx(2.0)
-    assert rare["expected_points_given_appearance"] == pytest.approx(10.0 / 3.0)
-    assert rare["conditional_estimate_reliability"] == pytest.approx(1.0 / 6.0)
-    assert supported["raw_expected_points_given_appearance"] == pytest.approx(4.0)
-    expected_supported = (
-        80.0 * 4.0 + 5.0 * supported["conditional_points_prior"]
-    ) / 85.0
-    assert supported["expected_points_given_appearance"] == pytest.approx(expected_supported)
-    assert abs(
-        supported["expected_points_given_appearance"]
-        - supported["raw_expected_points_given_appearance"]
-    ) < 0.12
-    assert stabilized["conditional_coherence_error"].abs().max() == pytest.approx(0.0)
-
-
-def test_conditional_xpoints_zero_appearance_draws_use_general_prior():
-    config = replace(
-        load_xpoints_config(),
-        draw_count=80,
-        conditional_points_prior_strength=5.0,
-        conditional_points_global_prior=2.0,
-    )
-    stabilized = stabilize_conditional_estimates(
-        pd.DataFrame({"expected_points": [0.0, 2.0]}),
-        positions=pd.Series(["GKP", "GKP"]),
-        appearance_counts=np.array([0, 40]),
-        appearance_point_sums=np.array([0.0, 80.0]),
-        config=config,
-    )
-
-    zero = stabilized.iloc[0]
-    assert zero["raw_expected_points_given_appearance"] == 0.0
-    assert zero["expected_points_given_appearance"] == pytest.approx(2.0)
-    assert zero["conditional_estimate_reliability"] == 0.0
-    assert zero["conditional_coherence_error"] == 0.0
-
-
 def test_simulated_non_appearance_produces_exactly_zero_points():
-    config = load_xpoints_config()
+    config = replace(load_xpoints_config(), draw_count=500)
     frame = pd.DataFrame(
         [
             {

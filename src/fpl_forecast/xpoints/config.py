@@ -15,8 +15,15 @@ CONFIG_PATH = Path(__file__).with_name("config.json")
 class XPointsConfig:
     rules_version: str
     simulation_version: str
+    architecture_type: str
+    model_contract_version: str
     draw_count: int
     random_seed: int
+    seed_derivation_policy: str
+    mean_median_abs_tolerance: float
+    mean_p95_abs_tolerance: float
+    probability_p95_abs_tolerance: float
+    component_reconciliation_tolerance: float
     reference_phase3_baseline: str
     default_model: str
     model_names: tuple[str, ...]
@@ -44,8 +51,15 @@ def load_xpoints_config(path: Path = CONFIG_PATH) -> XPointsConfig:
     return XPointsConfig(
         rules_version=str(data["rules_version"]),
         simulation_version=str(data["simulation_version"]),
+        architecture_type=str(data["architecture_type"]),
+        model_contract_version=str(data["model_contract_version"]),
         draw_count=int(data["draw_count"]),
         random_seed=int(data["random_seed"]),
+        seed_derivation_policy=str(data["seed_derivation_policy"]),
+        mean_median_abs_tolerance=float(data["mean_median_abs_tolerance"]),
+        mean_p95_abs_tolerance=float(data["mean_p95_abs_tolerance"]),
+        probability_p95_abs_tolerance=float(data["probability_p95_abs_tolerance"]),
+        component_reconciliation_tolerance=float(data["component_reconciliation_tolerance"]),
         reference_phase3_baseline=str(data["reference_phase3_baseline"]),
         default_model=str(data["default_model"]),
         model_names=tuple(data["model_names"]),
