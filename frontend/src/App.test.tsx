@@ -60,6 +60,7 @@ function fixtureData(): FrontendData {
   return {
     status: {
       state: "SUCCEEDED",
+      run_id: "official-run-123",
       target_season: "2026-27",
       target_gameweek: 1,
     },
@@ -114,7 +115,11 @@ describe("dashboard interactions", () => {
     expect(screen.getByText("2 matching players")).toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("Maximum price"), "55");
     expect(screen.getByText("1 matching player")).toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText("Position"), "GKP");
+    const projectionsSection = screen
+      .getByRole("heading", { name: "Player projections" })
+      .closest("section");
+    expect(projectionsSection).not.toBeNull();
+    await user.selectOptions(within(projectionsSection!).getByLabelText("Position"), "GKP");
     await user.type(screen.getByLabelText("Search players or teams"), "arsenal");
     expect(screen.getByRole("rowheader", { name: "Alpha" })).toBeInTheDocument();
     expect(screen.queryByRole("rowheader", { name: "Bravo" })).not.toBeInTheDocument();
@@ -202,5 +207,154 @@ describe("dashboard interactions", () => {
     render(<App initialData={data} />);
     expect(screen.getByText("Timestamp not available")).toBeInTheDocument();
     expect(screen.queryByText(/UTC/)).not.toBeInTheDocument();
+  });
+
+  it("shows Player Finder results with official forecast identity and preserves dashboard views", () => {
+    render(<App initialData={fixtureData()} />);
+    const finder = screen.getByRole("heading", { name: "Player Finder" }).closest("section");
+    expect(finder).not.toBeNull();
+    expect(within(finder!).getByText("Gameweek 1")).toBeInTheDocument();
+    expect(within(finder!).getByText("Jul 24, 2026, 19:05 UTC")).toBeInTheDocument();
+    expect(within(finder!).getByText("official-run-123")).toBeInTheDocument();
+    expect(
+      within(finder!).getByText(/recommendations use only the current official forecast/i),
+    ).toBeInTheDocument();
+    expect(within(finder!).getAllByText("N/A").length).toBeGreaterThan(0);
+    expect(
+      within(finder!).getByText(/difference is N\/A until a player is selected/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Recommended squad" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Player projections" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Model comparison" })).toBeInTheDocument();
+  });
+
+  it("explains Player Finder controls and forecast identity with accessible tooltips", async () => {
+    const user = userEvent.setup();
+    render(<App initialData={fixtureData()} />);
+    const finder = screen.getByRole("heading", { name: "Player Finder" }).closest("section");
+    expect(finder).not.toBeNull();
+
+    for (const label of [
+      "Position",
+      "Maximum budget (£m)",
+      "Optional player being replaced",
+      "Forecast",
+      "Generated",
+      "Run ID",
+    ]) {
+      expect(
+        within(finder!).getByRole("button", { name: `More information about ${label}` }),
+      ).toBeInTheDocument();
+    }
+
+    await user.click(
+      within(finder!).getByRole("button", {
+        name: "More information about Maximum budget (£m)",
+      }),
+    );
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      "Selecting a player fills their price",
+    );
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  it("explains every Player Finder recommendation metric", async () => {
+    const user = userEvent.setup();
+    render(<App initialData={fixtureData()} />);
+    const card = screen.getByRole("heading", { name: "Bravo" }).closest("article");
+    expect(card).not.toBeNull();
+    const metricLabels = card!.querySelectorAll(".finder-metric-label");
+    expect(metricLabels).toHaveLength(6);
+    metricLabels.forEach((label) => {
+      expect(label.firstElementChild).toHaveClass("info-tooltip");
+    });
+
+    for (const label of [
+      "Official price",
+      "Expected points",
+      "Appearance",
+      "P(5+ points)",
+      "Expected points / £1.0m",
+      "Expected-points difference",
+    ]) {
+      expect(
+        within(card!).getByRole("button", { name: `More information about ${label}` }),
+      ).toBeInTheDocument();
+    }
+
+    await user.click(
+      within(card!).getByRole("button", {
+        name: "More information about Expected points / £1.0m",
+      }),
+    );
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      "calculated before display rounding",
+    );
+  });
+
+  it("validates budgets inline and shows no-match and fewer-than-five states", async () => {
+    const user = userEvent.setup();
+    render(<App initialData={fixtureData()} />);
+    const finder = screen.getByRole("heading", { name: "Player Finder" }).closest("section");
+    expect(finder).not.toBeNull();
+    const budget = within(finder!).getByRole("textbox", { name: "Maximum budget (£m)" });
+
+    await user.clear(budget);
+    expect(within(finder!).getByRole("alert")).toHaveTextContent(/valid budget/i);
+    expect(budget).toHaveAttribute("aria-invalid", "true");
+
+    await user.type(budget, "4.0");
+    expect(within(finder!).getByRole("status")).toHaveTextContent(/no eligible players/i);
+
+    await user.clear(budget);
+    await user.type(budget, "5.0");
+    expect(within(finder!).getByText(/fewer than five eligible players/i)).toBeInTheDocument();
+  });
+
+  it("locks replacements to the selected player's position and displays signed differences", async () => {
+    const user = userEvent.setup();
+    render(<App initialData={fixtureData()} />);
+    const finder = screen.getByRole("heading", { name: "Player Finder" }).closest("section");
+    expect(finder).not.toBeNull();
+
+    expect(within(finder!).queryByLabelText("Search players")).not.toBeInTheDocument();
+    await user.click(
+      within(finder!).getByRole("button", {
+        name: "Optional player being replaced No player selected",
+      }),
+    );
+    const replacementSearch = within(finder!).getByLabelText("Search players");
+    expect(replacementSearch).toHaveFocus();
+    await user.type(replacementSearch, "Charlie");
+    const replacementList = within(finder!).getByRole("listbox", {
+      name: "Replacement players",
+    });
+    expect(within(replacementList).getByRole("option", { name: /Charlie/ })).toBeInTheDocument();
+    expect(within(replacementList).queryByRole("option", { name: /Bravo/ })).not.toBeInTheDocument();
+    await user.click(within(replacementList).getByRole("option", { name: /Charlie/ }));
+
+    const finderPosition = within(finder!).getByLabelText("Position");
+    const budget = within(finder!).getByRole("textbox", { name: "Maximum budget (£m)" });
+    expect(finderPosition).toBeDisabled();
+    expect(finderPosition).toHaveValue("MID");
+    expect(budget).toHaveValue("4.5");
+    await user.clear(budget);
+    await user.type(budget, "15.0");
+    expect(budget).toHaveValue("15.0");
+    expect(within(finder!).getByText(/recommendations are limited to midfielders/i)).toBeInTheDocument();
+    expect(within(finder!).queryByRole("heading", { name: "Charlie" })).not.toBeInTheDocument();
+    expect(within(finder!).getByText("+6.00")).toBeInTheDocument();
+  });
+
+  it("fails closed when the loaded data are not an official current forecast", () => {
+    const data = fixtureData();
+    data.freshness.source_mode = "mock";
+    render(<App initialData={data} />);
+    const finder = screen.getByRole("heading", { name: "Player Finder" }).closest("section");
+    expect(finder).not.toBeNull();
+    expect(within(finder!).getByRole("status")).toHaveTextContent(
+      /unavailable until a current official forecast/i,
+    );
   });
 });

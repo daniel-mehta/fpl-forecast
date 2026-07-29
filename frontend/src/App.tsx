@@ -1,5 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
-import { type FrontendData, type JsonRecord, loadFrontendData } from "./data";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  type FrontendData,
+  type JsonRecord,
+  type ProjectionRow,
+  loadFrontendData,
+} from "./data";
 import {
   availablePrices,
   filterProjections,
@@ -20,6 +25,11 @@ import {
   formatPrice,
   formatTeam,
 } from "./formatting";
+import {
+  findPlayers,
+  type OfficialPosition,
+  validForecastPlayers,
+} from "./playerFinder";
 
 const repositoryUrl =
   import.meta.env.VITE_REPOSITORY_URL ?? "https://github.com/daniel-mehta/fpl-forecast#readme";
@@ -221,6 +231,14 @@ function App({ initialData }: AppProps) {
             </div>
           )}
         </section>
+
+        <PlayerFinder
+          projections={data.projections}
+          gameweek={gameweek}
+          generatedAt={data.freshness.generated_at}
+          runId={textValue(data.status, "run_id") || textValue(data.manifest, "run_id")}
+          officialForecast={officialSuccess}
+        />
 
         <section aria-labelledby="squad-heading">
           <div className="section-heading">
@@ -513,6 +531,401 @@ function App({ initialData }: AppProps) {
 
       <SiteFooter />
     </>
+  );
+}
+
+const positionLabels: Record<OfficialPosition, string> = {
+  GKP: "Goalkeeper",
+  DEF: "Defender",
+  MID: "Midfielder",
+  FWD: "Forward",
+};
+
+function formatDifference(value: number | null): string {
+  if (value === null) {
+    return "N/A";
+  }
+  if (Math.abs(value) < 0.005) {
+    return "±0.00";
+  }
+  return `${value > 0 ? "+" : ""}${value.toFixed(2)}`;
+}
+
+function PlayerFinder({
+  projections,
+  gameweek,
+  generatedAt,
+  runId,
+  officialForecast,
+}: {
+  projections: ProjectionRow[];
+  gameweek: string;
+  generatedAt: unknown;
+  runId: string;
+  officialForecast: boolean;
+}) {
+  const [finderPosition, setFinderPosition] = useState<OfficialPosition>("MID");
+  const [maximumBudget, setMaximumBudget] = useState("15.0");
+  const [replacedPlayerId, setReplacedPlayerId] = useState("");
+  const [replacementSearch, setReplacementSearch] = useState("");
+  const [replacementMenuOpen, setReplacementMenuOpen] = useState(false);
+  const replacementSearchRef = useRef<HTMLInputElement>(null);
+  const selectablePlayers = useMemo(() => validForecastPlayers(projections), [projections]);
+  const replacementOptions = useMemo(() => {
+    const query = replacementSearch.trim().toLowerCase();
+    if (!query) {
+      return selectablePlayers;
+    }
+    return selectablePlayers.filter(
+      (player) =>
+        player.stable_player_id === replacedPlayerId ||
+        `${player.player} ${formatTeam(player.team)} ${player.position}`
+          .toLowerCase()
+          .includes(query),
+    );
+  }, [replacedPlayerId, replacementSearch, selectablePlayers]);
+  const result = useMemo(
+    () => findPlayers(projections, finderPosition, maximumBudget, replacedPlayerId || undefined),
+    [finderPosition, maximumBudget, projections, replacedPlayerId],
+  );
+
+  useEffect(() => {
+    if (replacementMenuOpen) {
+      replacementSearchRef.current?.focus();
+    }
+  }, [replacementMenuOpen]);
+
+  function selectReplacedPlayer(playerId: string) {
+    setReplacedPlayerId(playerId);
+    const player = selectablePlayers.find((row) => row.stable_player_id === playerId);
+    if (player) {
+      setFinderPosition(player.position as OfficialPosition);
+      setMaximumBudget((Number(player.price_tenths) / 10).toFixed(1));
+    }
+    setReplacementSearch("");
+    setReplacementMenuOpen(false);
+  }
+
+  const count = result.recommendations.length;
+  const selectedReplacement = result.replacedPlayer;
+
+  return (
+    <section className="player-finder" aria-labelledby="player-finder-heading">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Current official forecast</p>
+          <h2 id="player-finder-heading">Player Finder</h2>
+        </div>
+        <p className="section-note">
+          Find up to five strong projected options without entering a complete squad.
+        </p>
+      </div>
+
+      {!officialForecast ? (
+        <div className="finder-empty" role="status">
+          Player Finder is unavailable until a current official forecast has been published.
+        </div>
+      ) : (
+        <>
+          <div className="finder-controls">
+            <div className="finder-control-group">
+              <span className="finder-information-label">
+                <label htmlFor="finder-position">Position</label>{" "}
+                <InfoTooltip label="Position">
+                  Filters recommendations to one official FPL position. When replacing a player,
+                  their position is used automatically.
+                </InfoTooltip>
+              </span>
+              <select
+                id="finder-position"
+                value={finderPosition}
+                disabled={Boolean(replacedPlayerId)}
+                aria-describedby={replacedPlayerId ? "replacement-position-note" : undefined}
+                onChange={(event) => setFinderPosition(event.target.value as OfficialPosition)}
+              >
+                <option value="GKP">Goalkeeper</option>
+                <option value="DEF">Defender</option>
+                <option value="MID">Midfielder</option>
+                <option value="FWD">Forward</option>
+              </select>
+            </div>
+            <div className="finder-control-group">
+              <span className="finder-information-label">
+                <label htmlFor="finder-maximum-budget">Maximum budget (£m)</label>{" "}
+                <InfoTooltip label="Maximum budget (£m)">
+                  The highest official player price to include. Selecting a player fills their
+                  price, and you can edit it.
+                </InfoTooltip>
+              </span>
+              <input
+                id="finder-maximum-budget"
+                type="text"
+                inputMode="decimal"
+                value={maximumBudget}
+                aria-invalid={Boolean(result.error)}
+                aria-describedby={result.error ? "finder-budget-error" : "finder-budget-help"}
+                onChange={(event) => setMaximumBudget(event.target.value)}
+                placeholder="7.5"
+              />
+              <span className="field-help" id="finder-budget-help">
+                Official player price in millions
+              </span>
+            </div>
+            <div className="finder-replacement-controls">
+              <span className="finder-control-label">
+                <span id="replacement-player-label">Optional player being replaced</span>{" "}
+                <InfoTooltip label="Optional player being replaced">
+                  Choose a player from the current official forecast to compare same-position
+                  replacements and expected-points differences.
+                </InfoTooltip>
+              </span>
+              <div className="replacement-combobox">
+                <button
+                  className="replacement-combobox-trigger"
+                  type="button"
+                  aria-expanded={replacementMenuOpen}
+                  aria-haspopup="listbox"
+                  aria-labelledby="replacement-player-label replacement-player-value"
+                  onClick={() => setReplacementMenuOpen((open) => !open)}
+                >
+                  <span id="replacement-player-value">
+                    {selectedReplacement
+                      ? `${selectedReplacement.player} — ${formatTeam(selectedReplacement.team)}, ${formatPrice(selectedReplacement.price_tenths)}`
+                      : "No player selected"}
+                  </span>
+                  <span aria-hidden="true">▾</span>
+                </button>
+                {replacementMenuOpen && (
+                  <div
+                    className="replacement-combobox-menu"
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        setReplacementMenuOpen(false);
+                      }
+                    }}
+                  >
+                    <label>
+                      Search players
+                      <input
+                        ref={replacementSearchRef}
+                        type="search"
+                        value={replacementSearch}
+                        onChange={(event) => setReplacementSearch(event.target.value)}
+                        placeholder="Player, club or position"
+                      />
+                    </label>
+                    <div
+                      className="replacement-options"
+                      role="listbox"
+                      aria-label="Replacement players"
+                    >
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={!replacedPlayerId}
+                        onClick={() => selectReplacedPlayer("")}
+                      >
+                        No player selected
+                      </button>
+                      {replacementOptions.map((player) => (
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={player.stable_player_id === replacedPlayerId}
+                          key={player.stable_player_id}
+                          onClick={() => selectReplacedPlayer(player.stable_player_id)}
+                        >
+                          <strong>{player.player}</strong>
+                          <span>
+                            {positionLabels[player.position as OfficialPosition]} ·{" "}
+                            {formatTeam(player.team)} · {formatPrice(player.price_tenths)}
+                          </span>
+                        </button>
+                      ))}
+                      {replacementOptions.length === 0 && (
+                        <p className="replacement-no-results" role="status">
+                          No players match the search.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {replacedPlayerId && result.replacedPlayer && (
+            <p className="finder-context" id="replacement-position-note">
+              Replacing <strong>{result.replacedPlayer.player}</strong>. Recommendations are limited
+              to {positionLabels[result.position!].toLowerCase()}s from the same forecast.
+            </p>
+          )}
+
+          <dl className="finder-trace" aria-label="Player Finder forecast identity">
+            <div>
+              <dt>
+                <InformationLabel label="Forecast" className="finder-information-label">
+                  The FPL gameweek these recommendations project.
+                </InformationLabel>
+              </dt>
+              <dd>{gameweek ? `Gameweek ${gameweek}` : "Gameweek not available"}</dd>
+            </div>
+            <div>
+              <dt>
+                <InformationLabel label="Generated" className="finder-information-label">
+                  When the current official forecast was generated, shown in UTC.
+                </InformationLabel>
+              </dt>
+              <dd>{formatDate(generatedAt)}</dd>
+            </div>
+            <div>
+              <dt>
+                <InformationLabel label="Run ID" className="finder-information-label">
+                  The traceable identifier for the exact official forecast run used.
+                </InformationLabel>
+              </dt>
+              <dd>{runId || "Not available"}</dd>
+            </div>
+          </dl>
+          <p className="finder-source-note">
+            Recommendations use only the current official forecast shown on this dashboard.
+          </p>
+
+          {result.error ? (
+            <p className="field-error" id="finder-budget-error" role="alert">
+              {result.error}
+            </p>
+          ) : count === 0 ? (
+            <div className="finder-empty" role="status">
+              No eligible players matched this position and budget.
+            </div>
+          ) : (
+            <>
+              <div className="finder-results-heading">
+                <p>
+                  <strong>
+                    {count} {count === 1 ? "recommendation" : "recommendations"}
+                  </strong>
+                </p>
+                {count < 5 && (
+                  <p>Fewer than five eligible players matched the selected filters.</p>
+                )}
+                {!result.replacedPlayer && (
+                  <p>Expected-points difference is N/A until a player is selected.</p>
+                )}
+              </div>
+              <div className="recommendation-grid" aria-label="Player Finder recommendations">
+                {result.recommendations.map((recommendation, index) => {
+                  const difference = recommendation.expectedPointsDifference;
+                  const differenceClass =
+                    difference === null || Math.abs(difference) < 0.005
+                      ? "difference-neutral"
+                      : difference > 0
+                        ? "difference-positive"
+                        : "difference-negative";
+                  return (
+                    <article
+                      className="recommendation-card"
+                      key={recommendation.player.stable_player_id}
+                    >
+                      <div className="recommendation-title">
+                        <span className="recommendation-rank" aria-label={`Rank ${index + 1}`}>
+                          {index + 1}
+                        </span>
+                        <div>
+                          <h3>{recommendation.player.player}</h3>
+                          <p>
+                            {formatTeam(recommendation.player.team)} ·{" "}
+                            {positionLabels[recommendation.player.position as OfficialPosition]}
+                          </p>
+                        </div>
+                      </div>
+                      <dl>
+                        <div>
+                          <dt>
+                            <span className="finder-metric-label">
+                              <InfoTooltip label="Official price">
+                                The player's current official FPL price from this forecast artifact.
+                              </InfoTooltip>
+                              <span>Official price</span>
+                            </span>
+                          </dt>
+                          <dd>{formatPrice(recommendation.player.price_tenths)}</dd>
+                        </div>
+                        <div>
+                          <dt>
+                            <span className="finder-metric-label">
+                              <InfoTooltip label="Expected points">
+                                The model's mean projected FPL points for this gameweek, not a
+                                guaranteed result.
+                              </InfoTooltip>
+                              <span>Expected points</span>
+                            </span>
+                          </dt>
+                          <dd>{formatNumber(recommendation.player.expected_points)}</dd>
+                        </div>
+                        <div>
+                          <dt>
+                            <span className="finder-metric-label">
+                              <InfoTooltip label="Appearance">
+                                The forecast probability that the player appears for any minutes.
+                              </InfoTooltip>
+                              <span>Appearance</span>
+                            </span>
+                          </dt>
+                          <dd>{formatPercentage(recommendation.player.p_appearance)}</dd>
+                        </div>
+                        <div>
+                          <dt>
+                            <span className="finder-metric-label">
+                              <InfoTooltip label="P(5+ points)">
+                                The forecast probability that the player scores at least five FPL
+                                points.
+                              </InfoTooltip>
+                              <span>P(5+ points)</span>
+                            </span>
+                          </dt>
+                          <dd>{formatPercentage(recommendation.player.prob_points_ge_5)}</dd>
+                        </div>
+                        <div>
+                          <dt>
+                            <span className="finder-metric-label">
+                              <InfoTooltip label="Expected points / £1.0m">
+                                Expected points divided by the player's official price in millions,
+                                calculated before display rounding.
+                              </InfoTooltip>
+                              <span>Expected points / £1.0m</span>
+                            </span>
+                          </dt>
+                          <dd>{recommendation.expectedPointsPerMillion.toFixed(2)}</dd>
+                        </div>
+                        <div>
+                          <dt>
+                            <span className="finder-metric-label">
+                              <InfoTooltip label="Expected-points difference">
+                                This player's expected points minus the selected player's expected
+                                points. It is unavailable when no player is selected.
+                              </InfoTooltip>
+                              <span>Expected-points difference</span>
+                            </span>
+                          </dt>
+                          <dd className={differenceClass}>{formatDifference(difference)}</dd>
+                        </div>
+                      </dl>
+                    </article>
+                  );
+                })}
+              </div>
+              <p className="finder-disclaimer">
+                Projections are estimates, not guarantees. This finder does not account for complete
+                squad legality, selling prices, bank balance, free transfers, hits or multi-gameweek
+                planning.
+              </p>
+            </>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 
