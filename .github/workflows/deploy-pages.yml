@@ -26,7 +26,7 @@ on:
           - "yes"
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -133,6 +133,37 @@ jobs:
             --run-id "${{ steps.inputs.outputs.run_id }}" \
             --audit-dir reports/operational/publication_audit \
             --public-dir frontend/public/data
+
+      - name: Freeze the sanitized public forecast bundle
+        working-directory: frontend
+        run: |
+          node scripts/frozen-forecast-cli.mjs freeze \
+            --source public/data \
+            --destination "$RUNNER_TEMP/frozen-forecast/data"
+
+      - name: Persist the frozen public forecast bundle
+        env:
+          FROZEN_BRANCH: official-forecast-data
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch origin "$FROZEN_BRANCH"
+          git worktree add --detach "$RUNNER_TEMP/frozen-forecast-branch" "origin/$FROZEN_BRANCH"
+          rm -rf "$RUNNER_TEMP/frozen-forecast-branch/data"
+          cp -R "$RUNNER_TEMP/frozen-forecast/data" "$RUNNER_TEMP/frozen-forecast-branch/data"
+          git -C "$RUNNER_TEMP/frozen-forecast-branch" add data
+          if git -C "$RUNNER_TEMP/frozen-forecast-branch" diff --cached --quiet; then
+            echo "Frozen bundle already matches the validated official publication."
+            exit 0
+          fi
+          git -C "$RUNNER_TEMP/frozen-forecast-branch" config user.name "github-actions[bot]"
+          git -C "$RUNNER_TEMP/frozen-forecast-branch" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$RUNNER_TEMP/frozen-forecast-branch" commit -m "Freeze official forecast ${{ steps.inputs.outputs.run_id }}"
+          git -C "$RUNNER_TEMP/frozen-forecast-branch" push origin HEAD:"$FROZEN_BRANCH"
+
+      - name: Report frozen forecast identity
+        run: |
+          jq '{run_id, target_season, target_gameweek, completed_at, frontend_schema_version, simulator: .model_lineage.xpoints_simulator.version, output_contract: .model_lineage.xpoints_simulator.model_contract_version}' frontend/public/data/run_manifest.json >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run frontend lint
         working-directory: frontend

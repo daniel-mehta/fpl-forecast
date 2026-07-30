@@ -1,0 +1,106 @@
+name: Deploy frontend to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-frontend.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: frontend-pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build frontend around frozen official forecast
+    runs-on: ubuntu-latest
+    outputs:
+      frozen_bundle_commit: ${{ steps.frozen.outputs.commit }}
+    steps:
+      - name: Check out the commit to deploy
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.sha }}
+          persist-credentials: false
+
+      - name: Install Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Retrieve and validate frozen official forecast
+        id: frozen
+        run: |
+          git fetch --depth=1 origin official-forecast-data
+          echo "commit=$(git rev-parse FETCH_HEAD)" >> "$GITHUB_OUTPUT"
+          git archive FETCH_HEAD data | tar -x -C "$RUNNER_TEMP"
+          cd frontend
+          node scripts/frozen-forecast-cli.mjs prepare \
+            --source "$RUNNER_TEMP/data" \
+            --destination public/data
+
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm test
+
+      - name: Run frozen-bundle validation tests
+        working-directory: frontend
+        run: npm run test:frozen-forecast
+
+      - name: Run frontend lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Build production frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Verify built public forecast assets
+        working-directory: frontend
+        run: node scripts/frozen-forecast-cli.mjs validate --source dist/data
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: frontend/dist
+
+  deploy:
+    name: Deploy frozen-forecast frontend
+    needs: build
+    runs-on: ubuntu-latest
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Confirm frozen forecast did not change while building
+        env:
+          EXPECTED_COMMIT: ${{ needs.build.outputs.frozen_bundle_commit }}
+        run: |
+          git ls-remote https://github.com/daniel-mehta/fpl-forecast.git refs/heads/official-forecast-data | awk '{print $1}' > current.txt
+          test "$(cat current.txt)" = "$EXPECTED_COMMIT" || {
+            echo "No valid frozen official forecast bundle was available. Frontend deployment was cancelled." >&2
+            exit 1
+          }
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

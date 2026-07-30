@@ -2,8 +2,9 @@
 
 Run `npm run sync-data` from `frontend/` to copy the seven public
 `phase9_frontend_v1` artifacts from the latest successful operational run. Generated files in this
-directory are ignored by Git. The public Pages build does not run this command; absent artifacts
-produce the frontend's safe waiting state.
+directory are ignored by Git. Official publication freezes the sanitized files with a checksum
+manifest; the UI-only Pages workflow retrieves and validates that frozen bundle before placing it
+here. It fails rather than deploying absent, sample, or invalid forecast data.
 
 `optimized_lineup.csv` may include Phase 9B1.3 expected-realized optimizer diagnostics such as
 autosub contribution, captain fallback value, expected substitutions, and the optimizer variant.

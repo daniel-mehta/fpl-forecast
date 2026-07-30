@@ -38,8 +38,25 @@ Any earlier failure leaves the previous successful Pages deployment untouched. A
 artifact is retained for 14 days; it contains hashes, validation results, model lineage, and a
 sanitized inventory, not raw or normalized datasets.
 
-Frontend-only pushes run lint and build but do not deploy. Such a runner cannot reconstruct the last
-successful ignored forecast and could otherwise replace a live forecast with the waiting state.
+## Frontend-only deployments
+
+`Frontend CI` lints and builds frontend changes. `Deploy frontend to GitHub Pages` deploys UI-only
+changes after retrieving `official-forecast-data`, a dedicated branch containing only the frozen,
+sanitized public forecast files and their checksum manifest. It runs automatically for `main` pushes
+that change `frontend/**` or its own workflow, and can be run manually by selecting **Deploy frontend
+to GitHub Pages** in Actions. It does not run Python, generate a forecast, call the optimizer, or
+fall back to empty or sample data. It fails closed if the bundle is unavailable, malformed, has a
+different identity, or fails checksum validation.
+
+The first use requires one manual migration only: select **Seed frozen official forecast bundle** in
+Actions. It downloads the already-public direct `/data/` files, validates their existing official
+identity, writes their checksummed bundle to `official-forecast-data`, and does not deploy or
+regenerate anything. It refuses to overwrite a bundle that differs. After that, successful `Publish
+official FPL forecast` runs replace this branch only after the official forecast and public-contract
+validation complete, before building and deploying the matching dashboard.
+
+Forecasting, simulator, optimizer, or public-forecast changes must use **Publish official FPL
+forecast**; frontend-only deployment is intentionally not a publication mechanism.
 
 The full Python test suite is separate from publication. It can be started manually and runs
 nightly. Ordinary push and pull-request CI runs Ruff and `pytest -m "not slow"`.
