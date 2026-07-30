@@ -1,0 +1,42 @@
+{
+  "cold_start_count": 73,
+  "current_player_count": 557,
+  "current_team_count": 20,
+  "decision_run_id": "official_2026-27_30171615945_1_decision_current",
+  "generated_at": "2026-07-25T19:40:35.103508Z",
+  "identity_coverage": {
+    "players_total": 557,
+    "players_with_stable_uid": 557,
+    "teams_total": 20,
+    "teams_with_stable_uid": 20
+  },
+  "lineage_artifact": "model_lineage.json",
+  "minutes_model_run_id": "official_2026-27_30171615945_1_minutes_current",
+  "neutral_team_fallback_count": 2,
+  "official_deadline": "2026-08-21T17:30:00+00:00",
+  "official_snapshots": {
+    "bootstrap_static": {
+      "raw_snapshot_file": "fpl_api/2026-27/bootstrap_static/20260725T192907675010Z.json",
+      "retrieved_at": "2026-07-25T19:29:07.675010Z",
+      "sha256": "3660ba87cf30827a340d62c273b41fdfadf76407906370cff2e17c8fd52cea04",
+      "source_url": "https://fantasy.premierleague.com/api/bootstrap-static/",
+      "source_version": "2026-27"
+    },
+    "fixtures": {
+      "raw_snapshot_file": "fpl_api/2026-27/fixtures/20260725T192907677051Z.json",
+      "retrieved_at": "2026-07-25T19:29:07.677051Z",
+      "sha256": "9e7484118381f8202830906ba993c176475d8ca1796571f5dd78cbfc2d73bd3e",
+      "source_url": "https://fantasy.premierleague.com/api/fixtures/",
+      "source_version": "2026-27"
+    }
+  },
+  "price_source": "official_bootstrap_static.now_cost",
+  "rules_source": "official_bootstrap_static.game_settings_and_element_types",
+  "schema_version": "phase9_frontend_v1",
+  "source": "official current-season FPL API snapshots",
+  "source_mode": "official_current_season",
+  "stale": false,
+  "target_fixture_count": 10,
+  "team_model_run_id": "official_2026-27_30171615945_1_team_current",
+  "xpoints_model_run_id": "official_2026-27_30171615945_1_xpoints_current"
+}

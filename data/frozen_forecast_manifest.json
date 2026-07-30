@@ -1,0 +1,43 @@
+{
+  "schema_version": "frozen_official_forecast_v1",
+  "forecast_identity": {
+    "run_id": "official_2026-27_30171615945_1",
+    "season": "2026-27",
+    "gameweek": 1,
+    "published_at": "2026-07-25T19:40:35.110851Z",
+    "generated_at": "2026-07-25T19:40:35.103508Z",
+    "simulator_version": "preseason_hybrid_fixture_v1",
+    "output_contract_version": "xpoints_hybrid_v1",
+    "player_count": 557
+  },
+  "files": {
+    "operational_status.json": {
+      "bytes": 419,
+      "sha256": "caf539975b993d8b1c5b498d9bed9fd84076fdb27ad4f4e70ebe01d92b97c7f0"
+    },
+    "player_gameweek_projections.csv": {
+      "bytes": 303558,
+      "sha256": "4b01f285278a8f7ef89498a03e9774ea3acf720cbf67e203ba70498bfd3318f0"
+    },
+    "optimized_squad.csv": {
+      "bytes": 8384,
+      "sha256": "0a24bc3a185a0abb59ce5e83501115222441e9b238f3195db33aee9dbe30e621"
+    },
+    "optimized_lineup.csv": {
+      "bytes": 3806,
+      "sha256": "14d760d2f1ee47a1bc4f9ec261b9aaf60db301a041f97dd1c54b68bbbe075898"
+    },
+    "model_comparison.csv": {
+      "bytes": 375,
+      "sha256": "53041be3b88657725bd89abdd6e05536bb01d36c79e1eb38e9864980a081efef"
+    },
+    "data_freshness.json": {
+      "bytes": 1790,
+      "sha256": "315020f097c37479fd22d8ee56a90e8829ed372c50e08ff008fdc379c51615ea"
+    },
+    "run_manifest.json": {
+      "bytes": 7813,
+      "sha256": "4cc7137fc0303988aea3998cf13f3c9c5f4f49598b135c81acb24ffeb219a00c"
+    }
+  }
+}
