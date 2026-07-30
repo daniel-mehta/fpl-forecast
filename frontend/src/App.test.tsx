@@ -105,7 +105,143 @@ function fixtureData(): FrontendData {
   };
 }
 
+function projectionFixture(count = 60): FrontendData {
+  const data = fixtureData();
+  data.projections = Array.from({ length: count }, (_, index) =>
+    projection(
+      `Projection ${String(index + 1).padStart(3, "0")}`,
+      index % 2 === 0 ? "team_arsenal" : "team_liverpool",
+      index % 4 === 0 ? "GKP" : index % 4 === 1 ? "DEF" : index % 4 === 2 ? "MID" : "FWD",
+      40 + (index % 10) * 5,
+      count - index,
+    ),
+  );
+  return data;
+}
+
 describe("dashboard interactions", () => {
+  it("paginates sorted projections with working navigation and a final partial page", async () => {
+    const user = userEvent.setup();
+    render(<App initialData={projectionFixture()} />);
+    const section = screen.getByRole("heading", { name: "Player projections" }).closest("section");
+    expect(section).not.toBeNull();
+    const projectionsTable = within(section!).getByRole("table");
+
+    expect(within(section!).getByText("Showing 1–25 of 60")).toBeInTheDocument();
+    expect(within(projectionsTable).getAllByRole("rowheader")).toHaveLength(25);
+    expect(within(projectionsTable).getByRole("rowheader", { name: "Projection 001" })).toBeInTheDocument();
+    expect(within(projectionsTable).queryByRole("rowheader", { name: "Projection 026" })).not.toBeInTheDocument();
+
+    const topNavigation = within(section!).getByRole("navigation", {
+      name: "Top projection pagination",
+    });
+    expect(within(topNavigation).getByRole("button", { name: "Previous" })).toBeDisabled();
+    await user.click(within(topNavigation).getByRole("button", { name: "Next" }));
+    expect(within(section!).getByText("Showing 26–50 of 60")).toBeInTheDocument();
+    expect(within(projectionsTable).queryByRole("rowheader", { name: "Projection 001" })).not.toBeInTheDocument();
+    expect(within(projectionsTable).getByRole("rowheader", { name: "Projection 026" })).toBeInTheDocument();
+
+    await user.selectOptions(within(topNavigation).getByLabelText("Top projection page"), "3");
+    expect(within(section!).getByText("Showing 51–60 of 60")).toBeInTheDocument();
+    expect(within(projectionsTable).getAllByRole("rowheader")).toHaveLength(10);
+    expect(within(topNavigation).getByRole("button", { name: "Next" })).toBeDisabled();
+  });
+
+  it("supports predefined and custom page sizes while retaining the last valid size", async () => {
+    const user = userEvent.setup();
+    render(<App initialData={projectionFixture()} />);
+    const section = screen.getByRole("heading", { name: "Player projections" }).closest("section");
+    expect(section).not.toBeNull();
+    const pageSize = within(section!).getByLabelText("Players per page");
+
+    await user.selectOptions(pageSize, "10");
+    expect(within(section!).getByText("Showing 1–10 of 60")).toBeInTheDocument();
+    await user.selectOptions(pageSize, "custom");
+    const custom = within(section!).getByLabelText("Custom page size");
+    const apply = within(section!).getByRole("button", { name: "Apply" });
+
+    for (const invalidValue of ["abc", "0", "-1", "1.5", "555"]) {
+      await user.clear(custom);
+      await user.type(custom, invalidValue);
+      await user.click(apply);
+      expect(within(section!).getByRole("alert")).toHaveTextContent(
+        "Enter a whole number from 1 to 554.",
+      );
+      expect(within(section!).getByText("Showing 1–10 of 60")).toBeInTheDocument();
+    }
+    await user.clear(custom);
+    await user.click(apply);
+    expect(within(section!).getByRole("alert")).toBeInTheDocument();
+    expect(within(section!).getByText("Showing 1–10 of 60")).toBeInTheDocument();
+
+    await user.type(custom, "1");
+    await user.click(apply);
+    expect(within(section!).getByText("Showing 1–1 of 60")).toBeInTheDocument();
+    await user.clear(custom);
+    await user.type(custom, "554");
+    await user.click(apply);
+    expect(within(section!).getByText("Showing 1–60 of 60")).toBeInTheDocument();
+  });
+
+  it("paginates after filtering and sorting, resets pages, and exposes mobile card labels", async () => {
+    const user = userEvent.setup();
+    render(<App initialData={projectionFixture()} />);
+    const section = screen.getByRole("heading", { name: "Player projections" }).closest("section");
+    expect(section).not.toBeNull();
+    const topNavigation = within(section!).getByRole("navigation", {
+      name: "Top projection pagination",
+    });
+
+    await user.click(within(topNavigation).getByRole("button", { name: "Next" }));
+    expect(within(topNavigation).getByLabelText("Top projection page")).toHaveValue("2");
+    await user.click(within(section!).getByRole("button", { name: /Expected points:/ }));
+    expect(within(topNavigation).getByLabelText("Top projection page")).toHaveValue("1");
+    expect(within(section!).getByRole("rowheader", { name: "Projection 060" })).toBeInTheDocument();
+
+    await user.click(within(topNavigation).getByRole("button", { name: "Next" }));
+    await user.type(within(section!).getByLabelText("Search players or teams"), "Projection 001");
+    expect(within(section!).getByText("Showing 1–1 of 1")).toBeInTheDocument();
+    expect(within(topNavigation).getByLabelText("Top projection page")).toHaveValue("1");
+    await user.click(within(section!).getByRole("button", { name: "Reset filters" }));
+    expect(within(section!).getByText("Showing 1–25 of 60")).toBeInTheDocument();
+
+    await user.click(within(topNavigation).getByRole("button", { name: "Next" }));
+    await user.selectOptions(within(section!).getByLabelText("Position"), "GKP");
+    expect(within(topNavigation).getByLabelText("Top projection page")).toHaveValue("1");
+    expect(within(section!).getByText("Showing 1–15 of 15")).toBeInTheDocument();
+    await user.click(within(section!).getByRole("button", { name: "Reset filters" }));
+
+    await user.click(within(topNavigation).getByRole("button", { name: "Next" }));
+    await user.selectOptions(within(section!).getByLabelText("Minimum price"), "80");
+    expect(within(topNavigation).getByLabelText("Top projection page")).toHaveValue("1");
+    expect(within(section!).getByText("Showing 1–12 of 12")).toBeInTheDocument();
+    await user.click(within(section!).getByRole("button", { name: "Reset filters" }));
+
+    const firstRow = within(section!).getByRole("rowheader", { name: "Projection 060" }).closest("tr");
+    expect(firstRow).not.toBeNull();
+    expect(firstRow!.querySelector('[data-label="Player"]')).toBeInTheDocument();
+    expect(firstRow!.querySelector('[data-label="At least 5 points"]')).toBeInTheDocument();
+  });
+
+  it("shows a clear empty state when projection filters match no players", async () => {
+    const user = userEvent.setup();
+    render(<App initialData={projectionFixture()} />);
+    const section = screen.getByRole("heading", { name: "Player projections" }).closest("section");
+    expect(section).not.toBeNull();
+
+    await user.type(within(section!).getByLabelText("Search players or teams"), "No such player");
+    expect(within(section!).getByText("Showing 0 of 0")).toBeInTheDocument();
+    expect(within(section!).getByRole("status")).toHaveTextContent(
+      "No players match the current projection filters.",
+    );
+    expect(within(section!).queryByRole("table")).not.toBeInTheDocument();
+    expect(
+      within(section!).getAllByRole("button", { name: "Previous" }).every((button) =>
+        button.hasAttribute("disabled"),
+      ),
+    ).toBe(true);
+  });
+
   it("combines price, position and search filters, updates count, and resets", async () => {
     const user = userEvent.setup();
     render(<App initialData={fixtureData()} />);
@@ -185,6 +321,28 @@ describe("dashboard interactions", () => {
       "optimizer-summary",
     );
     expect(screen.queryByText(/DEMO DATA/)).not.toBeInTheDocument();
+  });
+
+  it("explains the status summary with accessible tooltips", async () => {
+    const user = userEvent.setup();
+    render(<App initialData={fixtureData()} />);
+    const status = screen.getByRole("heading", { name: "Status summary" }).closest("section");
+    expect(status).not.toBeNull();
+
+    for (const label of ["Operational state", "Data freshness", "Forecast status"]) {
+      expect(
+        within(status!).getByRole("button", { name: `More information about ${label}` }),
+      ).toBeInTheDocument();
+    }
+
+    await user.click(
+      within(status!).getByRole("button", {
+        name: "More information about Forecast status",
+      }),
+    );
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      "not a measure of forecast accuracy",
+    );
   });
 
   it("falls back accurately when publication timestamps are missing", () => {

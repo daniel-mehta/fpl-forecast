@@ -5,6 +5,7 @@ import {
   groupSquad,
   latestOfficialRetrievalTimestamp,
   normalizePriceRange,
+  paginateRows,
   squadRoleLabel,
   timestampLine,
 } from "./dashboard";
@@ -89,6 +90,46 @@ describe("projection filters", () => {
         maxPriceTenths: null,
       }),
     ).toEqual({ minPriceTenths: 40, maxPriceTenths: 40 });
+  });
+});
+
+describe("projection pagination", () => {
+  const rows = Array.from({ length: 60 }, (_, index) => `Player ${index + 1}`);
+
+  it("returns non-overlapping pages and the correct final partial range", () => {
+    const first = paginateRows(rows, 1, 25);
+    const second = paginateRows(rows, 2, 25);
+    const final = paginateRows(rows, 3, 25);
+
+    expect(first.rows).toHaveLength(25);
+    expect(first.rows[0]).toBe("Player 1");
+    expect(first.rows[24]).toBe("Player 25");
+    expect(first).toMatchObject({
+      page: 1,
+      totalRows: 60,
+      totalPages: 3,
+      rangeStart: 1,
+      rangeEnd: 25,
+    });
+    expect(second.rows).toHaveLength(25);
+    expect(second.rows[0]).toBe("Player 26");
+    expect(second.rows).not.toEqual(expect.arrayContaining(first.rows));
+    expect(final.rows).toHaveLength(10);
+    expect(final).toMatchObject({ rangeStart: 51, rangeEnd: 60 });
+  });
+
+  it("clamps page requests, reports empty results, and rejects invalid sizes", () => {
+    expect(paginateRows(rows, 99, 25).page).toBe(3);
+    expect(paginateRows([], 3, 25)).toMatchObject({
+      rows: [],
+      page: 1,
+      totalRows: 0,
+      totalPages: 0,
+      rangeStart: 0,
+      rangeEnd: 0,
+    });
+    expect(() => paginateRows(rows, 1, 0)).toThrow(/positive integer/i);
+    expect(() => paginateRows(rows, 1, 2.5)).toThrow(/positive integer/i);
   });
 });
 

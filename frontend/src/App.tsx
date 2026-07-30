@@ -11,6 +11,8 @@ import {
   groupSquad,
   latestOfficialRetrievalTimestamp,
   normalizePriceRange,
+  paginateRows,
+  type PaginatedRows,
   squadRoleLabel,
   timestampLine,
 } from "./dashboard";
@@ -33,6 +35,8 @@ import {
 
 const repositoryUrl =
   import.meta.env.VITE_REPOSITORY_URL ?? "https://github.com/daniel-mehta/fpl-forecast#readme";
+const defaultProjectionPageSize = 25;
+const maximumCustomPageSize = 554;
 
 function textValue(record: JsonRecord, key: string): string {
   const value = record[key];
@@ -58,6 +62,13 @@ function App({ initialData }: AppProps) {
   const [minPriceTenths, setMinPriceTenths] = useState<number | null>(null);
   const [maxPriceTenths, setMaxPriceTenths] = useState<number | null>(null);
   const [descending, setDescending] = useState(true);
+  const [projectionPage, setProjectionPage] = useState(1);
+  const [projectionPageSize, setProjectionPageSize] = useState(defaultProjectionPageSize);
+  const [projectionPageSizeChoice, setProjectionPageSizeChoice] = useState(
+    String(defaultProjectionPageSize),
+  );
+  const [customPageSize, setCustomPageSize] = useState("");
+  const [customPageSizeError, setCustomPageSizeError] = useState("");
 
   useEffect(() => {
     if (initialData) {
@@ -81,6 +92,10 @@ function App({ initialData }: AppProps) {
         return descending ? difference : -difference;
       });
   }, [data, descending, maxPriceTenths, minPriceTenths, position, search]);
+  const paginatedProjections = useMemo(
+    () => paginateRows(projections, projectionPage, projectionPageSize),
+    [projectionPage, projectionPageSize, projections],
+  );
 
   if (waiting) {
     return (
@@ -139,6 +154,7 @@ function App({ initialData }: AppProps) {
     });
     setMinPriceTenths(normalized.minPriceTenths);
     setMaxPriceTenths(normalized.maxPriceTenths);
+    setProjectionPage(1);
   }
 
   function resetFilters() {
@@ -146,6 +162,32 @@ function App({ initialData }: AppProps) {
     setPosition("ALL");
     setMinPriceTenths(null);
     setMaxPriceTenths(null);
+    setProjectionPage(1);
+  }
+
+  function updateProjectionPageSize(value: string) {
+    setProjectionPageSizeChoice(value);
+    setCustomPageSizeError("");
+    if (value !== "custom") {
+      setProjectionPageSize(Number(value));
+      setProjectionPage(1);
+    }
+  }
+
+  function applyCustomPageSize() {
+    const value = customPageSize.trim();
+    if (!/^\d+$/.test(value)) {
+      setCustomPageSizeError(`Enter a whole number from 1 to ${maximumCustomPageSize}.`);
+      return;
+    }
+    const pageSize = Number(value);
+    if (pageSize < 1 || pageSize > maximumCustomPageSize) {
+      setCustomPageSizeError(`Enter a whole number from 1 to ${maximumCustomPageSize}.`);
+      return;
+    }
+    setCustomPageSizeError("");
+    setProjectionPageSize(pageSize);
+    setProjectionPage(1);
   }
 
   return (
@@ -196,11 +238,20 @@ function App({ initialData }: AppProps) {
           </div>
           <div className="status-grid">
             <article className="summary-card">
-              <h3>Operational state</h3>
+              <h3>
+                <InformationLabel label="Operational state">
+                  The current publication-pipeline state for the forecast displayed on this
+                  dashboard.
+                </InformationLabel>
+              </h3>
               <p>{formatLabel(state)}</p>
             </article>
             <article className="summary-card">
-              <h3>Data freshness</h3>
+              <h3>
+                <InformationLabel label="Data freshness">
+                  When official data were retrieved and this forecast was generated, shown in UTC.
+                </InformationLabel>
+              </h3>
               {officialRetrievalLine && <p>{officialRetrievalLine}</p>}
               {forecastGenerationLine && <p>{forecastGenerationLine}</p>}
               {!officialRetrievalLine && !forecastGenerationLine && (
@@ -216,7 +267,12 @@ function App({ initialData }: AppProps) {
               <p>{formatLabel(modelVariant)}</p>
             </article>
             <article className="summary-card">
-              <h3>Forecast status</h3>
+              <h3>
+                <InformationLabel label="Forecast status">
+                  Whether the official data and forecast passed publication validation. This is not
+                  a measure of forecast accuracy.
+                </InformationLabel>
+              </h3>
               <p>
                 {officialSuccess
                   ? "Official data validated and forecast published successfully."
@@ -231,14 +287,6 @@ function App({ initialData }: AppProps) {
             </div>
           )}
         </section>
-
-        <PlayerFinder
-          projections={data.projections}
-          gameweek={gameweek}
-          generatedAt={data.freshness.generated_at}
-          runId={textValue(data.status, "run_id") || textValue(data.manifest, "run_id")}
-          officialForecast={officialSuccess}
-        />
 
         <section aria-labelledby="squad-heading">
           <div className="section-heading">
@@ -386,13 +434,22 @@ function App({ initialData }: AppProps) {
               <input
                 type="search"
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setProjectionPage(1);
+                }}
                 placeholder="Search"
               />
             </label>
             <label>
               Position
-              <select value={position} onChange={(event) => setPosition(event.target.value)}>
+              <select
+                value={position}
+                onChange={(event) => {
+                  setPosition(event.target.value);
+                  setProjectionPage(1);
+                }}
+              >
                 <option value="ALL">All positions</option>
                 <option value="GKP">Goalkeepers</option>
                 <option value="DEF">Defenders</option>
@@ -430,54 +487,156 @@ function App({ initialData }: AppProps) {
                 ))}
               </select>
             </label>
-            <button type="button" onClick={() => setDescending((current) => !current)}>
+            <button
+              type="button"
+              onClick={() => {
+                setDescending((current) => !current);
+                setProjectionPage(1);
+              }}
+            >
               Expected points: {descending ? "high to low" : "low to high"}
             </button>
             <button type="button" onClick={resetFilters}>
               Reset filters
             </button>
           </div>
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th scope="col">Player</th>
-                  <th scope="col">Team</th>
-                  <th scope="col">Position</th>
-                  <th scope="col">Opponent</th>
-                  <th scope="col" className="numeric">Price</th>
-                  <th scope="col" className="numeric">Expected points</th>
-                  <th scope="col" className="numeric">Expected minutes</th>
-                  <th scope="col" className="numeric">Appearance</th>
-                  <th scope="col" className="numeric">Start</th>
-                  <th scope="col" className="numeric">At least 5 points</th>
-                  <th scope="col">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {projections.map((player) => (
-                  <tr key={player.stable_player_id}>
-                    <th scope="row">{player.player}</th>
-                    <td>{formatTeam(player.team)}</td>
-                    <td>{player.position}</td>
-                    <td>
-                      <span aria-label={`Opponent fixture: ${player.opponent_display || "No fixture"}`}>
-                        {player.opponent_display || "No fixture"}
-                      </span>
-                    </td>
-                    <td className="numeric">{formatPrice(player.price_tenths)}</td>
-                    <td className="numeric">{formatNumber(player.expected_points)}</td>
-                    <td className="numeric">{formatNumber(player.expected_minutes, 1)}</td>
-                    <td className="numeric">{formatPercentage(player.p_appearance)}</td>
-                    <td className="numeric">{formatPercentage(player.p_start)}</td>
-                    <td className="numeric">{formatPercentage(player.prob_points_ge_5)}</td>
-                    <td>{formatPlayerStatus(player.status)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="projection-results-toolbar">
+            <p className="projection-range" aria-live="polite">
+              {paginatedProjections.totalRows === 0
+                ? "Showing 0 of 0"
+                : `Showing ${paginatedProjections.rangeStart}–${paginatedProjections.rangeEnd} of ${paginatedProjections.totalRows}`}
+            </p>
+            <div className="projection-page-size">
+              <label>
+                Players per page
+                <select
+                  value={projectionPageSizeChoice}
+                  onChange={(event) => updateProjectionPageSize(event.target.value)}
+                >
+                  {[10, 25, 50, 100].map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                  <option value="custom">Custom…</option>
+                </select>
+              </label>
+              {projectionPageSizeChoice === "custom" && (
+                <form
+                  className="custom-page-size"
+                  noValidate
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    applyCustomPageSize();
+                  }}
+                >
+                  <label>
+                    Custom page size
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={customPageSize}
+                      aria-invalid={customPageSizeError ? "true" : undefined}
+                      aria-describedby={
+                        customPageSizeError ? "custom-page-size-error" : undefined
+                      }
+                      onChange={(event) => {
+                        setCustomPageSize(event.target.value);
+                        setCustomPageSizeError("");
+                      }}
+                    />
+                  </label>
+                  <button type="submit">Apply</button>
+                  {customPageSizeError && (
+                    <span id="custom-page-size-error" className="field-error" role="alert">
+                      {customPageSizeError}
+                    </span>
+                  )}
+                </form>
+              )}
+            </div>
+            <ProjectionPagination
+              location="Top"
+              pagination={paginatedProjections}
+              onPageChange={setProjectionPage}
+            />
           </div>
+          {paginatedProjections.totalRows === 0 ? (
+            <div className="projection-empty" role="status">
+              No players match the current projection filters.
+            </div>
+          ) : (
+            <div className="table-scroll projection-table-scroll">
+              <table className="projection-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Player</th>
+                    <th scope="col">Team</th>
+                    <th scope="col">Position</th>
+                    <th scope="col">Opponent</th>
+                    <th scope="col" className="numeric">Price</th>
+                    <th scope="col" className="numeric">Expected points</th>
+                    <th scope="col" className="numeric">Expected minutes</th>
+                    <th scope="col" className="numeric">Appearance</th>
+                    <th scope="col" className="numeric">Start</th>
+                    <th scope="col" className="numeric">At least 5 points</th>
+                    <th scope="col">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedProjections.rows.map((player) => (
+                    <tr key={player.stable_player_id}>
+                      <th scope="row" data-label="Player">
+                        {player.player}
+                      </th>
+                      <td data-label="Team">{formatTeam(player.team)}</td>
+                      <td data-label="Position">{player.position}</td>
+                      <td data-label="Opponent">
+                        <span
+                          aria-label={`Opponent fixture: ${player.opponent_display || "No fixture"}`}
+                        >
+                          {player.opponent_display || "No fixture"}
+                        </span>
+                      </td>
+                      <td className="numeric" data-label="Price">
+                        {formatPrice(player.price_tenths)}
+                      </td>
+                      <td className="numeric" data-label="Expected points">
+                        {formatNumber(player.expected_points)}
+                      </td>
+                      <td className="numeric" data-label="Expected minutes">
+                        {formatNumber(player.expected_minutes, 1)}
+                      </td>
+                      <td className="numeric" data-label="Appearance">
+                        {formatPercentage(player.p_appearance)}
+                      </td>
+                      <td className="numeric" data-label="Start">
+                        {formatPercentage(player.p_start)}
+                      </td>
+                      <td className="numeric" data-label="At least 5 points">
+                        {formatPercentage(player.prob_points_ge_5)}
+                      </td>
+                      <td data-label="Status">{formatPlayerStatus(player.status)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <ProjectionPagination
+            location="Bottom"
+            pagination={paginatedProjections}
+            onPageChange={setProjectionPage}
+          />
         </section>
+
+        <PlayerFinder
+          projections={data.projections}
+          gameweek={gameweek}
+          generatedAt={data.freshness.generated_at}
+          runId={textValue(data.status, "run_id") || textValue(data.manifest, "run_id")}
+          officialForecast={officialSuccess}
+        />
 
         <section aria-labelledby="comparison-heading">
           <div className="section-heading">
@@ -531,6 +690,57 @@ function App({ initialData }: AppProps) {
 
       <SiteFooter />
     </>
+  );
+}
+
+function ProjectionPagination({
+  location,
+  pagination,
+  onPageChange,
+}: {
+  location: "Top" | "Bottom";
+  pagination: PaginatedRows<ProjectionRow>;
+  onPageChange: (page: number) => void;
+}) {
+  const hasPages = pagination.totalPages > 0;
+  return (
+    <nav className="projection-pagination" aria-label={`${location} projection pagination`}>
+      <button
+        type="button"
+        disabled={!hasPages || pagination.page === 1}
+        onClick={() => onPageChange(pagination.page - 1)}
+      >
+        Previous
+      </button>
+      {hasPages ? (
+        <label>
+          Page
+          <select
+            aria-label={`${location} projection page`}
+            value={pagination.page}
+            onChange={(event) => onPageChange(Number(event.target.value))}
+          >
+            {Array.from({ length: pagination.totalPages }, (_, index) => index + 1).map(
+              (page) => (
+                <option key={page} value={page}>
+                  {page}
+                </option>
+              ),
+            )}
+          </select>
+          of {pagination.totalPages}
+        </label>
+      ) : (
+        <span>Page 0 of 0</span>
+      )}
+      <button
+        type="button"
+        disabled={!hasPages || pagination.page === pagination.totalPages}
+        onClick={() => onPageChange(pagination.page + 1)}
+      >
+        Next
+      </button>
+    </nav>
   );
 }
 
