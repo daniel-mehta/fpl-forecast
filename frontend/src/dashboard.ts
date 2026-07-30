@@ -13,6 +13,44 @@ export interface PriceRange {
   maxPriceTenths: number | null;
 }
 
+export interface PaginatedRows<Row> {
+  rows: Row[];
+  page: number;
+  pageSize: number;
+  totalRows: number;
+  totalPages: number;
+  rangeStart: number;
+  rangeEnd: number;
+}
+
+export function paginateRows<Row>(
+  rows: readonly Row[],
+  requestedPage: number,
+  pageSize: number,
+): PaginatedRows<Row> {
+  if (!Number.isInteger(pageSize) || pageSize < 1) {
+    throw new Error("Page size must be a positive integer.");
+  }
+
+  const totalRows = rows.length;
+  const totalPages = totalRows === 0 ? 0 : Math.ceil(totalRows / pageSize);
+  const page =
+    totalPages === 0
+      ? 1
+      : Math.min(Math.max(Number.isInteger(requestedPage) ? requestedPage : 1, 1), totalPages);
+  const startIndex = (page - 1) * pageSize;
+
+  return {
+    rows: rows.slice(startIndex, startIndex + pageSize),
+    page,
+    pageSize,
+    totalRows,
+    totalPages,
+    rangeStart: totalRows === 0 ? 0 : startIndex + 1,
+    rangeEnd: totalRows === 0 ? 0 : Math.min(startIndex + pageSize, totalRows),
+  };
+}
+
 export function filterProjections(
   rows: ProjectionRow[],
   filters: ProjectionFilters,

@@ -206,6 +206,11 @@ The frontend in `frontend/` is Vite, React, TypeScript, and ordinary CSS. It rea
 the latest `phase9_frontend_v1` artifacts from `frontend/public/data/`. It does not execute Python,
 fetch live FPL data, run optimization, or modify operational outputs.
 
+The dashboard's Player Finder returns up to five highest-projected players for a chosen position and
+maximum official price. Optionally choose a player to compare same-position replacements from the
+same current official forecast. It does not account for complete-squad legality, selling prices,
+bank balance, free transfers, transfer hits, or multi-gameweek planning.
+
 GitHub Pages publication is manual. The `Publish official FPL forecast` workflow reconstructs the
 pinned historical inputs on a clean runner, retrieves fresh official FPL inputs, runs the verified
 forecast chain, applies fail-closed publication gates, synchronizes the allowlisted frontend

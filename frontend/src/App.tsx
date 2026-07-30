@@ -1,11 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
-import { type FrontendData, type JsonRecord, loadFrontendData } from "./data";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  type FrontendData,
+  type JsonRecord,
+  type ProjectionRow,
+  loadFrontendData,
+} from "./data";
 import {
   availablePrices,
   filterProjections,
   groupSquad,
   latestOfficialRetrievalTimestamp,
   normalizePriceRange,
+  paginateRows,
+  type PaginatedRows,
   squadRoleLabel,
   timestampLine,
 } from "./dashboard";
@@ -20,9 +27,16 @@ import {
   formatPrice,
   formatTeam,
 } from "./formatting";
+import {
+  findPlayers,
+  type OfficialPosition,
+  validForecastPlayers,
+} from "./playerFinder";
 
 const repositoryUrl =
   import.meta.env.VITE_REPOSITORY_URL ?? "https://github.com/daniel-mehta/fpl-forecast#readme";
+const defaultProjectionPageSize = 25;
+const maximumCustomPageSize = 554;
 
 function textValue(record: JsonRecord, key: string): string {
   const value = record[key];
@@ -48,6 +62,13 @@ function App({ initialData }: AppProps) {
   const [minPriceTenths, setMinPriceTenths] = useState<number | null>(null);
   const [maxPriceTenths, setMaxPriceTenths] = useState<number | null>(null);
   const [descending, setDescending] = useState(true);
+  const [projectionPage, setProjectionPage] = useState(1);
+  const [projectionPageSize, setProjectionPageSize] = useState(defaultProjectionPageSize);
+  const [projectionPageSizeChoice, setProjectionPageSizeChoice] = useState(
+    String(defaultProjectionPageSize),
+  );
+  const [customPageSize, setCustomPageSize] = useState("");
+  const [customPageSizeError, setCustomPageSizeError] = useState("");
 
   useEffect(() => {
     if (initialData) {
@@ -71,6 +92,10 @@ function App({ initialData }: AppProps) {
         return descending ? difference : -difference;
       });
   }, [data, descending, maxPriceTenths, minPriceTenths, position, search]);
+  const paginatedProjections = useMemo(
+    () => paginateRows(projections, projectionPage, projectionPageSize),
+    [projectionPage, projectionPageSize, projections],
+  );
 
   if (waiting) {
     return (
@@ -129,6 +154,7 @@ function App({ initialData }: AppProps) {
     });
     setMinPriceTenths(normalized.minPriceTenths);
     setMaxPriceTenths(normalized.maxPriceTenths);
+    setProjectionPage(1);
   }
 
   function resetFilters() {
@@ -136,6 +162,32 @@ function App({ initialData }: AppProps) {
     setPosition("ALL");
     setMinPriceTenths(null);
     setMaxPriceTenths(null);
+    setProjectionPage(1);
+  }
+
+  function updateProjectionPageSize(value: string) {
+    setProjectionPageSizeChoice(value);
+    setCustomPageSizeError("");
+    if (value !== "custom") {
+      setProjectionPageSize(Number(value));
+      setProjectionPage(1);
+    }
+  }
+
+  function applyCustomPageSize() {
+    const value = customPageSize.trim();
+    if (!/^\d+$/.test(value)) {
+      setCustomPageSizeError(`Enter a whole number from 1 to ${maximumCustomPageSize}.`);
+      return;
+    }
+    const pageSize = Number(value);
+    if (pageSize < 1 || pageSize > maximumCustomPageSize) {
+      setCustomPageSizeError(`Enter a whole number from 1 to ${maximumCustomPageSize}.`);
+      return;
+    }
+    setCustomPageSizeError("");
+    setProjectionPageSize(pageSize);
+    setProjectionPage(1);
   }
 
   return (
@@ -186,11 +238,20 @@ function App({ initialData }: AppProps) {
           </div>
           <div className="status-grid">
             <article className="summary-card">
-              <h3>Operational state</h3>
+              <h3>
+                <InformationLabel label="Operational state">
+                  The current publication-pipeline state for the forecast displayed on this
+                  dashboard.
+                </InformationLabel>
+              </h3>
               <p>{formatLabel(state)}</p>
             </article>
             <article className="summary-card">
-              <h3>Data freshness</h3>
+              <h3>
+                <InformationLabel label="Data freshness">
+                  When official data were retrieved and this forecast was generated, shown in UTC.
+                </InformationLabel>
+              </h3>
               {officialRetrievalLine && <p>{officialRetrievalLine}</p>}
               {forecastGenerationLine && <p>{forecastGenerationLine}</p>}
               {!officialRetrievalLine && !forecastGenerationLine && (
@@ -206,7 +267,12 @@ function App({ initialData }: AppProps) {
               <p>{formatLabel(modelVariant)}</p>
             </article>
             <article className="summary-card">
-              <h3>Forecast status</h3>
+              <h3>
+                <InformationLabel label="Forecast status">
+                  Whether the official data and forecast passed publication validation. This is not
+                  a measure of forecast accuracy.
+                </InformationLabel>
+              </h3>
               <p>
                 {officialSuccess
                   ? "Official data validated and forecast published successfully."
@@ -368,13 +434,22 @@ function App({ initialData }: AppProps) {
               <input
                 type="search"
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setProjectionPage(1);
+                }}
                 placeholder="Search"
               />
             </label>
             <label>
               Position
-              <select value={position} onChange={(event) => setPosition(event.target.value)}>
+              <select
+                value={position}
+                onChange={(event) => {
+                  setPosition(event.target.value);
+                  setProjectionPage(1);
+                }}
+              >
                 <option value="ALL">All positions</option>
                 <option value="GKP">Goalkeepers</option>
                 <option value="DEF">Defenders</option>
@@ -412,54 +487,156 @@ function App({ initialData }: AppProps) {
                 ))}
               </select>
             </label>
-            <button type="button" onClick={() => setDescending((current) => !current)}>
+            <button
+              type="button"
+              onClick={() => {
+                setDescending((current) => !current);
+                setProjectionPage(1);
+              }}
+            >
               Expected points: {descending ? "high to low" : "low to high"}
             </button>
             <button type="button" onClick={resetFilters}>
               Reset filters
             </button>
           </div>
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th scope="col">Player</th>
-                  <th scope="col">Team</th>
-                  <th scope="col">Position</th>
-                  <th scope="col">Opponent</th>
-                  <th scope="col" className="numeric">Price</th>
-                  <th scope="col" className="numeric">Expected points</th>
-                  <th scope="col" className="numeric">Expected minutes</th>
-                  <th scope="col" className="numeric">Appearance</th>
-                  <th scope="col" className="numeric">Start</th>
-                  <th scope="col" className="numeric">At least 5 points</th>
-                  <th scope="col">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {projections.map((player) => (
-                  <tr key={player.stable_player_id}>
-                    <th scope="row">{player.player}</th>
-                    <td>{formatTeam(player.team)}</td>
-                    <td>{player.position}</td>
-                    <td>
-                      <span aria-label={`Opponent fixture: ${player.opponent_display || "No fixture"}`}>
-                        {player.opponent_display || "No fixture"}
-                      </span>
-                    </td>
-                    <td className="numeric">{formatPrice(player.price_tenths)}</td>
-                    <td className="numeric">{formatNumber(player.expected_points)}</td>
-                    <td className="numeric">{formatNumber(player.expected_minutes, 1)}</td>
-                    <td className="numeric">{formatPercentage(player.p_appearance)}</td>
-                    <td className="numeric">{formatPercentage(player.p_start)}</td>
-                    <td className="numeric">{formatPercentage(player.prob_points_ge_5)}</td>
-                    <td>{formatPlayerStatus(player.status)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="projection-results-toolbar">
+            <p className="projection-range" aria-live="polite">
+              {paginatedProjections.totalRows === 0
+                ? "Showing 0 of 0"
+                : `Showing ${paginatedProjections.rangeStart}–${paginatedProjections.rangeEnd} of ${paginatedProjections.totalRows}`}
+            </p>
+            <div className="projection-page-size">
+              <label>
+                Players per page
+                <select
+                  value={projectionPageSizeChoice}
+                  onChange={(event) => updateProjectionPageSize(event.target.value)}
+                >
+                  {[10, 25, 50, 100].map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                  <option value="custom">Custom…</option>
+                </select>
+              </label>
+              {projectionPageSizeChoice === "custom" && (
+                <form
+                  className="custom-page-size"
+                  noValidate
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    applyCustomPageSize();
+                  }}
+                >
+                  <label>
+                    Custom page size
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={customPageSize}
+                      aria-invalid={customPageSizeError ? "true" : undefined}
+                      aria-describedby={
+                        customPageSizeError ? "custom-page-size-error" : undefined
+                      }
+                      onChange={(event) => {
+                        setCustomPageSize(event.target.value);
+                        setCustomPageSizeError("");
+                      }}
+                    />
+                  </label>
+                  <button type="submit">Apply</button>
+                  {customPageSizeError && (
+                    <span id="custom-page-size-error" className="field-error" role="alert">
+                      {customPageSizeError}
+                    </span>
+                  )}
+                </form>
+              )}
+            </div>
+            <ProjectionPagination
+              location="Top"
+              pagination={paginatedProjections}
+              onPageChange={setProjectionPage}
+            />
           </div>
+          {paginatedProjections.totalRows === 0 ? (
+            <div className="projection-empty" role="status">
+              No players match the current projection filters.
+            </div>
+          ) : (
+            <div className="table-scroll projection-table-scroll">
+              <table className="projection-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Player</th>
+                    <th scope="col">Team</th>
+                    <th scope="col">Position</th>
+                    <th scope="col">Opponent</th>
+                    <th scope="col" className="numeric">Price</th>
+                    <th scope="col" className="numeric">Expected points</th>
+                    <th scope="col" className="numeric">Expected minutes</th>
+                    <th scope="col" className="numeric">Appearance</th>
+                    <th scope="col" className="numeric">Start</th>
+                    <th scope="col" className="numeric">At least 5 points</th>
+                    <th scope="col">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedProjections.rows.map((player) => (
+                    <tr key={player.stable_player_id}>
+                      <th scope="row" data-label="Player">
+                        {player.player}
+                      </th>
+                      <td data-label="Team">{formatTeam(player.team)}</td>
+                      <td data-label="Position">{player.position}</td>
+                      <td data-label="Opponent">
+                        <span
+                          aria-label={`Opponent fixture: ${player.opponent_display || "No fixture"}`}
+                        >
+                          {player.opponent_display || "No fixture"}
+                        </span>
+                      </td>
+                      <td className="numeric" data-label="Price">
+                        {formatPrice(player.price_tenths)}
+                      </td>
+                      <td className="numeric" data-label="Expected points">
+                        {formatNumber(player.expected_points)}
+                      </td>
+                      <td className="numeric" data-label="Expected minutes">
+                        {formatNumber(player.expected_minutes, 1)}
+                      </td>
+                      <td className="numeric" data-label="Appearance">
+                        {formatPercentage(player.p_appearance)}
+                      </td>
+                      <td className="numeric" data-label="Start">
+                        {formatPercentage(player.p_start)}
+                      </td>
+                      <td className="numeric" data-label="At least 5 points">
+                        {formatPercentage(player.prob_points_ge_5)}
+                      </td>
+                      <td data-label="Status">{formatPlayerStatus(player.status)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <ProjectionPagination
+            location="Bottom"
+            pagination={paginatedProjections}
+            onPageChange={setProjectionPage}
+          />
         </section>
+
+        <PlayerFinder
+          projections={data.projections}
+          gameweek={gameweek}
+          generatedAt={data.freshness.generated_at}
+          runId={textValue(data.status, "run_id") || textValue(data.manifest, "run_id")}
+          officialForecast={officialSuccess}
+        />
 
         <section aria-labelledby="comparison-heading">
           <div className="section-heading">
@@ -513,6 +690,452 @@ function App({ initialData }: AppProps) {
 
       <SiteFooter />
     </>
+  );
+}
+
+function ProjectionPagination({
+  location,
+  pagination,
+  onPageChange,
+}: {
+  location: "Top" | "Bottom";
+  pagination: PaginatedRows<ProjectionRow>;
+  onPageChange: (page: number) => void;
+}) {
+  const hasPages = pagination.totalPages > 0;
+  return (
+    <nav className="projection-pagination" aria-label={`${location} projection pagination`}>
+      <button
+        type="button"
+        disabled={!hasPages || pagination.page === 1}
+        onClick={() => onPageChange(pagination.page - 1)}
+      >
+        Previous
+      </button>
+      {hasPages ? (
+        <label>
+          Page
+          <select
+            aria-label={`${location} projection page`}
+            value={pagination.page}
+            onChange={(event) => onPageChange(Number(event.target.value))}
+          >
+            {Array.from({ length: pagination.totalPages }, (_, index) => index + 1).map(
+              (page) => (
+                <option key={page} value={page}>
+                  {page}
+                </option>
+              ),
+            )}
+          </select>
+          of {pagination.totalPages}
+        </label>
+      ) : (
+        <span>Page 0 of 0</span>
+      )}
+      <button
+        type="button"
+        disabled={!hasPages || pagination.page === pagination.totalPages}
+        onClick={() => onPageChange(pagination.page + 1)}
+      >
+        Next
+      </button>
+    </nav>
+  );
+}
+
+const positionLabels: Record<OfficialPosition, string> = {
+  GKP: "Goalkeeper",
+  DEF: "Defender",
+  MID: "Midfielder",
+  FWD: "Forward",
+};
+
+function formatDifference(value: number | null): string {
+  if (value === null) {
+    return "N/A";
+  }
+  if (Math.abs(value) < 0.005) {
+    return "±0.00";
+  }
+  return `${value > 0 ? "+" : ""}${value.toFixed(2)}`;
+}
+
+function PlayerFinder({
+  projections,
+  gameweek,
+  generatedAt,
+  runId,
+  officialForecast,
+}: {
+  projections: ProjectionRow[];
+  gameweek: string;
+  generatedAt: unknown;
+  runId: string;
+  officialForecast: boolean;
+}) {
+  const [finderPosition, setFinderPosition] = useState<OfficialPosition>("MID");
+  const [maximumBudget, setMaximumBudget] = useState("15.0");
+  const [replacedPlayerId, setReplacedPlayerId] = useState("");
+  const [replacementSearch, setReplacementSearch] = useState("");
+  const [replacementMenuOpen, setReplacementMenuOpen] = useState(false);
+  const replacementSearchRef = useRef<HTMLInputElement>(null);
+  const selectablePlayers = useMemo(() => validForecastPlayers(projections), [projections]);
+  const replacementOptions = useMemo(() => {
+    const query = replacementSearch.trim().toLowerCase();
+    if (!query) {
+      return selectablePlayers;
+    }
+    return selectablePlayers.filter(
+      (player) =>
+        player.stable_player_id === replacedPlayerId ||
+        `${player.player} ${formatTeam(player.team)} ${player.position}`
+          .toLowerCase()
+          .includes(query),
+    );
+  }, [replacedPlayerId, replacementSearch, selectablePlayers]);
+  const result = useMemo(
+    () => findPlayers(projections, finderPosition, maximumBudget, replacedPlayerId || undefined),
+    [finderPosition, maximumBudget, projections, replacedPlayerId],
+  );
+
+  useEffect(() => {
+    if (replacementMenuOpen) {
+      replacementSearchRef.current?.focus();
+    }
+  }, [replacementMenuOpen]);
+
+  function selectReplacedPlayer(playerId: string) {
+    setReplacedPlayerId(playerId);
+    const player = selectablePlayers.find((row) => row.stable_player_id === playerId);
+    if (player) {
+      setFinderPosition(player.position as OfficialPosition);
+      setMaximumBudget((Number(player.price_tenths) / 10).toFixed(1));
+    }
+    setReplacementSearch("");
+    setReplacementMenuOpen(false);
+  }
+
+  const count = result.recommendations.length;
+  const selectedReplacement = result.replacedPlayer;
+
+  return (
+    <section className="player-finder" aria-labelledby="player-finder-heading">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Current official forecast</p>
+          <h2 id="player-finder-heading">Player Finder</h2>
+        </div>
+        <p className="section-note">
+          Find up to five strong projected options without entering a complete squad.
+        </p>
+      </div>
+
+      {!officialForecast ? (
+        <div className="finder-empty" role="status">
+          Player Finder is unavailable until a current official forecast has been published.
+        </div>
+      ) : (
+        <>
+          <div className="finder-controls">
+            <div className="finder-control-group">
+              <span className="finder-information-label">
+                <label htmlFor="finder-position">Position</label>{" "}
+                <InfoTooltip label="Position">
+                  Filters recommendations to one official FPL position. When replacing a player,
+                  their position is used automatically.
+                </InfoTooltip>
+              </span>
+              <select
+                id="finder-position"
+                value={finderPosition}
+                disabled={Boolean(replacedPlayerId)}
+                aria-describedby={replacedPlayerId ? "replacement-position-note" : undefined}
+                onChange={(event) => setFinderPosition(event.target.value as OfficialPosition)}
+              >
+                <option value="GKP">Goalkeeper</option>
+                <option value="DEF">Defender</option>
+                <option value="MID">Midfielder</option>
+                <option value="FWD">Forward</option>
+              </select>
+            </div>
+            <div className="finder-control-group">
+              <span className="finder-information-label">
+                <label htmlFor="finder-maximum-budget">Maximum budget (£m)</label>{" "}
+                <InfoTooltip label="Maximum budget (£m)">
+                  The highest official player price to include. Selecting a player fills their
+                  price, and you can edit it.
+                </InfoTooltip>
+              </span>
+              <input
+                id="finder-maximum-budget"
+                type="text"
+                inputMode="decimal"
+                value={maximumBudget}
+                aria-invalid={Boolean(result.error)}
+                aria-describedby={result.error ? "finder-budget-error" : "finder-budget-help"}
+                onChange={(event) => setMaximumBudget(event.target.value)}
+                placeholder="7.5"
+              />
+              <span className="field-help" id="finder-budget-help">
+                Official player price in millions
+              </span>
+            </div>
+            <div className="finder-replacement-controls">
+              <span className="finder-control-label">
+                <span id="replacement-player-label">Optional player being replaced</span>{" "}
+                <InfoTooltip label="Optional player being replaced">
+                  Choose a player from the current official forecast to compare same-position
+                  replacements and expected-points differences.
+                </InfoTooltip>
+              </span>
+              <div className="replacement-combobox">
+                <button
+                  className="replacement-combobox-trigger"
+                  type="button"
+                  aria-expanded={replacementMenuOpen}
+                  aria-haspopup="listbox"
+                  aria-labelledby="replacement-player-label replacement-player-value"
+                  onClick={() => setReplacementMenuOpen((open) => !open)}
+                >
+                  <span id="replacement-player-value">
+                    {selectedReplacement
+                      ? `${selectedReplacement.player} — ${formatTeam(selectedReplacement.team)}, ${formatPrice(selectedReplacement.price_tenths)}`
+                      : "No player selected"}
+                  </span>
+                  <span aria-hidden="true">▾</span>
+                </button>
+                {replacementMenuOpen && (
+                  <div
+                    className="replacement-combobox-menu"
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        setReplacementMenuOpen(false);
+                      }
+                    }}
+                  >
+                    <label>
+                      Search players
+                      <input
+                        ref={replacementSearchRef}
+                        type="search"
+                        value={replacementSearch}
+                        onChange={(event) => setReplacementSearch(event.target.value)}
+                        placeholder="Player, club or position"
+                      />
+                    </label>
+                    <div
+                      className="replacement-options"
+                      role="listbox"
+                      aria-label="Replacement players"
+                    >
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={!replacedPlayerId}
+                        onClick={() => selectReplacedPlayer("")}
+                      >
+                        No player selected
+                      </button>
+                      {replacementOptions.map((player) => (
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={player.stable_player_id === replacedPlayerId}
+                          key={player.stable_player_id}
+                          onClick={() => selectReplacedPlayer(player.stable_player_id)}
+                        >
+                          <strong>{player.player}</strong>
+                          <span>
+                            {positionLabels[player.position as OfficialPosition]} ·{" "}
+                            {formatTeam(player.team)} · {formatPrice(player.price_tenths)}
+                          </span>
+                        </button>
+                      ))}
+                      {replacementOptions.length === 0 && (
+                        <p className="replacement-no-results" role="status">
+                          No players match the search.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {replacedPlayerId && result.replacedPlayer && (
+            <p className="finder-context" id="replacement-position-note">
+              Replacing <strong>{result.replacedPlayer.player}</strong>. Recommendations are limited
+              to {positionLabels[result.position!].toLowerCase()}s from the same forecast.
+            </p>
+          )}
+
+          <dl className="finder-trace" aria-label="Player Finder forecast identity">
+            <div>
+              <dt>
+                <InformationLabel label="Forecast" className="finder-information-label">
+                  The FPL gameweek these recommendations project.
+                </InformationLabel>
+              </dt>
+              <dd>{gameweek ? `Gameweek ${gameweek}` : "Gameweek not available"}</dd>
+            </div>
+            <div>
+              <dt>
+                <InformationLabel label="Generated" className="finder-information-label">
+                  When the current official forecast was generated, shown in UTC.
+                </InformationLabel>
+              </dt>
+              <dd>{formatDate(generatedAt)}</dd>
+            </div>
+            <div>
+              <dt>
+                <InformationLabel label="Run ID" className="finder-information-label">
+                  The traceable identifier for the exact official forecast run used.
+                </InformationLabel>
+              </dt>
+              <dd>{runId || "Not available"}</dd>
+            </div>
+          </dl>
+          <p className="finder-source-note">
+            Recommendations use only the current official forecast shown on this dashboard.
+          </p>
+
+          {result.error ? (
+            <p className="field-error" id="finder-budget-error" role="alert">
+              {result.error}
+            </p>
+          ) : count === 0 ? (
+            <div className="finder-empty" role="status">
+              No eligible players matched this position and budget.
+            </div>
+          ) : (
+            <>
+              <div className="finder-results-heading">
+                <p>
+                  <strong>
+                    {count} {count === 1 ? "recommendation" : "recommendations"}
+                  </strong>
+                </p>
+                {count < 5 && (
+                  <p>Fewer than five eligible players matched the selected filters.</p>
+                )}
+                {!result.replacedPlayer && (
+                  <p>Expected-points difference is N/A until a player is selected.</p>
+                )}
+              </div>
+              <div className="recommendation-grid" aria-label="Player Finder recommendations">
+                {result.recommendations.map((recommendation, index) => {
+                  const difference = recommendation.expectedPointsDifference;
+                  const differenceClass =
+                    difference === null || Math.abs(difference) < 0.005
+                      ? "difference-neutral"
+                      : difference > 0
+                        ? "difference-positive"
+                        : "difference-negative";
+                  return (
+                    <article
+                      className="recommendation-card"
+                      key={recommendation.player.stable_player_id}
+                    >
+                      <div className="recommendation-title">
+                        <span className="recommendation-rank" aria-label={`Rank ${index + 1}`}>
+                          {index + 1}
+                        </span>
+                        <div>
+                          <h3>{recommendation.player.player}</h3>
+                          <p>
+                            {formatTeam(recommendation.player.team)} ·{" "}
+                            {positionLabels[recommendation.player.position as OfficialPosition]}
+                          </p>
+                        </div>
+                      </div>
+                      <dl>
+                        <div>
+                          <dt>
+                            <span className="finder-metric-label">
+                              <InfoTooltip label="Official price">
+                                The player's current official FPL price from this forecast artifact.
+                              </InfoTooltip>
+                              <span>Official price</span>
+                            </span>
+                          </dt>
+                          <dd>{formatPrice(recommendation.player.price_tenths)}</dd>
+                        </div>
+                        <div>
+                          <dt>
+                            <span className="finder-metric-label">
+                              <InfoTooltip label="Expected points">
+                                The model's mean projected FPL points for this gameweek, not a
+                                guaranteed result.
+                              </InfoTooltip>
+                              <span>Expected points</span>
+                            </span>
+                          </dt>
+                          <dd>{formatNumber(recommendation.player.expected_points)}</dd>
+                        </div>
+                        <div>
+                          <dt>
+                            <span className="finder-metric-label">
+                              <InfoTooltip label="Appearance">
+                                The forecast probability that the player appears for any minutes.
+                              </InfoTooltip>
+                              <span>Appearance</span>
+                            </span>
+                          </dt>
+                          <dd>{formatPercentage(recommendation.player.p_appearance)}</dd>
+                        </div>
+                        <div>
+                          <dt>
+                            <span className="finder-metric-label">
+                              <InfoTooltip label="P(5+ points)">
+                                The forecast probability that the player scores at least five FPL
+                                points.
+                              </InfoTooltip>
+                              <span>P(5+ points)</span>
+                            </span>
+                          </dt>
+                          <dd>{formatPercentage(recommendation.player.prob_points_ge_5)}</dd>
+                        </div>
+                        <div>
+                          <dt>
+                            <span className="finder-metric-label">
+                              <InfoTooltip label="Expected points / £1.0m">
+                                Expected points divided by the player's official price in millions,
+                                calculated before display rounding.
+                              </InfoTooltip>
+                              <span>Expected points / £1.0m</span>
+                            </span>
+                          </dt>
+                          <dd>{recommendation.expectedPointsPerMillion.toFixed(2)}</dd>
+                        </div>
+                        <div>
+                          <dt>
+                            <span className="finder-metric-label">
+                              <InfoTooltip label="Expected-points difference">
+                                This player's expected points minus the selected player's expected
+                                points. It is unavailable when no player is selected.
+                              </InfoTooltip>
+                              <span>Expected-points difference</span>
+                            </span>
+                          </dt>
+                          <dd className={differenceClass}>{formatDifference(difference)}</dd>
+                        </div>
+                      </dl>
+                    </article>
+                  );
+                })}
+              </div>
+              <p className="finder-disclaimer">
+                Projections are estimates, not guarantees. This finder does not account for complete
+                squad legality, selling prices, bank balance, free transfers, hits or multi-gameweek
+                planning.
+              </p>
+            </>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 
