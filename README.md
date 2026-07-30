@@ -211,13 +211,15 @@ maximum official price. Optionally choose a player to compare same-position repl
 same current official forecast. It does not account for complete-squad legality, selling prices,
 bank balance, free transfers, transfer hits, or multi-gameweek planning.
 
-GitHub Pages publication is manual. The `Publish official FPL forecast` workflow reconstructs the
-pinned historical inputs on a clean runner, retrieves fresh official FPL inputs, runs the verified
-forecast chain, applies fail-closed publication gates, synchronizes the allowlisted frontend
-artifacts, and deploys only after every earlier stage succeeds. Phase 9B2A is limited to GW1 until
-clean-runner event-live reconstruction is added. It has no mock input and no schedule.
-Frontend-only pushes are linted and built but are not deployed because a clean frontend runner does
-not possess the last successful forecast artifacts.
+`Frontend CI` validates frontend changes with lint and a production build. `Deploy frontend to
+GitHub Pages` automatically deploys qualifying frontend-only pushes to `main`, or can be selected
+manually in Actions. It retrieves the exact frozen, sanitized official forecast bundle and fails if
+that bundle cannot be retrieved and validated; it never generates a forecast, runs Python, or uses
+sample data. Backend or forecasting changes still require `Publish official FPL forecast`, which
+reconstructs the pinned historical inputs, retrieves fresh official inputs, runs the verified
+forecast chain, freezes the sanitized public bundle, and then deploys it. Ordinary UI work therefore
+does not require backend forecast generation. Phase 9B2A is limited to GW1 until clean-runner
+event-live reconstruction is added.
 
 Local Python dashboard support from Phase 8 still exists:
 
@@ -291,8 +293,8 @@ uv run fpl dashboard --smoke
 Generated raw data, normalized data, reports, logs, operational outputs, frontend synchronized data,
 `node_modules/`, and build outputs are ignored by Git.
 
-Manual official publication instructions and failure-preservation behavior are documented in
-`docs/deployment/github-pages.md`. Operational review and recovery procedures are in
+Manual official publication, frozen-bundle migration, and failure-preservation instructions are
+documented in `docs/deployment/github-pages.md`. Operational review and recovery procedures are in
 `docs/operations/manual-publication-and-recovery.md`.
 
 ## Repository Structure

@@ -1,0 +1,62 @@
+name: Seed frozen official forecast bundle
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: frozen-official-forecast
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    name: Copy currently published public forecast without regeneration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: true
+
+      - name: Install Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Refuse to replace an existing frozen bundle
+        id: existing
+        run: |
+          if git ls-remote --exit-code origin refs/heads/official-forecast-data; then
+            echo "exists=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download and validate the current public forecast
+        working-directory: frontend
+        run: node scripts/fetch-live-frozen-forecast.mjs --destination "$RUNNER_TEMP/frozen-forecast"
+
+      - name: Create the durable sanitized-data branch once
+        if: ${{ steps.existing.outputs.exists == 'no' }}
+        run: |
+          git switch --orphan official-forecast-data
+          git rm -rf .
+          mkdir data
+          cp -R "$RUNNER_TEMP/frozen-forecast/data/." data/
+          git add data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Seed frozen official forecast"
+          git push origin HEAD:official-forecast-data
+
+      - name: Require an existing bundle to match exactly
+        if: ${{ steps.existing.outputs.exists == 'yes' }}
+        run: |
+          git fetch --depth=1 origin official-forecast-data
+          git archive FETCH_HEAD data | tar -x -C "$RUNNER_TEMP"
+          cmp "$RUNNER_TEMP/data/frozen_forecast_manifest.json" "$RUNNER_TEMP/frozen-forecast/data/frozen_forecast_manifest.json" || {
+            echo "Existing frozen bundle differs; refusing to overwrite it." >&2
+            exit 1
+          }

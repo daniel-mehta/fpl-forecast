@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "sync-data": "node scripts/sync-data.mjs",
+    "test:frozen-forecast": "node --test scripts/frozen-forecast.node-test.mjs",
+    "validate:frozen-forecast": "node scripts/frozen-forecast-cli.mjs validate",
     "test": "vitest run",
     "lint": "eslint .",
     "build": "tsc --noEmit && vite build",

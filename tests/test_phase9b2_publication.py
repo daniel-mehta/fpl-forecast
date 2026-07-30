@@ -365,11 +365,13 @@ def test_pages_workflow_is_manual_official_only_and_failure_preserving() -> None
     assert "workflow_dispatch:" in workflow
     assert "schedule:" not in workflow
     assert "--mock-launch" not in workflow
-    assert "contents: write" not in workflow
+    assert "contents: write" in workflow
     assert "needs: build" in workflow
     assert "needs.build.result == 'success'" in workflow
     assert "npm run sync-data" in workflow
     assert "validate-publication" in workflow
+    assert "Freeze the sanitized public forecast bundle" in workflow
+    assert "official-forecast-data" in workflow
 
 
 def test_failed_publication_does_not_change_latest_successful_pointer(monkeypatch, tmp_path) -> None:
