@@ -42,7 +42,6 @@ jobs:
         if: ${{ steps.existing.outputs.exists == 'no' }}
         run: |
           git switch --orphan official-forecast-data
-          git rm -rf .
           mkdir data
           cp -R "$RUNNER_TEMP/frozen-forecast/data/." data/
           git add data
@@ -56,6 +55,7 @@ jobs:
         run: |
           git fetch --depth=1 origin official-forecast-data
           git archive FETCH_HEAD data | tar -x -C "$RUNNER_TEMP"
+          node frontend/scripts/frozen-forecast-cli.mjs validate --source "$RUNNER_TEMP/data"
           cmp "$RUNNER_TEMP/data/frozen_forecast_manifest.json" "$RUNNER_TEMP/frozen-forecast/data/frozen_forecast_manifest.json" || {
             echo "Existing frozen bundle differs; refusing to overwrite it." >&2
             exit 1

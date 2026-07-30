@@ -374,6 +374,19 @@ def test_pages_workflow_is_manual_official_only_and_failure_preserving() -> None
     assert "official-forecast-data" in workflow
 
 
+def test_frozen_forecast_seed_handles_new_and_existing_branches_safely() -> None:
+    workflow = Path(".github/workflows/seed-frozen-forecast.yml").read_text(encoding="utf-8")
+
+    assert "git switch --orphan official-forecast-data" in workflow
+    assert "git rm -rf ." not in workflow
+    assert workflow.index("fetch-live-frozen-forecast.mjs") < workflow.index("git switch --orphan")
+    assert "frozen-forecast-cli.mjs validate --source" in workflow
+    assert workflow.index("frozen-forecast-cli.mjs validate --source") < workflow.index(
+        'cmp "$RUNNER_TEMP/data/frozen_forecast_manifest.json"'
+    )
+    assert "Existing frozen bundle differs; refusing to overwrite it." in workflow
+
+
 def test_failed_publication_does_not_change_latest_successful_pointer(monkeypatch, tmp_path) -> None:
     runs = tmp_path / "runs"
     failed = tmp_path / "failed"
