@@ -43,9 +43,10 @@ def optimize_squad_milp(
 
     objective = np.zeros(n_vars)
     expected = pd.to_numeric(frame["expected_points"], errors="raise").to_numpy(dtype=float)
-    appearances = pd.to_numeric(frame.get("p_appearance", 1.0), errors="coerce").fillna(1.0).to_numpy(dtype=float)
     objective[offsets["starter"] : offsets["starter"] + n_players] = -expected
-    captain_bonus = expected * appearances if appearance_aware else expected
+    # expected_points is already unconditional, so the extra 2x captain
+    # contribution is the same coefficient as the ordinary starter term.
+    captain_bonus = expected
     objective[offsets["captain"] : offsets["captain"] + n_players] = -captain_bonus
 
     rows: list[tuple[dict[int, float], float, float]] = []

@@ -12,7 +12,7 @@ from fpl_forecast.decision.expected_realized import (
     optimize_lineup_expected_realized,
     refine_fixed_squad_lineup,
 )
-from fpl_forecast.decision.lineup import apply_autosubs_and_score, optimize_lineup
+from fpl_forecast.decision.lineup import _lineup_objective_ids, apply_autosubs_and_score, optimize_lineup
 from fpl_forecast.decision.milp import optimize_squad_expected_realized, optimize_squad_milp
 from fpl_forecast.decision.prices import selling_price_tenths, validate_budget
 from fpl_forecast.decision.rules import default_rules, validate_rules
@@ -108,6 +108,108 @@ def test_milp_optimizer_matches_bruteforce_on_small_universe() -> None:
     assert solution.objective_gap == 0
     assert round(solution.objective, 8) == round(expected, 8)
     assert solution.objective_bound == pytest.approx(solution.objective)
+
+
+def test_d1_captain_coefficient_uses_unconditional_expected_points_directly() -> None:
+    rules = default_rules()
+    candidates = _captain_regression_squad()
+
+    solution = optimize_squad_milp(candidates, rules)
+    indexed = candidates.set_index("player_uid")
+    ordinary_lineup = float(indexed.loc[list(solution.lineup_decision.lineup), "expected_points"].sum())
+    captain_mu = float(indexed.loc[solution.lineup_decision.captain, "expected_points"])
+
+    assert solution.lineup_decision.captain == "MID_4"
+    assert captain_mu == 10.0
+    assert solution.objective - ordinary_lineup == pytest.approx(captain_mu)
+
+
+def test_d1_captained_player_total_is_twice_unconditional_expected_points() -> None:
+    rules = default_rules()
+    candidates = _captain_regression_squad()
+    solution = optimize_squad_milp(candidates, rules)
+    indexed = candidates.set_index("player_uid")
+    captain = solution.lineup_decision.captain
+    captain_mu = float(indexed.loc[captain, "expected_points"])
+    ordinary_others = float(
+        indexed.loc[
+            [player for player in solution.lineup_decision.lineup if player != captain],
+            "expected_points",
+        ].sum()
+    )
+
+    assert solution.objective - ordinary_others == pytest.approx(2 * captain_mu)
+
+
+def test_d1_captain_selection_does_not_double_discount_appearance() -> None:
+    rules = default_rules()
+    candidates = _captain_regression_squad()
+
+    solution = optimize_squad_milp(candidates, rules)
+
+    # Correct: MID_4 has mu=10 > MID_3 mu=9. Old: 0.5*10=5 < 1.0*9=9.
+    assert solution.lineup_decision.captain == "MID_4"
+
+
+def test_d1_captain_with_certain_appearance_does_not_expose_the_bug() -> None:
+    rules = default_rules()
+    candidates = _captain_regression_squad()
+    candidates.loc[candidates["player_uid"].eq("MID_4"), "p_appearance"] = 1.0
+
+    solution = optimize_squad_milp(candidates, rules)
+    indexed = candidates.set_index("player_uid")
+    ordinary_lineup = float(indexed.loc[list(solution.lineup_decision.lineup), "expected_points"].sum())
+
+    assert solution.lineup_decision.captain == "MID_4"
+    assert solution.objective == pytest.approx(ordinary_lineup + 10.0)
+    assert 1.0 * 10.0 == 10.0
+
+
+def test_d1_ordinary_non_captain_coefficient_is_unchanged() -> None:
+    rules = default_rules()
+    candidates = _captain_regression_squad()
+    base = optimize_squad_milp(candidates, rules)
+    perturbed = candidates.copy()
+    non_captain = next(player for player in base.lineup_decision.lineup if player.startswith("DEF_"))
+    perturbed.loc[perturbed["player_uid"].eq(non_captain), "expected_points"] += 0.25
+
+    changed = optimize_squad_milp(perturbed, rules)
+
+    assert non_captain in changed.lineup_decision.lineup
+    assert base.lineup_decision.captain == changed.lineup_decision.captain == "MID_4"
+    assert changed.objective - base.objective == pytest.approx(0.25)
+
+
+def test_d2_diagnostics_use_corrected_d1_seed_captain() -> None:
+    rules = default_rules()
+    candidates = _captain_regression_squad()
+
+    solution = optimize_squad_expected_realized(candidates, rules, search_iterations=1)
+
+    assert (solution.diagnostics or {})["d1_captain"] == "MID_4"
+    assert (solution.diagnostics or {})["mean_only_seed_objective"] == pytest.approx(
+        optimize_squad_milp(candidates, rules).objective
+    )
+
+
+def test_legacy_lineup_helper_retains_only_legitimate_vice_fallback_probability() -> None:
+    records = {
+        "captain": {"expected_points": 10.0, "p_appearance": 0.5},
+        "vice": {"expected_points": 9.0, "p_appearance": 0.25},
+    }
+
+    objective = _lineup_objective_ids(
+        ("captain", "vice"),
+        [],
+        "captain",
+        "vice",
+        records,
+        appearance_aware=True,
+    )
+
+    # 19 ordinary + 10 captain + (1 - 0.5) * 9 vice fallback.
+    # Vice p_appearance is already incorporated in its unconditional mu=9.
+    assert objective == pytest.approx(33.5)
 
 
 def test_milp_selection_stable_under_small_forecast_perturbations() -> None:
@@ -778,6 +880,22 @@ def _small_extra_candidate_frame() -> pd.DataFrame:
     )
 
 
+def _captain_regression_squad() -> pd.DataFrame:
+    squad = _squad_frame()
+    squad["expected_points"] = 1.0
+    squad["expected_points_given_appearance"] = 1.0
+    squad["p_appearance"] = 1.0
+    squad.loc[
+        squad["player_uid"].eq("MID_4"),
+        ["expected_points", "expected_points_given_appearance", "p_appearance"],
+    ] = [10.0, 20.0, 0.5]
+    squad.loc[
+        squad["player_uid"].eq("MID_3"),
+        ["expected_points", "expected_points_given_appearance", "p_appearance"],
+    ] = [9.0, 9.0, 1.0]
+    return squad
+
+
 def _upgrade_rows(position: str, count: int, price: int, expected_points: float) -> pd.DataFrame:
     return pd.DataFrame(
         [
@@ -846,5 +964,5 @@ def _bruteforce_milp_objective(candidates: pd.DataFrame, rules) -> float:
                         starter_points = float(lineup["expected_points"].sum())
                         for captain in lineup_ids:
                             row = indexed.loc[captain]
-                            best = max(best, starter_points + float(row["expected_points"] * row["p_appearance"]))
+                            best = max(best, starter_points + float(row["expected_points"]))
     return best

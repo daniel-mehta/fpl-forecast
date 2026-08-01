@@ -158,11 +158,10 @@ def _lineup_objective(
     captain_row = lineup.loc[lineup["player_uid"].eq(captain)].iloc[0]
     vice_row = lineup.loc[lineup["player_uid"].eq(vice)].iloc[0]
     if appearance_aware:
-        captain_bonus = float(captain_row["expected_points"] * captain_row.get("p_appearance", 1.0))
+        captain_bonus = float(captain_row["expected_points"])
         captain_bonus += float(
             vice_row["expected_points"]
             * (1 - captain_row.get("p_appearance", 1.0))
-            * vice_row.get("p_appearance", 1.0)
         )
         bench_value = float(
             (bench["expected_points"] * (1 - bench.index.to_series().rank(pct=True) * 0.05)).sum() * 0.05
@@ -185,11 +184,10 @@ def _lineup_objective_ids(
     starter_points = sum(float(records[player]["expected_points"]) for player in lineup)
     if not appearance_aware:
         return starter_points + float(records[captain]["expected_points"])
-    captain_bonus = float(records[captain]["expected_points"]) * float(records[captain]["p_appearance"])
+    captain_bonus = float(records[captain]["expected_points"])
     captain_bonus += (
         float(records[vice]["expected_points"])
         * (1 - float(records[captain]["p_appearance"]))
-        * float(records[vice]["p_appearance"])
     )
     bench_value = sum(
         float(records[player]["expected_points"]) * (1 - (index + 1) * 0.05)
