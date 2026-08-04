@@ -160,10 +160,24 @@ untouched final holdout.
 | Dixon-Coles challenger | `2023-24`, `2024-25`; rolling; fixture | T3 changed scores only marginally: outcome log loss `0.9677` versus T2 `0.9679`, but joint scoreline NLL worsened to `3.0332` versus T2 `3.0324`; T2 remains default. |
 | xPoints | `2023-24`, `2024-25`; rolling; all observed player rows | Default X2-M3 MAE `0.9060`, RMSE `1.9543`, Spearman `0.7044`; Phase 3 B5 reference MAE `0.9824`, RMSE `2.0295`, Spearman `0.6501`. |
 | xPoints distribution | `2023-24`, `2024-25`; rolling; player rows | X2-M3 conserved expected team goals with max absolute error `4.44e-16`; X2-M5 had better 5+ point Brier and zero-rate calibration but was not selected as the default MAE frontier. |
-| Decision optimization | `2023-24`, `2024-25`; rolling weekly-reset benchmark | 380 MILP decisions solved with status `optimal`, max gap `2.96e-16`, mean runtime `0.0892s`; all squads legal. X2-M3 had the highest realized rolling weekly-reset score in this pass, but paired intervals versus X2-M5 crossed zero. |
+| Decision optimization | `2023-24`, `2024-25`; corrected rolling weekly-reset benchmark | 380 D1 MILP decisions solved with status `optimal` and reported gap exactly `0` in every case; mean runtime was `0.1794s`, and all squads passed the complete legality audit. X2-M3 had the highest realized rolling weekly-reset score in this pass. |
 | Operations | Official-data 2026-27 GW1 publication | The clean-runner chain published the frozen GW1 forecast successfully. This is operational evidence only; no 2026-27 accuracy result exists. |
 | Phase 9B1.2 GW1 hardening | `2023-24`-`2025-26`; GW1 folds; 1,964 rows | M7 was selected for coherent operational probabilities, not as a universal rolling winner. Its legacy 80-draw evidence is compared with the promoted hybrid below. |
-| Phase 9B1.3 optimizer hardening | `2023-24`-`2025-26`; three GW1 weekly-reset decisions | D2's realized advantage over D1 averaged `+1.67` points (fold differences `+3`, `0`, `+2`). This descriptive result is not proof of season-level superiority. |
+| Phase 9B1.3 optimizer hardening | `2023-24`-`2025-26`; three GW1 weekly-reset decisions | After correcting D1 captaincy, D2's realized advantage over D1 averaged `+1.33` points (fold differences `+2`, `0`, `+2`). Mean expected-realised points were `48.7858` for D1 and `49.5106` for D2. This descriptive result is not proof of season-level superiority. |
+
+`expected_points` is an unconditional mean. D1 therefore maximizes the sum of unconditional means
+for the starting XI plus the same unconditional mean once more for the captain; it does not multiply
+the captain coefficient by appearance probability again. D2 did not contain that same
+double-discounting error: its fixed-squad evaluator combines conditional-on-appearance points with
+explicit appearance-state probabilities. Its historical results nevertheless changed because every
+D2 search begins from the corrected D1 solution.
+
+The corrected authoritative decision runs are
+`phase7_captain_corrected_decisions_rolling_real` and
+`phase9b13_captain_corrected_decisions_gw1_v2`. The structured registry at
+`src/fpl_forecast/decision/evidence_registry.json` records which pre-fix and earlier corrected runs
+they supersede. Those earlier artifacts, including the decision evidence published with `v0.1.0`,
+remain immutable historical records and must not be used as current publication evidence.
 
 ### Promoted Hybrid Simulator: Comparable Historical GW1 Evidence
 
@@ -319,9 +333,10 @@ Generated real-data artifacts live under ignored directories such as `data/raw/`
   exists yet.
 - D2 exactly enumerates independent appearance states for ordinary bench and captain contingency,
   but player absences can be correlated in reality. Its full-pool one-swap search is bounded after
-  the exact D1 seed and is not a transfer-aware season optimizer. Its observed `+1.67`-point
-  realized advantage over D1 comes from only three historical GW1 decisions and is descriptive,
-  not proof of superiority.
+  the exact D1 seed and is not a transfer-aware season optimizer. Its corrected observed
+  `+1.33`-point realized advantage over D1 (fold differences `+2`, `0`, `+2`) comes from only three
+  historical GW1 decisions and is descriptive, not proof of superiority. D2 did not share D1's
+  double-discounting error, but its result changed because its search starts from the D1 solution.
 - Exact event timing within matches is not simulated. Under official scoring, a player substituted
   after 60 minutes may retain a clean sheet despite a later concession and incurs goals-conceded
   deductions only for goals conceded while on the pitch. The simulator approximates these cases

@@ -13,6 +13,7 @@ from fpl_forecast.config import (
     RAW_VAASTAV_DIR,
     ensure_data_directories,
 )
+from fpl_forecast.decision.config import CONFIG_PATH as DECISION_CONFIG_PATH
 from fpl_forecast.backtest.runner import (
     compare_baselines as compare_baseline_run,
     inspect_backtest_run,
@@ -715,6 +716,10 @@ def backtest_decisions(
         typer.Option(help="Normalized data directory."),
     ] = NORMALIZED_DIR,
     run_id: Annotated[str | None, typer.Option(help="Optional deterministic run id.")] = None,
+    config_path: Annotated[
+        Path,
+        typer.Option(help="Decision configuration JSON to use for this replay."),
+    ] = DECISION_CONFIG_PATH,
 ) -> None:
     try:
         result = run_decision_backtest(
@@ -722,6 +727,7 @@ def backtest_decisions(
             mode=mode,
             normalized_dir=normalized_dir,
             run_id=run_id,
+            config_path=config_path,
         )
     except Exception as exc:  # noqa: BLE001
         console.print(f"[red]Decision backtest failed:[/red] {exc}")

@@ -1,10 +1,22 @@
 from __future__ import annotations
 
+import json
 from itertools import combinations
+from pathlib import Path
 
 import pandas as pd
 import pytest
 
+from fpl_forecast.decision.config import load_decision_config
+from fpl_forecast.decision.evidence import (
+    D1_VARIANT,
+    D2_VARIANT,
+    authoritative_decision_run,
+    build_decision_evidence_table_from_frames,
+    decision_evidence_supersession_table,
+    load_decision_evidence_registry,
+    publication_round,
+)
 from fpl_forecast.decision.inputs import assert_frozen_decisions_target_free
 from fpl_forecast.decision.expected_realized import (
     _fixed_squad_lineup_candidates,
@@ -16,9 +28,15 @@ from fpl_forecast.decision.lineup import _lineup_objective_ids, apply_autosubs_a
 from fpl_forecast.decision.milp import optimize_squad_expected_realized, optimize_squad_milp
 from fpl_forecast.decision.prices import selling_price_tenths, validate_budget
 from fpl_forecast.decision.rules import default_rules, validate_rules
-from fpl_forecast.decision.runner import forecast_decisions_guard
+from fpl_forecast.decision.runner import forecast_decisions_guard, run_decision_backtest
 from fpl_forecast.decision.squad import optimize_initial_squad
 from fpl_forecast.decision.transfers import computed_selling_price, plan_multi_gameweek_transfers
+
+
+PHASE7_ROLLING_CONFIG = (
+    Path(__file__).resolve().parents[1]
+    / "src/fpl_forecast/decision/config_phase7_rolling_76_folds.json"
+)
 
 
 def test_default_rules_match_official_squad_shape() -> None:
@@ -30,6 +48,125 @@ def test_default_rules_match_official_squad_shape() -> None:
     assert rules.min_starters == {"GKP": 1, "DEF": 3, "MID": 2, "FWD": 1}
     assert rules.max_players_per_team == 3
     assert rules.budget_tenths == 1000
+
+
+def test_corrected_rolling_replay_config_preserves_original_76_fold_comparison() -> None:
+    config = load_decision_config(PHASE7_ROLLING_CONFIG)
+
+    assert config.xpoints_runs["rolling"] == "phase6_xpoints_rolling_real"
+    assert config.comparison_models == (
+        "X2_TEAM_CONSTRAINED_SIM_M3",
+        "X2_TEAM_CONSTRAINED_SIM_M5",
+        "X1_INDEPENDENT_COMPONENT_RATES_M3",
+        "X0_PHASE3_B5_EB_POINTS_PER90",
+        "D0_PRICE_VALUE_BASELINE",
+    )
+    assert config.optimizer_variants == (D1_VARIANT,)
+
+
+def test_decision_evidence_registry_separates_authoritative_and_historical_runs() -> None:
+    registry = load_decision_evidence_registry()
+    supersession = decision_evidence_supersession_table()
+    authoritative = {
+        authoritative_decision_run("rolling_benchmark"),
+        authoritative_decision_run("table7_gw1"),
+    }
+
+    assert authoritative == {
+        "phase7_captain_corrected_decisions_rolling_real",
+        "phase9b13_captain_corrected_decisions_gw1_v2",
+    }
+    assert not authoritative.intersection(supersession["superseded_run_id"])
+    assert set(supersession["superseded_status"]) == {"immutable_historical_record"}
+    assert "phase7_decisions_rolling_real" in set(supersession["superseded_run_id"])
+    assert "phase9b13_lineup_refined_decisions_gw1" in set(
+        supersession["superseded_run_id"]
+    )
+    assert "1.67" not in json.dumps(registry, sort_keys=True)
+
+
+def test_decision_replay_refuses_to_overwrite_historical_evidence(tmp_path: Path) -> None:
+    run_dir = tmp_path / "immutable_historical_run"
+    run_dir.mkdir()
+    marker = run_dir / "manifest.json"
+    marker.write_text('{"historical": true}\n', encoding="utf-8")
+
+    with pytest.raises(FileExistsError, match="Refusing to overwrite existing decision evidence"):
+        run_decision_backtest(
+            seasons="2023-24,2024-25",
+            mode="rolling",
+            reports_dir=tmp_path,
+            run_id=run_dir.name,
+            config_path=PHASE7_ROLLING_CONFIG,
+        )
+
+    assert marker.read_text(encoding="utf-8") == '{"historical": true}\n'
+
+
+def test_table7_is_derived_from_corrected_paired_decisions() -> None:
+    source_run_id = authoritative_decision_run("table7_gw1")
+    d1_expected = 48.78583044235585
+    d2_expected = 49.51061652957066
+    metrics = pd.DataFrame(
+        [
+            {
+                "optimizer_variant": D1_VARIANT,
+                "decisions": 3,
+                "mean_expected_score": d1_expected,
+                "mean_realized_points": 59.0,
+                "mean_autosub_points": 1.0,
+                "unreplaced_starter_rate": 0.0,
+            },
+            {
+                "optimizer_variant": D2_VARIANT,
+                "decisions": 3,
+                "mean_expected_score": d2_expected,
+                "mean_realized_points": 61.0,
+                "mean_autosub_points": 2.0,
+                "unreplaced_starter_rate": 0.0,
+            },
+        ]
+    )
+    scored = pd.DataFrame(
+        [
+            {"season": season, "gameweek": 1, "optimizer_variant": variant, "realized_points": points}
+            for season, d1_points, d2_points in (
+                ("2023-24", 55, 57),
+                ("2024-25", 60, 60),
+                ("2025-26", 63, 65),
+            )
+            for variant, points in ((D1_VARIANT, d1_points), (D2_VARIANT, d2_points))
+        ]
+    )
+    comparison = pd.DataFrame(
+        [
+            {
+                "left_model": f"X2_TEAM_CONSTRAINED_SIM_M7:{D2_VARIANT}",
+                "right_model": f"X2_TEAM_CONSTRAINED_SIM_M7:{D1_VARIANT}",
+                "mean_realized_difference": 4 / 3,
+                "bootstrap_ci_low": 0.0,
+                "bootstrap_ci_high": 2.0,
+                "captain_agreement": 1.0,
+                "mean_lineup_overlap": 1.0,
+            }
+        ]
+    )
+
+    table = build_decision_evidence_table_from_frames(
+        metrics=metrics,
+        comparison=comparison,
+        scored=scored,
+        source_run_id=source_run_id,
+    )
+
+    indexed = table.set_index("decision_model")
+    assert indexed.loc[D1_VARIANT, "mean_expected_realized_points"] == pytest.approx(d1_expected)
+    assert indexed.loc[D2_VARIANT, "mean_expected_realized_points"] == pytest.approx(d2_expected)
+    assert set(table["d2_minus_d1_fold_realized_differences"]) == {"[2, 0, 2]"}
+    assert table["d2_minus_d1_mean_realized_difference"].tolist() == pytest.approx([4 / 3, 4 / 3])
+    assert publication_round(4 / 3) == 1.33
+    assert set(table["d2_minus_d1_mean_realized_difference_2dp"]) == {1.33}
+    assert set(table["source_run_id"]) == {source_run_id}
 
 
 def test_price_math_uses_integer_tenths_and_sell_on_fee() -> None:

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import shlex
 import subprocess
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -9,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 
 from fpl_forecast.config import NORMALIZED_DIR, PROJECT_ROOT
-from fpl_forecast.decision.config import DECISION_REPORTS_DIR, load_decision_config
+from fpl_forecast.decision.config import CONFIG_PATH, DECISION_REPORTS_DIR, load_decision_config
 from fpl_forecast.decision.inputs import (
     assert_frozen_decisions_target_free,
     candidate_slice,
@@ -57,12 +60,18 @@ def run_decision_backtest(
     normalized_dir: Path | str = NORMALIZED_DIR,
     reports_dir: Path | str = DECISION_REPORTS_DIR,
     run_id: str | None = None,
+    config_path: Path | str = CONFIG_PATH,
 ) -> DecisionRunResult:
     if mode not in {"gw1", "rolling"}:
         raise ValueError("mode must be 'gw1' or 'rolling'.")
-    config = load_decision_config()
+    config_path = Path(config_path).resolve()
+    config = load_decision_config(config_path)
     rules = default_rules()
     season_list = parse_seasons(seasons)
+    run_id = run_id or f"phase7_decisions_{mode}_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
+    run_dir = Path(reports_dir) / run_id
+    if run_dir.exists() and any(run_dir.iterdir()):
+        raise FileExistsError(f"Refusing to overwrite existing decision evidence: {run_dir}")
     candidates = load_decision_candidates(mode=mode, config=config, normalized_dir=normalized_dir)
     candidates = candidates.loc[candidates["season"].isin(season_list)].copy()
     groups = candidates[["season", "gameweek"]].drop_duplicates().sort_values(["season", "gameweek"])
@@ -83,7 +92,11 @@ def run_decision_backtest(
                 )
                 selected = squad_table(solution, universe)
                 diagnostics = dict(solution.diagnostics or {})
-                if "expected_realized_total" not in diagnostics:
+                has_conditional_points = (
+                    "expected_points_given_appearance" in selected
+                    and selected["expected_points_given_appearance"].notna().all()
+                )
+                if "expected_realized_total" not in diagnostics and has_conditional_points:
                     diagnostics.update(
                         evaluate_expected_realized_points(
                             selected,
@@ -92,6 +105,10 @@ def run_decision_backtest(
                             max_scenarios=config.expected_realized_scenarios,
                             seed=config.expected_realized_seed,
                         ).to_dict()
+                    )
+                elif optimizer_variant == "D2_EXPECTED_REALIZED_POINTS" and not has_conditional_points:
+                    raise ValueError(
+                        "D2 expected-realized optimization requires preserved conditional-point inputs."
                     )
                 scored_payload = apply_autosubs_and_score(
                     selected.rename(columns={"actual_points": "actual_points"}),
@@ -173,8 +190,6 @@ def run_decision_backtest(
     assert_frozen_decisions_target_free(frozen, config.forbidden_frozen_columns)
     scored = pd.DataFrame(scored_rows)
     squads = pd.concat(squad_rows, ignore_index=True) if squad_rows else pd.DataFrame()
-    run_id = run_id or f"phase7_decisions_{mode}_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
-    run_dir = Path(reports_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     frozen_path = _write_frame(frozen, run_dir / "frozen_decisions.csv")
     scored_path = _write_frame(scored, run_dir / "scored_decisions.csv")
@@ -192,9 +207,18 @@ def run_decision_backtest(
             selected_player_calibration(squads),
             run_dir / "selected_player_calibration.csv",
         ),
-        "constraint_audit": _write_frame(_constraint_audit(scored, rules), run_dir / "constraint_audit.csv"),
+        "constraint_audit": _write_frame(
+            _constraint_audit(scored, squads, rules),
+            run_dir / "constraint_audit.csv",
+        ),
+    }
+    output_paths = {
+        "frozen_decisions": frozen_path,
+        "scored_decisions": scored_path,
+        **metrics_paths,
     }
     manifest = {
+        "artifact_schema_version": 2,
         "run_id": run_id,
         "created_at_utc": datetime.now(UTC).isoformat(),
         "mode": mode,
@@ -202,8 +226,33 @@ def run_decision_backtest(
         "xpoints_run": config.xpoints_runs[mode],
         "rules": asdict(rules),
         "config": asdict(config),
+        "config_provenance": _artifact_metadata(config_path),
         "decisions": int(len(frozen)),
+        "evaluation_contract": {
+            "unconditional_expected_points": "expected_points",
+            "direct_expected_realized_diagnostics": int(frozen["analytic_method"].notna().sum()),
+            "legacy_d1_fallback": (
+                "D1 objective retained when preserved inputs do not contain direct "
+                "expected_points_given_appearance"
+            ),
+        },
         "git": _git_metadata(),
+        "software_state": _software_state(),
+        "input_artifacts": _input_artifacts(
+            mode=mode,
+            config=config,
+            normalized_dir=Path(normalized_dir),
+        ),
+        "replay": _replay_provenance(
+            seasons=season_list,
+            mode=mode,
+            normalized_dir=Path(normalized_dir),
+            run_id=run_id,
+            config_path=config_path,
+        ),
+        "output_artifacts": {
+            name: _artifact_metadata(path) for name, path in output_paths.items()
+        },
         "solver": "scipy_highs_milp plus expected-realized local search",
         "optimality_scope": "D1 exact MILP benchmark and D2 deterministic expected-realized challenger",
     }
@@ -300,14 +349,67 @@ def _optimize_squad_with_fallback(candidates: pd.DataFrame, rules, config, *, op
     raise ValueError(f"Unknown optimizer variant: {optimizer_variant}")
 
 
-def _constraint_audit(frozen: pd.DataFrame, rules) -> pd.DataFrame:
-    return frozen.assign(
-        legal=(
-            frozen["cost_tenths"].le(rules.budget_tenths)
-            & frozen["bank_tenths"].ge(0)
-            & frozen["captain"].ne(frozen["vice_captain"])
+def _constraint_audit(frozen: pd.DataFrame, squads: pd.DataFrame, rules) -> pd.DataFrame:
+    rows = []
+    for decision in frozen.itertuples(index=False):
+        decision_model = str(getattr(decision, "decision_model", decision.model_name))
+        selected = squads.loc[
+            squads["season"].eq(decision.season)
+            & squads["gameweek"].eq(decision.gameweek)
+            & squads.get("decision_model", squads["model_name"]).eq(decision_model)
+        ]
+        selected_ids = set(selected["player_uid"].astype(str))
+        lineup_ids = set(str(decision.lineup).split(","))
+        bench_ids = set(str(decision.bench).split(","))
+        position_counts = selected["fpl_position"].value_counts().to_dict()
+        starter_positions = selected.loc[selected["player_uid"].astype(str).isin(lineup_ids), "fpl_position"]
+        starter_counts = starter_positions.value_counts().to_dict()
+        max_club_players = int(selected.groupby("player_team_uid").size().max()) if not selected.empty else 0
+        squad_shape_legal = (
+            len(selected) == rules.squad_size
+            and len(selected_ids) == rules.squad_size
+            and all(position_counts.get(position, 0) == quota for position, quota in rules.position_quotas.items())
+            and max_club_players <= rules.max_players_per_team
         )
-    )[["season", "gameweek", "model_name", "cost_tenths", "bank_tenths", "captain", "vice_captain", "legal"]]
+        lineup_shape_legal = (
+            len(lineup_ids) == rules.lineup_size
+            and len(bench_ids) == rules.bench_size
+            and not lineup_ids.intersection(bench_ids)
+            and lineup_ids.union(bench_ids) == selected_ids
+            and all(
+                rules.min_starters[position]
+                <= starter_counts.get(position, 0)
+                <= rules.max_starters[position]
+                for position in rules.position_quotas
+            )
+        )
+        captaincy_legal = (
+            decision.captain != decision.vice_captain
+            and str(decision.captain) in lineup_ids
+            and str(decision.vice_captain) in lineup_ids
+        )
+        budget_legal = decision.cost_tenths <= rules.budget_tenths and decision.bank_tenths >= 0
+        rows.append(
+            {
+                "season": decision.season,
+                "gameweek": int(decision.gameweek),
+                "model_name": decision.model_name,
+                "optimizer_variant": getattr(decision, "optimizer_variant", "D1_MEAN_ONLY_MILP"),
+                "decision_model": decision_model,
+                "cost_tenths": int(decision.cost_tenths),
+                "bank_tenths": int(decision.bank_tenths),
+                "squad_size": len(selected_ids),
+                "lineup_size": len(lineup_ids),
+                "bench_size": len(bench_ids),
+                "max_club_players": max_club_players,
+                "budget_legal": budget_legal,
+                "squad_shape_legal": squad_shape_legal,
+                "lineup_shape_legal": lineup_shape_legal,
+                "captaincy_legal": captaincy_legal,
+                "legal": budget_legal and squad_shape_legal and lineup_shape_legal and captaincy_legal,
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def _toy_transfer_frame(upgrade_shift: float = 0.0) -> pd.DataFrame:
@@ -345,9 +447,94 @@ def _write_frame(frame: pd.DataFrame, path: Path) -> Path:
 
 
 def _git_metadata() -> dict[str, object]:
-    return {"commit": _git(["rev-parse", "--short", "HEAD"]), "dirty": bool(_git(["status", "--short"]))}
+    status = _git(["status", "--short", "--untracked-files=all"])
+    diff = _git_bytes(["diff", "--binary", "HEAD"])
+    return {
+        "commit": _git(["rev-parse", "HEAD"]),
+        "dirty": bool(status),
+        "status_short": status.splitlines(),
+        "tracked_diff_sha256": hashlib.sha256(diff).hexdigest(),
+    }
 
 
 def _git(args: list[str]) -> str:
     result = subprocess.run(["git", *args], cwd=PROJECT_ROOT, check=False, capture_output=True, text=True)
     return result.stdout.strip()
+
+
+def _git_bytes(args: list[str]) -> bytes:
+    result = subprocess.run(["git", *args], cwd=PROJECT_ROOT, check=False, capture_output=True)
+    return result.stdout
+
+
+def _artifact_metadata(path: Path) -> dict[str, object]:
+    resolved = path.resolve()
+    try:
+        display_path = str(resolved.relative_to(PROJECT_ROOT))
+    except ValueError:
+        display_path = str(resolved)
+    content = resolved.read_bytes()
+    return {
+        "path": display_path,
+        "bytes": len(content),
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
+
+
+def _software_state() -> dict[str, object]:
+    source_files = sorted((PROJECT_ROOT / "src/fpl_forecast").rglob("*.py"))
+    digest = hashlib.sha256()
+    for path in source_files:
+        digest.update(str(path.relative_to(PROJECT_ROOT)).encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return {
+        "source_tree_sha256": digest.hexdigest(),
+        "source_file_count": len(source_files),
+        "source_tree_definition": "sorted src/fpl_forecast/**/*.py paths and contents",
+        "pyproject": _artifact_metadata(PROJECT_ROOT / "pyproject.toml"),
+        "lockfile": _artifact_metadata(PROJECT_ROOT / "uv.lock"),
+    }
+
+
+def _input_artifacts(*, mode: str, config, normalized_dir: Path) -> dict[str, dict[str, object]]:
+    xpoints_dir = PROJECT_ROOT / "reports" / "xpoints_backtests" / config.xpoints_runs[mode]
+    paths = {
+        "player_gameweek_predictions": xpoints_dir / "player_gameweek_predictions.parquet",
+        "frozen_player_fixture_predictions": xpoints_dir / "frozen_player_fixture_predictions.parquet",
+        "xpoints_manifest": xpoints_dir / "manifest.json",
+        "normalized_player_fixture_facts": normalized_dir / "phase2" / "fact_player_fixture.parquet",
+    }
+    return {name: _artifact_metadata(path) for name, path in paths.items()}
+
+
+def _replay_provenance(
+    *,
+    seasons: list[str],
+    mode: str,
+    normalized_dir: Path,
+    run_id: str,
+    config_path: Path,
+) -> dict[str, object]:
+    command = [
+        "uv",
+        "run",
+        "fpl",
+        "backtest-decisions",
+        "--seasons",
+        ",".join(seasons),
+        "--mode",
+        mode,
+        "--config-path",
+        str(config_path.relative_to(PROJECT_ROOT)),
+        "--run-id",
+        run_id,
+    ]
+    if normalized_dir.resolve() != NORMALIZED_DIR.resolve():
+        command.extend(["--normalized-dir", str(normalized_dir)])
+    return {
+        "argv": command,
+        "command": shlex.join(command),
+        "environment": {"UV_CACHE_DIR": os.environ.get("UV_CACHE_DIR", "")},
+    }

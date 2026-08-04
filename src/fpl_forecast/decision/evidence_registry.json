@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "decision_evidence": {
+    "rolling_benchmark": {
+      "authoritative_run_id": "phase7_captain_corrected_decisions_rolling_real",
+      "status": "authoritative",
+      "supersedes": [
+        {
+          "run_id": "phase7_decisions_rolling_real",
+          "preservation": "immutable_historical_record",
+          "reason": "Generated before the D1 captain coefficient correction."
+        },
+        {
+          "run_id": "phase7_decisions_gw1_real",
+          "preservation": "immutable_historical_record",
+          "reason": "Generated before the D1 captain coefficient correction; retained as the matching historical GW1 record."
+        }
+      ]
+    },
+    "table7_gw1": {
+      "authoritative_run_id": "phase9b13_captain_corrected_decisions_gw1_v2",
+      "status": "authoritative",
+      "supersedes": [
+        {
+          "run_id": "phase9b13_decisions_gw1",
+          "preservation": "immutable_historical_record",
+          "reason": "Pre-fix Phase 9B1.3 decision evidence."
+        },
+        {
+          "run_id": "phase9b13_exact_eval_decisions_gw1",
+          "preservation": "immutable_historical_record",
+          "reason": "Pre-fix Phase 9B1.3 intermediate evidence."
+        },
+        {
+          "run_id": "phase9b13_conditional_stabilized_decisions_gw1",
+          "preservation": "immutable_historical_record",
+          "reason": "Pre-fix Phase 9B1.3 intermediate evidence."
+        },
+        {
+          "run_id": "phase9b13_lineup_refined_decisions_gw1",
+          "preservation": "immutable_historical_record",
+          "reason": "Pre-fix source for the v0.1.0 Table 7 result."
+        },
+        {
+          "run_id": "phase9b13_captain_corrected_decisions_gw1",
+          "preservation": "immutable_historical_record",
+          "reason": "Numerically corrected evidence retained unchanged; superseded because its manifest predates complete source-state and input hashes."
+        },
+        {
+          "run_id": "phase9b13_captain_corrected_decisions_gw1_determinism",
+          "preservation": "immutable_historical_record",
+          "reason": "Numerically corrected determinism check retained unchanged; superseded by the authoritative provenance-complete replay."
+        }
+      ]
+    }
+  }
+}
