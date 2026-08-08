@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>FPL Forecast</title>
+  <rect width="64" height="64" rx="14" fill="#124a3a"/>
+  <path d="M14 43.5 26 31.5l8 6L50 20" fill="none" stroke="#bfe5d8" stroke-linecap="round" stroke-linejoin="round" stroke-width="5"/>
+  <path d="M42 20h8v8" fill="none" stroke="#bfe5d8" stroke-linecap="round" stroke-linejoin="round" stroke-width="5"/>
+  <circle cx="14" cy="43.5" r="4" fill="#f5f7f6"/>
+  <circle cx="26" cy="31.5" r="4" fill="#f5f7f6"/>
+  <circle cx="34" cy="37.5" r="4" fill="#f5f7f6"/>
+  <circle cx="50" cy="20" r="4" fill="#f5f7f6"/>
+</svg>
