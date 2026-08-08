@@ -1189,6 +1189,7 @@ function SiteFooter() {
           Built by Daniel Mehta. Unofficial project; no Premier League or Fantasy Premier League
           affiliation.
         </span>
+        <a href="https://danielmehta.com/privacy.html">Privacy Policy</a>
         <a
           className="github-link"
           href={repositoryUrl}
