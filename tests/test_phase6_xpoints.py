@@ -9,7 +9,9 @@ import pytest
 from fpl_forecast.xpoints.components import attacking_shares, award_bonus_from_bps
 from fpl_forecast.xpoints.config import load_xpoints_config
 from fpl_forecast.xpoints.data import assert_frozen_target_free
+from fpl_forecast.xpoints.models import _expected_goal_points
 from fpl_forecast.xpoints.scoring import reconstruction_audit, score_frame
+from fpl_forecast.xpoints.rules import goal_point_values, goal_points_for_position
 from fpl_forecast.xpoints.simulation import (
     aggregate_gameweek_draws,
     coherent_goal_allocation,
@@ -21,6 +23,7 @@ def test_scoring_engine_hand_calculates_all_components():
     frame = pd.DataFrame(
         [
             {
+                "season": "2024-25",
                 "fpl_position": "DEF",
                 "minutes": 90,
                 "goals_scored": 1,
@@ -36,6 +39,7 @@ def test_scoring_engine_hand_calculates_all_components():
                 "bonus": 3,
             },
             {
+                "season": "2024-25",
                 "fpl_position": "GKP",
                 "minutes": 59,
                 "goals_scored": 0,
@@ -61,11 +65,11 @@ def test_scoring_engine_hand_calculates_all_components():
 def test_scoring_engine_applies_defensive_contribution_thresholds():
     frame = pd.DataFrame(
         [
-            {"fpl_position": "DEF", "minutes": 90, "defensive_contribution": 10},
-            {"fpl_position": "MID", "minutes": 90, "defensive_contribution": 11},
-            {"fpl_position": "MID", "minutes": 90, "defensive_contribution": 12},
-            {"fpl_position": "FWD", "minutes": 90, "defensive_contribution": 12},
-            {"fpl_position": "GKP", "minutes": 90, "defensive_contribution": 20},
+            {"season": "2025-26", "fpl_position": "DEF", "minutes": 90, "defensive_contribution": 10},
+            {"season": "2025-26", "fpl_position": "MID", "minutes": 90, "defensive_contribution": 11},
+            {"season": "2025-26", "fpl_position": "MID", "minutes": 90, "defensive_contribution": 12},
+            {"season": "2025-26", "fpl_position": "FWD", "minutes": 90, "defensive_contribution": 12},
+            {"season": "2025-26", "fpl_position": "GKP", "minutes": 90, "defensive_contribution": 20},
         ]
     )
 
@@ -102,6 +106,80 @@ def test_scoring_reconstruction_audit_exact_on_real_like_rows():
 
     assert audit["by_season_position"].iloc[0]["exact_match_pct"] == 1.0
     assert audit["difference_counts"].iloc[0]["point_difference"] == 0
+
+
+def test_goalkeeper_goal_points_change_at_2024_25_and_persist_afterward():
+    assert goal_points_for_position(season="2023-24", position="GKP") == 6
+    assert goal_points_for_position(season="2024-25", position="GKP") == 10
+    assert goal_points_for_position(season="2028-29", position="GKP") == 10
+
+
+def test_goalkeeper_goal_season_boundary_leaves_outfield_values_unchanged():
+    positions = pd.Series(["GKP", "DEF", "MID", "FWD"] * 2)
+    seasons = pd.Series(["2023-24"] * 4 + ["2024-25"] * 4)
+
+    assert goal_point_values(seasons, positions).tolist() == [6, 6, 5, 4, 10, 6, 5, 4]
+
+
+def test_analytical_goal_component_uses_season_aware_goal_values():
+    frame = pd.DataFrame(
+        {
+            "season": ["2023-24", "2024-25", "2025-26"],
+            "fpl_position": ["GKP", "GKP", "GKP"],
+            "expected_goals": [0.25, 0.25, 0.25],
+        }
+    )
+
+    component = _expected_goal_points(frame)
+
+    assert component.tolist() == [1.5, 2.5, 2.5]
+
+
+@pytest.mark.parametrize(("season", "expected_goal_points"), [("2023-24", 6), ("2024-25", 10), ("2027-28", 10)])
+def test_realized_goalkeeper_goal_scoring_is_season_aware(season, expected_goal_points):
+    frame = pd.DataFrame(
+        [{"season": season, "fpl_position": "GKP", "minutes": 1, "goals_scored": 1}]
+    )
+
+    assert score_frame(frame).iloc[0] == 1 + expected_goal_points
+
+
+def test_reconstruction_audit_handles_synthetic_goalkeeper_goals_across_boundary():
+    frame = pd.DataFrame(
+        [
+            {
+                "entity_type": "player",
+                "season": "2023-24",
+                "fpl_position": "GKP",
+                "minutes": 1,
+                "goals_scored": 1,
+                "total_points": 7,
+            },
+            {
+                "entity_type": "player",
+                "season": "2024-25",
+                "fpl_position": "GKP",
+                "minutes": 1,
+                "goals_scored": 1,
+                "total_points": 11,
+            },
+        ]
+    )
+
+    audit = reconstruction_audit(frame)
+
+    assert audit["mismatches"].empty
+    assert audit["difference_counts"].to_dict("records") == [{"point_difference": 0, "rows": 2}]
+
+
+@pytest.mark.parametrize("season", [None, "2024/25", "2024-24", "not-a-season"])
+def test_scoring_rejects_missing_or_malformed_season_values(season):
+    data = {"fpl_position": ["GKP"], "minutes": [1], "goals_scored": [1]}
+    if season is not None:
+        data["season"] = [season]
+
+    with pytest.raises(ValueError, match="season|Season"):
+        score_frame(pd.DataFrame(data))
 
 
 @pytest.mark.parametrize(
@@ -147,6 +225,7 @@ def test_simulation_outputs_are_deterministic_finite_and_monotonic():
     frame = pd.DataFrame(
         [
             {
+                "season": "2024-25",
                 "fpl_position": "FWD",
                 "p_appearance": 0.9,
                 "p_reached_60": 0.7,
@@ -185,6 +264,7 @@ def test_simulated_non_appearance_produces_exactly_zero_points():
     frame = pd.DataFrame(
         [
             {
+                "season": "2024-25",
                 "fpl_position": "DEF",
                 "p_appearance": 0.0,
                 "p_reached_60": 0.0,
@@ -309,7 +389,7 @@ def test_frozen_forbidden_columns_are_rejected_case_insensitively():
 
 
 def test_invalid_position_fails_scoring():
-    frame = pd.DataFrame({"fpl_position": ["AM"], "minutes": [90]})
+    frame = pd.DataFrame({"season": ["2025-26"], "fpl_position": ["AM"], "minutes": [90]})
 
     with pytest.raises(ValueError, match="Invalid"):
         score_frame(frame)

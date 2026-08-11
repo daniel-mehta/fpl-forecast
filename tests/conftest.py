@@ -5,6 +5,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from fpl_forecast.xpoints.rules import goal_points_for_position
+
 from fpl_forecast.panel.build import build_panel
 from fpl_forecast.panel.players import build_player_identities
 from fpl_forecast.panel.teams import build_team_identities
@@ -152,7 +154,7 @@ def _phase8_player_fixture_row(
     total_points = (
         int(minutes > 0)
         + int(minutes >= 60)
-        + goals * (6 if position == "MID" else 5)
+        + goals * goal_points_for_position(season=season, position=position)
         + assists * 3
         + clean_sheets * (4 if position in {"GKP", "DEF"} else 1)
         - int(goals_conceded >= 2 and position in {"GKP", "DEF"})

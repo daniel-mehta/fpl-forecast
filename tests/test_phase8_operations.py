@@ -11,6 +11,7 @@ from fpl_forecast.ingest.fpl_api import BOOTSTRAP_STATIC, FIXTURES
 from fpl_forecast.ingest.snapshots import write_raw_snapshot
 from fpl_forecast.operations.config import LATEST_SUCCESSFUL_PATH, LOCK_PATH
 from fpl_forecast.operations.current_panel import build_current_player_fixture_history
+from fpl_forecast.operations.event_live_audit import _legacy_score_from_values
 from fpl_forecast.operations.launch import check_season_launch
 from fpl_forecast.operations.live_results import (
     audit_event_live_scoring,
@@ -92,6 +93,32 @@ def test_event_live_uses_awarded_points_not_raw_values() -> None:
     assert row["points_goals_scored"] == 5
     assert row["reconstructed_points"] == 7
     assert audit_event_live_scoring(frame)["status_counts"].set_index("audit_status").loc["exact_match", "rows"] == 1
+
+
+@pytest.mark.parametrize(("season", "expected"), [("2023-24", 7), ("2024-25", 11), ("2027-28", 11)])
+def test_legacy_value_comparator_uses_season_aware_goalkeeper_goal_points(season, expected) -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "season": season,
+                "fpl_position": "GKP",
+                "minutes": 1,
+                "goals_scored": 1,
+                "assists": 0,
+                "clean_sheets": 0,
+                "saves": 0,
+                "penalties_saved": 0,
+                "penalties_missed": 0,
+                "goals_conceded": 0,
+                "yellow_cards": 0,
+                "red_cards": 0,
+                "own_goals": 0,
+                "bonus": 0,
+            }
+        ]
+    )
+
+    assert _legacy_score_from_values(frame).iloc[0] == expected
 
 
 def test_event_live_reconstructs_dnp_sub_clean_sheet_gc_saves_bonus_and_cards() -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from fpl_forecast.xpoints.rules import POSITIONS, ScoringRules, load_rules
+from fpl_forecast.xpoints.rules import POSITIONS, ScoringRules, goal_point_values, load_rules
 
 
 COMPONENT_COLUMNS = [
@@ -26,11 +26,12 @@ COMPONENT_COLUMNS = [
 def score_frame(frame: pd.DataFrame, *, rules: ScoringRules | None = None) -> pd.Series:
     rules = rules or load_rules()
     _validate_positions(frame)
+    _validate_seasons(frame)
     pos = frame["fpl_position"].astype(str)
     minutes = _num(frame, "minutes")
     points = (minutes > 0).astype(int) * rules.appearance
     points += (minutes >= 60).astype(int) * rules.appearance_60
-    points += _num(frame, "goals_scored") * pos.map(rules.goal_points).fillna(0).astype(int)
+    points += _num(frame, "goals_scored") * goal_point_values(frame["season"], pos)
     points += _num(frame, "assists") * rules.assist
     clean = _num(frame, "clean_sheets")
     points += np.where(pos.isin(["GKP", "DEF"]) & (minutes >= 60), clean * rules.clean_sheet_gkp_def, 0)
@@ -60,11 +61,13 @@ def score_frame(frame: pd.DataFrame, *, rules: ScoringRules | None = None) -> pd
 
 def component_points(frame: pd.DataFrame, *, rules: ScoringRules | None = None) -> pd.DataFrame:
     rules = rules or load_rules()
+    _validate_positions(frame)
+    _validate_seasons(frame)
     pos = frame["fpl_position"].astype(str)
     minutes = _num(frame, "minutes")
     output = pd.DataFrame(index=frame.index)
     output["points_appearance"] = (minutes > 0).astype(int) + (minutes >= 60).astype(int)
-    output["points_goals"] = _num(frame, "goals_scored") * pos.map(rules.goal_points).fillna(0).astype(int)
+    output["points_goals"] = _num(frame, "goals_scored") * goal_point_values(frame["season"], pos)
     output["points_assists"] = _num(frame, "assists") * rules.assist
     clean = _num(frame, "clean_sheets")
     output["points_clean_sheets"] = np.where(pos.isin(["GKP", "DEF"]) & (minutes >= 60), clean * 4, 0)
@@ -151,3 +154,8 @@ def _validate_positions(frame: pd.DataFrame) -> None:
     invalid = sorted(set(frame["fpl_position"].dropna().astype(str)).difference(POSITIONS))
     if invalid:
         raise ValueError(f"Invalid standard FPL position(s): {', '.join(invalid)}")
+
+
+def _validate_seasons(frame: pd.DataFrame) -> None:
+    if "season" not in frame.columns:
+        raise ValueError("Scoring requires an explicit season column in YYYY-YY format.")

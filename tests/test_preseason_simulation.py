@@ -99,6 +99,38 @@ def test_one_expected_goal_is_allocated_to_one_certain_participant():
     assert simulated_goal_mean == pytest.approx(1.0, abs=0.03)
 
 
+@pytest.mark.parametrize(("season", "goal_points"), [("2023-24", 6), ("2024-25", 10), ("2027-28", 10)])
+def test_fixture_coherent_goalkeeper_goal_scoring_is_season_aware(season, goal_points):
+    config = replace(load_xpoints_config(), draw_count=5_000)
+    row = _base_row("goalkeeper", position="GKP")
+    row.update(
+        {
+            "season": season,
+            "team_expected_goals": 1.0,
+            "expected_goals": 1.0,
+            "expected_points_goals": float(goal_points),
+        }
+    )
+
+    _, draws = simulate_component_points(pd.DataFrame([row]), config=config, seed=123)
+
+    assert np.all((draws[0] - 6) % goal_points == 0)
+    assert ((draws[0] - 6) / goal_points).mean() == pytest.approx(1.0, abs=0.04)
+
+
+@pytest.mark.parametrize("season", [None, "2024/25", "2024-24", "not-a-season"])
+def test_fixture_coherent_simulation_rejects_missing_or_malformed_season(season):
+    config = replace(load_xpoints_config(), draw_count=10)
+    row = _base_row("goalkeeper", position="GKP")
+    if season is None:
+        row.pop("season")
+    else:
+        row["season"] = season
+
+    with pytest.raises(ValueError, match="season|Season"):
+        simulate_component_points(pd.DataFrame([row]), config=config, seed=1)
+
+
 def test_goal_allocation_uses_known_two_player_shares_and_is_row_order_invariant():
     config = replace(load_xpoints_config(), draw_count=10_000)
     first = _base_row("a", position="FWD")
@@ -137,6 +169,7 @@ def test_scoring_boundaries_and_negative_components_are_hand_calculated():
             {"fpl_position": "FWD", "minutes": 90, "red_cards": 1, "own_goals": 1},
         ]
     )
+    frame["season"] = "2025-26"
     assert score_frame(frame).tolist() == [5, 2, 0, 2, -3]
 
 
@@ -149,6 +182,7 @@ def test_defensive_contribution_threshold_boundaries_are_position_specific():
             {"fpl_position": "MID", "minutes": 90, "defensive_contribution": 12},
         ]
     )
+    frame["season"] = "2025-26"
     assert score_frame(frame).tolist() == [2, 4, 2, 4]
 
 

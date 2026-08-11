@@ -2,9 +2,14 @@
   "schema_version": 1,
   "decision_evidence": {
     "rolling_benchmark": {
-      "authoritative_run_id": "phase7_captain_corrected_decisions_rolling_real",
+      "authoritative_run_id": "phase7_goalkeeper_scoring_corrected_decisions_rolling_real",
       "status": "authoritative",
       "supersedes": [
+        {
+          "run_id": "phase7_captain_corrected_decisions_rolling_real",
+          "preservation": "immutable_historical_record",
+          "reason": "Generated with a fixed six-point goalkeeper goal value in the 2024-25 decision inputs."
+        },
         {
           "run_id": "phase7_decisions_rolling_real",
           "preservation": "immutable_historical_record",
@@ -18,9 +23,14 @@
       ]
     },
     "table7_gw1": {
-      "authoritative_run_id": "phase9b13_captain_corrected_decisions_gw1_v2",
+      "authoritative_run_id": "phase9b13_goalkeeper_scoring_corrected_exact_decisions_gw1",
       "status": "authoritative",
       "supersedes": [
+        {
+          "run_id": "phase9b13_captain_corrected_decisions_gw1_v2",
+          "preservation": "immutable_historical_record",
+          "reason": "Generated with a fixed six-point goalkeeper goal value in the 2024-25 and 2025-26 decision inputs."
+        },
         {
           "run_id": "phase9b13_decisions_gw1",
           "preservation": "immutable_historical_record",

@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from fpl_forecast.xpoints.config import XPointsConfig
+from fpl_forecast.xpoints.rules import POSITIONS, goal_points_for_position
 
 
 POINT_COMPONENTS = [
@@ -169,7 +170,16 @@ def _simulate_fixture(
     fixture_id: str,
 ) -> None:
     n_draws = config.draw_count
-    season = str(fixture["season"].iloc[0]) if "season" in fixture else "unknown_season"
+    if "season" not in fixture:
+        raise ValueError("Fixture-coherent simulation requires an explicit season in YYYY-YY format.")
+    fixture_seasons = fixture["season"].dropna().astype(str).unique()
+    if len(fixture_seasons) != 1:
+        raise ValueError("Each simulated fixture must contain exactly one explicit season.")
+    season = str(fixture_seasons[0])
+    goal_values = {
+        position: goal_points_for_position(season=season, position=position)
+        for position in POSITIONS
+    }
     gameweek = str(fixture["gameweek"].iloc[0]) if "gameweek" in fixture else "unknown_gameweek"
     for local, (_, row) in enumerate(fixture.iterrows()):
         target = positions[local]
@@ -282,10 +292,7 @@ def _simulate_fixture(
             for _ in range(int(goal_count)):
                 scorer_local = int(rng.choice(len(team_positions), p=scorer_probs))
                 scorer_target = team_positions[scorer_local]
-                goal_points = {"GKP": 6, "DEF": 6, "MID": 5, "FWD": 4}.get(
-                    str(fixture.loc[scorer_target, "fpl_position"]),
-                    0,
-                )
+                goal_points = goal_values[str(fixture.loc[scorer_target, "fpl_position"])]
                 components["expected_points_goals"][scorer_target, draw_index] += goal_points
                 eligible = active.copy()
                 eligible[scorer_local] = False

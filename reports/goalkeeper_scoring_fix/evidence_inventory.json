@@ -1,0 +1,248 @@
+{
+  "commands": [
+    "UV_CACHE_DIR=work/.cache/uv uv run fpl validate-scoring --seasons 2022-23,2023-24,2024-25,2025-26 --run-id phase6_scoring_goalkeeper_corrected",
+    "PYTHONPATH=<git-archive-5b9e2d2>/src .venv/bin/fpl backtest-xpoints --seasons 2022-23,2023-24,2024-25 --test-seasons 2023-24,2024-25 --mode rolling --normalized-dir data/normalized --run-id phase6_xpoints_rolling_goalkeeper_corrected_exact",
+    "PYTHONPATH=<git-archive-5b9e2d2>/src .venv/bin/fpl backtest-xpoints --seasons 2022-23,2023-24,2024-25 --test-seasons 2023-24,2024-25 --mode gw1 --normalized-dir data/normalized --run-id phase6_xpoints_gw1_goalkeeper_corrected_exact",
+    "PYTHONPATH=<git-archive-6877097>/src .venv/bin/fpl backtest-xpoints --seasons 2022-23,2023-24,2024-25,2025-26 --test-seasons 2023-24,2024-25,2025-26 --mode rolling --normalized-dir data/normalized --run-id phase9b12_xpoints_rolling_goalkeeper_corrected_exact",
+    "PYTHONPATH=<git-archive-8dc8991>/src .venv/bin/fpl backtest-xpoints --seasons 2022-23,2023-24,2024-25,2025-26 --test-seasons 2023-24,2024-25,2025-26 --mode gw1 --normalized-dir data/normalized --run-id phase9b12_xpoints_gw1_goalkeeper_corrected_exact",
+    "UV_CACHE_DIR=work/.cache/uv uv run fpl backtest-xpoints --seasons 2022-23,2023-24,2024-25,2025-26 --test-seasons 2023-24,2024-25,2025-26 --mode gw1 --run-id preseason_sim_hybrid_10000_gw1_three_fold_goalkeeper_corrected",
+    "uv run fpl backtest-decisions --seasons 2023-24,2024-25 --mode rolling --config-path reports/decision_backtests/goalkeeper_scoring_corrected_phase7_rolling_config.json --run-id phase7_goalkeeper_scoring_corrected_decisions_rolling_real",
+    "uv run fpl backtest-decisions --seasons 2023-24,2024-25,2025-26 --mode gw1 --config-path reports/decision_backtests/goalkeeper_scoring_corrected_config.json --run-id phase9b13_goalkeeper_scoring_corrected_exact_decisions_gw1",
+    "uv run python /tmp/build_corrected_public_validation.py",
+    "uv run python /tmp/build_legacy_goalkeeper_counterfactual.py",
+    "uv run python /tmp/run_corrected_convergence.py",
+    "uv run python /tmp/run_corrected_closure.py"
+  ],
+  "created_at": "2026-08-11T02:29:12.715776Z",
+  "determinism": {
+    "phase6_gw1_xpoints": "17 of 17 non-manifest artifacts byte-identical",
+    "phase6_rolling_xpoints": "17 of 17 non-manifest artifacts byte-identical",
+    "phase7_rolling_decisions": "7 of 7 CSV artifacts identical after excluding runtime_seconds",
+    "phase9b12_gw1_xpoints": "17 of 17 non-manifest artifacts byte-identical",
+    "phase9b12_rolling_xpoints": "17 of 17 non-manifest artifacts byte-identical",
+    "phase9b13_gw1_decisions": "7 of 7 CSV artifacts identical after excluding runtime_seconds",
+    "promoted_hybrid_gw1_xpoints": "17 of 17 non-manifest artifacts byte-identical",
+    "simulation_10000_20000_closure": "summaries and retained draw matrices identical on exact reruns"
+  },
+  "evidence_pairs": [
+    {
+      "corrected_successor": {
+        "files": {
+          "frozen_player_fixture_predictions.parquet": "4cf253f77ef3a19995bb3e80d189fbc656558b4ea07be9f977fc3993cfa06aa3",
+          "manifest.json": "bb9e1e663eb6da19b0e17ab0e6ae355d02e752fc33ead9f75122ff5e78a5672f",
+          "scored_player_fixture_predictions.parquet": "9102b235b4d540ef6c2deb444e72f8b1ff8c18381ad0a959e5a0fbaae66b5df3"
+        },
+        "run_dir": "reports/xpoints_backtests/phase6_xpoints_rolling_goalkeeper_corrected_exact"
+      },
+      "exact_source_revision_replayed": "5b9e2d2",
+      "label": "Phase 6 rolling xPoints",
+      "original": {
+        "files": {
+          "frozen_player_fixture_predictions.parquet": "e84863c7d8ad8433ae4a6758ac8ded7ebd8c42a31348682d559fa708f50d8b6b",
+          "manifest.json": "3fd243c113c88cf3c2f1215346588405efc00bb2ec11c3e83bd5d7840a719cfa",
+          "scored_player_fixture_predictions.parquet": "e3f1477e2e5e8caaf5ee0483ca2068535f3d500d5e0d51b651dd79aed257eb7c"
+        },
+        "run_dir": "reports/xpoints_backtests/phase6_xpoints_rolling_real"
+      },
+      "original_preservation": "immutable_historical_record",
+      "supersession_reason": "Post-2023-24 goalkeeper goals were scored at six rather than ten."
+    },
+    {
+      "corrected_successor": {
+        "files": {
+          "frozen_player_fixture_predictions.parquet": "d9ea21ab370e2035b2cf606088cb212434e59f414f82ad6219fe30d38335efa4",
+          "manifest.json": "24a62b1324b021dda7e3e8915148ce2cff54970d2db1e483f8d58c83575eb337",
+          "scored_player_fixture_predictions.parquet": "333afcc32f337c07e24b831a0202e18c83f08b4db71f49aacf9f0d67bbda6c18"
+        },
+        "run_dir": "reports/xpoints_backtests/phase6_xpoints_gw1_goalkeeper_corrected_exact"
+      },
+      "exact_source_revision_replayed": "5b9e2d2",
+      "label": "Phase 6 GW1 xPoints",
+      "original": {
+        "files": {
+          "frozen_player_fixture_predictions.parquet": "6859afea5b904d895186c95e51f0ae804d298173dbbfa8ec398f6ba9142981ff",
+          "manifest.json": "dfe7e3a65dc2dd6c0552251d50466c864141e20335a4118b654400ecb482a2f4",
+          "scored_player_fixture_predictions.parquet": "97077d7f8ad8e4df83c7b735a2a1e5f6f1bef13963a85d66352633abeba0547a"
+        },
+        "run_dir": "reports/xpoints_backtests/phase6_xpoints_gw1_real"
+      },
+      "original_preservation": "immutable_historical_record",
+      "supersession_reason": "Post-2023-24 goalkeeper goals were scored at six rather than ten."
+    },
+    {
+      "corrected_successor": {
+        "files": {
+          "frozen_player_fixture_predictions.parquet": "5275c8faf76b8d9a6a90074adc6f5f4822164faf941a69ce54d18824493c966c",
+          "manifest.json": "89c24516ccbdc1048a446fa80e0d5f023ff081fc76fc366fe9dc638d14ba435a",
+          "scored_player_fixture_predictions.parquet": "1bee84eabe10e96d51585c8175040686dc7f6dda2d19507950467985b6d9a919"
+        },
+        "run_dir": "reports/xpoints_backtests/phase9b12_xpoints_rolling_goalkeeper_corrected_exact"
+      },
+      "exact_source_revision_replayed": "6877097",
+      "label": "Phase 9B1.2 rolling xPoints",
+      "original": {
+        "files": {
+          "frozen_player_fixture_predictions.parquet": "ef38a130cfa390c35ea0d7bc1ce0db5e42b6a606e6f3efa6ebfbed022a6da288",
+          "manifest.json": "bf9464c17f5029a924d937eb91887edd65aa2f6bf0d99dd51b4394774ca5c12c",
+          "scored_player_fixture_predictions.parquet": "21d70e339606773a748ff5d847da6af76fed0e544707d19cc441b3cd8cb3f57c"
+        },
+        "run_dir": "reports/xpoints_backtests/phase9b12_xpoints_rolling"
+      },
+      "original_preservation": "immutable_historical_record",
+      "supersession_reason": "Post-2023-24 goalkeeper goals were scored at six rather than ten."
+    },
+    {
+      "corrected_successor": {
+        "files": {
+          "frozen_player_fixture_predictions.parquet": "a16b474d78a4087f28aaa813baac8f30678fd99f98dd9bca15e1eac646e1fd0f",
+          "manifest.json": "b61d54a6445362ff13ae0cb0d4c001a3bcd018e6b423a7bd8ad39db7458df76e",
+          "scored_player_fixture_predictions.parquet": "b1396f2f6cb0498f429fd897cb08c2d221d5b2f7016a1fc920051a7aa38a4588"
+        },
+        "run_dir": "reports/xpoints_backtests/phase9b12_xpoints_gw1_goalkeeper_corrected_exact"
+      },
+      "exact_source_revision_replayed": "8dc8991",
+      "label": "Phase 9B1.2 GW1 xPoints",
+      "original": {
+        "files": {
+          "frozen_player_fixture_predictions.parquet": "8fba7b6911753bb876bad06db029c39668b1e597430ef2055a8c7698437d7f12",
+          "manifest.json": "933b5144c28928668967943532402dd22c4f3d534042785e627e56b68e98b235",
+          "scored_player_fixture_predictions.parquet": "867c12727089ed849e70aac06d494ea5787336f7ae34d9df3465bad27a5befec"
+        },
+        "run_dir": "reports/xpoints_backtests/phase9b12_xpoints_gw1"
+      },
+      "original_preservation": "immutable_historical_record",
+      "supersession_reason": "Post-2023-24 goalkeeper goals were scored at six rather than ten."
+    },
+    {
+      "corrected_successor": {
+        "files": {
+          "frozen_player_fixture_predictions.parquet": "8aec9e5f50d5235bd4c24bf7b376f1b372525d5035ee132e162767fb452c56ba",
+          "manifest.json": "f5bb8cb01b13a9b1bcfd986f0c6f4f24fc3b7425c7ad2855c7730345e1c27680",
+          "scored_player_fixture_predictions.parquet": "bad566ee7e9b3e4fae58a6ec9790049ba33321b8b3d2015e094021274226512d"
+        },
+        "run_dir": "reports/xpoints_backtests/preseason_sim_hybrid_10000_gw1_three_fold_goalkeeper_corrected"
+      },
+      "exact_source_revision_replayed": "current uncommitted correction on 3ea29d9",
+      "label": "Promoted hybrid GW1 xPoints",
+      "original": {
+        "files": {
+          "frozen_player_fixture_predictions.parquet": "14e1286c9d8a0129c233f675bb0f13cf96bc78805786c979caab5e1ad8ccfbc5",
+          "manifest.json": "d908a59761b170f18582bb40c76a31b541aaf3c9c8adfa62ec861201b016f8f1",
+          "scored_player_fixture_predictions.parquet": "b5819c0b9740d632d5e3b21f80e68427e30e5c2abfeb85571012ea6c26343f17"
+        },
+        "run_dir": "reports/xpoints_backtests/preseason_sim_hybrid_10000_gw1_three_fold_closure"
+      },
+      "original_preservation": "immutable_historical_record",
+      "supersession_reason": "Post-2023-24 goalkeeper goals were scored at six rather than ten."
+    },
+    {
+      "corrected_successor": {
+        "files": {
+          "frozen_decisions.csv": "2c65d9af7d80958cbf2f5a3bda124c51a55d7182fc32abdc820c32995582090c",
+          "manifest.json": "417b9ec2b8ae74425d94819a86c6fa4223ef77b2eecc92c5c149e66e091dffd2",
+          "scored_decisions.csv": "fa620168c6cfa50e7f8da8c1a1d2b525bb96c35b989f8509e4e2d32ba8a4b665"
+        },
+        "run_dir": "reports/decision_backtests/phase7_goalkeeper_scoring_corrected_decisions_rolling_real"
+      },
+      "exact_source_revision_replayed": "current uncommitted correction on 3ea29d9",
+      "label": "Rolling D1 decisions",
+      "original": {
+        "files": {
+          "frozen_decisions.csv": "2b57f10a81d222450210ed4fce9e5466fdba74cee9e6b39be0d4a93c4b82e5ac",
+          "manifest.json": "8e4e776e2a1fdedc6347a4b70e12fc1d935d8c219fa91ba910976caa51824891",
+          "scored_decisions.csv": "08e50cb0d0e6166c9959bec8e52440ea7bfd49e9d4ba20fe7ae4a79060bc3821"
+        },
+        "run_dir": "reports/decision_backtests/phase7_captain_corrected_decisions_rolling_real"
+      },
+      "original_preservation": "immutable_historical_record",
+      "supersession_reason": "Post-2023-24 goalkeeper goals were scored at six rather than ten."
+    },
+    {
+      "corrected_successor": {
+        "files": {
+          "frozen_decisions.csv": "4d519cf242aaec964b276c75b419fd5e17bfddee7cad3b3e0182a556edae03b3",
+          "manifest.json": "23f7a15cc1fdb140152b65a5b6018c2d0572d6096a23d0747a80775053260ba0",
+          "scored_decisions.csv": "98309ab8dea610079cb937bc215aaf200ea238e6c97343be86e3273a1239fd3a"
+        },
+        "run_dir": "reports/decision_backtests/phase9b13_goalkeeper_scoring_corrected_exact_decisions_gw1"
+      },
+      "exact_source_revision_replayed": "current uncommitted correction on 3ea29d9",
+      "label": "Table 7 GW1 D1 and D2 decisions",
+      "original": {
+        "files": {
+          "frozen_decisions.csv": "b9d65b75d84045f2412ca106cd84271dd537b2866ec99d3c258dc64391fe4784",
+          "manifest.json": "1af025c79bca2653aa68ac0daa02d9d1f506ecd2ed127f07ecdf478f4fbe93c7",
+          "scored_decisions.csv": "39b2b4dfc238d0c7f9defd674bd530eb2d30f53876f3965e907960bf5fd5d7e2"
+        },
+        "run_dir": "reports/decision_backtests/phase9b13_captain_corrected_decisions_gw1_v2"
+      },
+      "original_preservation": "immutable_historical_record",
+      "supersession_reason": "Post-2023-24 goalkeeper goals were scored at six rather than ten."
+    }
+  ],
+  "public_validation": {
+    "corrected_successor": {
+      "files": {
+        "optimized_lineup.csv": "1d66d29092b7213459787e7639dce216d190ba84626ed35749ef3ab33d040509",
+        "optimized_squad.csv": "5011f9fd40ca0cb5b9f02743f269dd0cf71da12e3811ed3bc580303385588f59",
+        "player_gameweek_projections.csv": "0d517ff8a6cba9bac4cf95dd614e4b7bc75310ea740df8d0b27a3b084b185a99",
+        "validation_manifest.json": "e3b047f7d8287437fe4c06453196087804b77a80309a50e618e8ccc9d75d1b46"
+      },
+      "run_dir": "outputs/operational/validation_runs/preseason_sim_hybrid_10000_goalkeeper_corrected_validation_abf172c"
+    },
+    "draw_count": 10000,
+    "legacy_six_same-code_control": {
+      "files": {
+        "optimized_lineup.csv": "09e2e59451ae4b7eb71bb468cb0c4f937189f56445fc59dfc9149497d55e4c7e",
+        "optimized_squad.csv": "f66c510c49cba4e164f9267c618a8b7137aed8cbe918025e158044d4682fb56f",
+        "player_gameweek_projections.csv": "525df6550f43724f264798ff6eddd903ea21173c68fccdac9425694f9227d7b3",
+        "validation_manifest.json": "2de52248b7affd3efd59e054539c4113b5766c2c000aa6ff93d3e068e485edc5"
+      },
+      "run_dir": "outputs/operational/validation_runs/preseason_sim_hybrid_10000_goalkeeper_legacy6_counterfactual_abf172c"
+    },
+    "master_seed": 6060,
+    "official_snapshot_sha256": {
+      "bootstrap_static": "bc334cda5906726eacd60746ea25d5b953b39aa77a5eb3b4a2d5538bbac9e1da",
+      "fixtures": "9e7484118381f8202830906ba993c176475d8ca1796571f5dd78cbfc2d73bd3e"
+    },
+    "original": {
+      "files": {
+        "optimized_lineup.csv": "5485cf320d91f06cd34bfecea6b97d332321cb1a872ebe9a773dd96bafbaf29e",
+        "optimized_squad.csv": "78cfd3c13c44a4a5c1d21c70740af1d963022cdbaff0a218888b3edc5226140c",
+        "player_gameweek_projections.csv": "805f5489360f73616064760c5becc76c49cd82e72b5a28125c3a26822f4e1951",
+        "run_manifest.json": "0d2f8cb80368f999633f6ebd08b43fab2e820a22d219143e1c5ca7fbc695f9ba"
+      },
+      "run_dir": "outputs/operational/runs/preseason_sim_hybrid_10000_final_v2_abf172c"
+    }
+  },
+  "publication_performed": false,
+  "realized_goalkeeper_goal_rows_by_season": {
+    "2022-23": 0,
+    "2023-24": 0,
+    "2024-25": 0,
+    "2025-26": 0
+  },
+  "realized_scoring_audit": {
+    "corrected_successor": {
+      "files": {
+        "by_season_position.csv": "534a7db8c7dff97959b35e70d20fe451a06fae15036120f8566f43cabad60a5f",
+        "component_nulls.csv": "6126114a09c65fb5ea1d7a3cd0751b8e3a9421073ae52d664bc0b0a51c77447f",
+        "difference_counts.csv": "68441b6b4f7bb97e3eb0aabfafac78d1f8b9137357c6a9434bacbc880c472218",
+        "mismatches.csv": "473b2f9a0fe7488682a722abb60fc1c60c826f172281427385ae2f2085bf5b71"
+      },
+      "run_dir": "reports/xpoints_backtests/phase6_scoring_goalkeeper_corrected"
+    },
+    "original": {
+      "files": {
+        "by_season_position.csv": "717e7b15295e3dbc156a075f0f34a934965c2f5f69de09d061b7898f86128332",
+        "component_nulls.csv": "dbabefb1d6b6790e11b6e57c0cd05cc7c12c45556f0d42fb0c94fcef8de2f792",
+        "difference_counts.csv": "e8c661f6d8030b148ceb26df10f6352617be8eb509af2a7963acd50a7837c2ec",
+        "mismatches.csv": "be60be2612f30f9c3891e6b64ceff1cc57f6353ce21ea3328830a5f316b3c716"
+      },
+      "run_dir": "reports/xpoints_backtests/phase6_scoring_real"
+    },
+    "result": "113260 of 113260 rows reconstructed exactly in both runs because no goalkeeper scored."
+  },
+  "reason": "Season-aware goalkeeper goal scoring correction: six through 2023-24, ten from 2024-25.",
+  "schema_version": 1
+}

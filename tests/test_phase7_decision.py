@@ -73,8 +73,8 @@ def test_decision_evidence_registry_separates_authoritative_and_historical_runs(
     }
 
     assert authoritative == {
-        "phase7_captain_corrected_decisions_rolling_real",
-        "phase9b13_captain_corrected_decisions_gw1_v2",
+        "phase7_goalkeeper_scoring_corrected_decisions_rolling_real",
+        "phase9b13_goalkeeper_scoring_corrected_exact_decisions_gw1",
     }
     assert not authoritative.intersection(supersession["superseded_run_id"])
     assert set(supersession["superseded_status"]) == {"immutable_historical_record"}
@@ -105,8 +105,8 @@ def test_decision_replay_refuses_to_overwrite_historical_evidence(tmp_path: Path
 
 def test_table7_is_derived_from_corrected_paired_decisions() -> None:
     source_run_id = authoritative_decision_run("table7_gw1")
-    d1_expected = 48.78583044235585
-    d2_expected = 49.51061652957066
+    d1_expected = 48.75828391099525
+    d2_expected = 49.487285703810194
     metrics = pd.DataFrame(
         [
             {
@@ -131,9 +131,9 @@ def test_table7_is_derived_from_corrected_paired_decisions() -> None:
         [
             {"season": season, "gameweek": 1, "optimizer_variant": variant, "realized_points": points}
             for season, d1_points, d2_points in (
-                ("2023-24", 55, 57),
-                ("2024-25", 60, 60),
-                ("2025-26", 63, 65),
+                ("2023-24", 48, 50),
+                ("2024-25", 70, 70),
+                ("2025-26", 57, 59),
             )
             for variant, points in ((D1_VARIANT, d1_points), (D2_VARIANT, d2_points))
         ]

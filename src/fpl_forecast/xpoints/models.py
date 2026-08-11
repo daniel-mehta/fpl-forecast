@@ -7,6 +7,7 @@ import pandas as pd
 
 from fpl_forecast.xpoints.components import attacking_shares, fit_component_priors, player_component_rates
 from fpl_forecast.xpoints.config import XPointsConfig
+from fpl_forecast.xpoints.rules import goal_point_values
 from fpl_forecast.xpoints.simulation import simulate_component_points
 
 
@@ -157,8 +158,7 @@ def _component_base(
     base["expected_bonus"] = (base["bonus_per90"] * exposure).clip(0, 3)
     base["predicted_bps"] = base["bps_per90"] * exposure
     base["expected_points_appearance"] = base["p_appearance"].fillna(0) + base["p_reached_60"].fillna(0)
-    goal_pts = base["fpl_position"].map({"GKP": 6, "DEF": 6, "MID": 5, "FWD": 4}).fillna(0)
-    base["expected_points_goals"] = base["expected_goals"] * goal_pts
+    base["expected_points_goals"] = _expected_goal_points(base)
     base["expected_points_assists"] = base["expected_assists"] * 3
     cs_pts = np.select([base["fpl_position"].isin(["GKP", "DEF"]), base["fpl_position"].eq("MID")], [4, 1], 0)
     base["expected_points_clean_sheets"] = base["clean_sheet_probability"] * cs_pts
@@ -186,6 +186,10 @@ def _component_base(
     )
     base["expected_points_bonus"] = base["expected_bonus"]
     return base
+
+
+def _expected_goal_points(frame: pd.DataFrame) -> pd.Series:
+    return frame["expected_goals"] * goal_point_values(frame["season"], frame["fpl_position"])
 
 
 def _finalize_model(

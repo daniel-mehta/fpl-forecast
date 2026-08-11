@@ -11,6 +11,7 @@ from fpl_forecast.config import PROJECT_ROOT, RAW_FPL_API_DIR
 from fpl_forecast.ingest.fpl_api import BOOTSTRAP_STATIC, EVENT_LIVE, FIXTURES
 from fpl_forecast.ingest.snapshots import latest_snapshot_path, read_json_snapshot, read_metadata
 from fpl_forecast.operations.live_results import audit_event_live_scoring, normalize_event_live
+from fpl_forecast.xpoints.rules import goal_point_values
 
 
 EVENT_LIVE_REPORTS_DIR = PROJECT_ROOT / "reports" / "operational" / "event_live"
@@ -125,9 +126,9 @@ def _legacy_score_from_values(frame: pd.DataFrame) -> pd.Series:
     pos = frame["fpl_position"].astype(str)
     minutes = pd.to_numeric(frame["minutes"], errors="coerce").fillna(0)
     points = (minutes > 0).astype(int) + (minutes >= 60).astype(int)
-    points += pd.to_numeric(frame["goals_scored"], errors="coerce").fillna(0) * pos.map(
-        {"GKP": 6, "DEF": 6, "MID": 5, "FWD": 4}
-    ).fillna(0).astype(int)
+    points += pd.to_numeric(frame["goals_scored"], errors="coerce").fillna(0) * goal_point_values(
+        frame["season"], pos
+    )
     points += pd.to_numeric(frame["assists"], errors="coerce").fillna(0) * 3
     clean = pd.to_numeric(frame["clean_sheets"], errors="coerce").fillna(0)
     points += pd.Series(
