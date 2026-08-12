@@ -56,3 +56,4 @@ frontend/public/data/*
 scripts/build_paper_evidence.py
 /paper
 /phase reports
+reports/goalkeeper_scoring_fix/v4_to_v5_manuscript_change_ledger.md

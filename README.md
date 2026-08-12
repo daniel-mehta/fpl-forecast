@@ -146,6 +146,12 @@ scorelines; random streams depended on row order; 80 draws were unstable; and so
 scoring used mean/divisor approximations. These were audit corrections, not evidence that the
 hybrid simulator is universally more accurate.
 
+Goal scoring is season-aware: goalkeeper goals receive six points through `2023-24` and ten points
+from `2024-25` onward; defender, midfielder, and forward goal values are unchanged. Historical
+realised reconstruction still matches all 113,260 evaluated rows exactly because those data contain
+no realised goalkeeper goals. Expected points and simulated distributions nevertheless change when
+goalkeepers have non-zero scoring probability.
+
 ## Backtesting And Selected Results
 
 Detailed evidence is in the phase reports. These validation seasons are not an untouched final
@@ -158,12 +164,12 @@ untouched final holdout.
 | Team goals | `2023-24`, `2024-25`; rolling; fixture goal sides | T2 improved goal MAE to `0.9489` versus T1 `0.9847` and T0 `1.0269`; block-bootstrap T2 minus T0 goal-MAE difference `-0.0754`, 95% CI `[-0.0967, -0.0538]`. |
 | Team probabilities | `2023-24`, `2024-25`; rolling; fixture/team-fixture | T2 clean-sheet Brier `0.1643` versus T1 `0.1675` and T0 `0.1727`; match-outcome log loss `0.9679` versus T1 `1.0118` and T0 `1.0696`. |
 | Dixon-Coles challenger | `2023-24`, `2024-25`; rolling; fixture | T3 changed scores only marginally: outcome log loss `0.9677` versus T2 `0.9679`, but joint scoreline NLL worsened to `3.0332` versus T2 `3.0324`; T2 remains default. |
-| xPoints | `2023-24`, `2024-25`; rolling; all observed player rows | Default X2-M3 MAE `0.9060`, RMSE `1.9543`, Spearman `0.7044`; Phase 3 B5 reference MAE `0.9824`, RMSE `2.0295`, Spearman `0.6501`. |
+| xPoints | `2023-24`, `2024-25`; rolling; all observed player rows | Season-aware default X2-M3 MAE `0.9065`, RMSE `1.9546`, Spearman `0.7044`; Phase 3 B5 reference MAE `0.9824`, RMSE `2.0295`, Spearman `0.6501`. |
 | xPoints distribution | `2023-24`, `2024-25`; rolling; player rows | X2-M3 conserved expected team goals with max absolute error `4.44e-16`; X2-M5 had better 5+ point Brier and zero-rate calibration but was not selected as the default MAE frontier. |
-| Decision optimization | `2023-24`, `2024-25`; corrected rolling weekly-reset benchmark | 380 D1 MILP decisions solved with status `optimal` and reported gap exactly `0` in every case; mean runtime was `0.1794s`, and all squads passed the complete legality audit. X2-M3 had the highest realized rolling weekly-reset score in this pass. |
+| Decision optimization | `2023-24`, `2024-25`; corrected rolling weekly-reset benchmark | 380 D1 MILP decisions solved with status `optimal` and reported gap exactly `0` in every case; season-aware X2-M3 mean runtime was `0.1690s`, and all squads passed the complete legality audit. X2-M3 had the highest realized rolling weekly-reset score in this pass. |
 | Operations | Official-data 2026-27 GW1 publication | The clean-runner chain published the frozen GW1 forecast successfully. This is operational evidence only; no 2026-27 accuracy result exists. |
 | Phase 9B1.2 GW1 hardening | `2023-24`-`2025-26`; GW1 folds; 1,964 rows | M7 was selected for coherent operational probabilities, not as a universal rolling winner. Its legacy 80-draw evidence is compared with the promoted hybrid below. |
-| Phase 9B1.3 optimizer hardening | `2023-24`-`2025-26`; three GW1 weekly-reset decisions | After correcting D1 captaincy, D2's realized advantage over D1 averaged `+1.33` points (fold differences `+2`, `0`, `+2`). Mean expected-realised points were `48.7858` for D1 and `49.5106` for D2. This descriptive result is not proof of season-level superiority. |
+| Phase 9B1.3 optimizer hardening | `2023-24`-`2025-26`; three GW1 weekly-reset decisions | After the captaincy and season-aware goalkeeper-scoring corrections, D2's realized advantage over D1 remained `+1.33` points (fold differences `+2`, `0`, `+2`). Mean expected-realised points were `48.7583` for D1 and `49.4873` for D2. This descriptive result is not proof of season-level superiority. |
 
 `expected_points` is an unconditional mean. D1 therefore maximizes the sum of unconditional means
 for the starting XI plus the same unconditional mean once more for the captain; it does not multiply
@@ -173,8 +179,8 @@ explicit appearance-state probabilities. Its historical results nevertheless cha
 D2 search begins from the corrected D1 solution.
 
 The corrected authoritative decision runs are
-`phase7_captain_corrected_decisions_rolling_real` and
-`phase9b13_captain_corrected_decisions_gw1_v2`. The structured registry at
+`phase7_goalkeeper_scoring_corrected_decisions_rolling_real` and
+`phase9b13_goalkeeper_scoring_corrected_exact_decisions_gw1`. The structured registry at
 `src/fpl_forecast/decision/evidence_registry.json` records which pre-fix and earlier corrected runs
 they supersede. Those earlier artifacts, including the decision evidence published with `v0.1.0`,
 remain immutable historical records and must not be used as current publication evidence.
@@ -187,7 +193,7 @@ the promoted hybrid:
 | Metric | Old 80-draw M7 | Hybrid |
 | --- | ---: | ---: |
 | MAE | 1.3032 | 1.3726 |
-| RMSE | 2.1463 | 2.1296 |
+| RMSE | 2.1464 | 2.1296 |
 | Spearman | 0.4895 | 0.4937 |
 | P(5+) Brier | 0.08051 | 0.07755 |
 | Central 80% coverage | 0.8819 | 0.9078 |
@@ -200,7 +206,7 @@ not universal predictive superiority.
 
 Ten thousand production draws were retained after a deterministic comparison with 20,000 draws:
 the P95 absolute simulated-mean difference was `0.03069` points, the P95 absolute P(5+) difference
-was `0.00525`, rank correlation was `0.999863`, top-15 overlap was `15/15`, and exact reruns were
+was `0.00525`, rank correlation was `0.999862`, top-15 overlap was `15/15`, and exact reruns were
 identical.
 
 Mean xPoints and component expectations are calculated analytically and therefore do not depend on
@@ -209,10 +215,12 @@ intervals, zero-point probabilities, and tail probabilities such as P(5+).
 
 ### Prospective 2026-27 GW1 Example
 
-**Prospective preseason example, not an accuracy result.** The promoted local forecast contains 554
-eligible player projections across 10 fixtures. D2 returns Saka as captain and B.Fernandes as
-vice-captain, with expected-realized objective `55.1146`, squad cost `£100.0m`, bank `£0.0m`, and
-optimizer status `heuristic_feasible`.
+**Prospective preseason example, not an accuracy result.** The non-published season-aware validation
+successor contains 554 eligible player projections across 10 fixtures. D2 retains the `3-5-2`
+formation, Saka as captain, and B.Fernandes as vice-captain, with expected-realized objective
+`55.5161`, squad cost `£100.0m`, bank `£0.0m`, and optimizer status `heuristic_feasible`. It replaces
+two bench squad members and changes the bench order while retaining the starting XI; no corrected
+forecast has been published.
 
 ## Frontend And Dashboard
 

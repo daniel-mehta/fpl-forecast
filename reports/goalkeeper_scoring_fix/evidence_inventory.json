@@ -216,6 +216,99 @@
     }
   },
   "publication_performed": false,
+  "publication_refresh": {
+    "authoritative_successor_runs_used": [
+      "phase6_xpoints_rolling_goalkeeper_corrected_exact",
+      "phase7_goalkeeper_scoring_corrected_decisions_rolling_real",
+      "phase9b12_xpoints_rolling_goalkeeper_corrected_exact",
+      "phase9b12_xpoints_gw1_goalkeeper_corrected_exact",
+      "preseason_sim_hybrid_10000_gw1_three_fold_goalkeeper_corrected",
+      "phase9b13_goalkeeper_scoring_corrected_exact_decisions_gw1",
+      "preseason_simulation_convergence_goalkeeper_corrected",
+      "preseason_simulation_closure_goalkeeper_corrected",
+      "preseason_sim_hybrid_10000_goalkeeper_corrected_validation_abf172c"
+    ],
+    "completed_at": "2026-08-12T02:41:28Z",
+    "generator_command": "UV_CACHE_DIR=work/.cache/uv NODE_PATH=/Users/daniel/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules uv run python scripts/build_paper_evidence.py --goalkeeper-scoring-refresh",
+    "generator_output_sha256": "df9a46316057f007208da5950c86780de20833ec3ca97adb332dd35b6401b83d",
+    "generator_repeated_identically": true,
+    "generator_sha256": "d3a6a941089c44c5d29bc16c7f06836e4f84d941d5a31e3e019576c28e22e0b8",
+    "historical_assets_preserved_at": "/tmp/fpl-paper-pre-gk.yHi5Wi",
+    "manuscript_source": {
+      "edited": false,
+      "path": "/Users/daniel/Downloads/Forecasts to Decisions v4.pdf",
+      "sha256": "ae47b9a8dd1f55a56eac262cd4c379d2bc677c56f487eaada5860fadae393783"
+    },
+    "notes": [
+      "Tables 4-8, Figures 4-8, figure notes, evidence manifest and supersession map were regenerated from corrected authoritative artifacts.",
+      "Figures 1 and 2 were not visually regenerated; their manifest provenance was updated to corrected evidence.",
+      "Table 7 and Figure 7 were byte-identical after regeneration.",
+      "The corrected closure artifact does not record 10,000-draw or 20,000-draw runtime and process RSS, so those cells remain explicitly blank instead of inheriting superseded measurements.",
+      "The corrected prospective validation changes two bench squad members and the bench order while retaining the starting XI, formation, captain and vice-captain.",
+      "The original published prospective run remains immutable and the corrected successor remains a non-published validation run."
+    ],
+    "outputs": {
+      "README.md": {
+        "before_sha256": "9832d0dc90bf89290f405d258caad307b17b7ab96caca83a0033d51495b73fae",
+        "after_sha256": "6591163a2fce30de132a0ab9299d9d1edd0d51b232682e018c7ad9f828b6e476"
+      },
+      "reports/goalkeeper_scoring_fix/v4_to_v5_manuscript_change_ledger.md": {
+        "before_sha256": null,
+        "after_sha256": "421e5b8ad721bbf7da3be7fe7ca10bc9d32f5d76ba3009e24f6a6fc8b82dc361"
+      },
+      "paper/FIGURE_NOTES.md": {
+        "before_sha256": "df607429f0ea70df5c7c425c67b33d75f6fce171bb45c0e371b9a15a9ca3bbe",
+        "after_sha256": "61abe7f88a814b9c5bdaf21759c90cb522fda2c15dd25f098b506aed547f7288"
+      },
+      "paper/evidence_manifest.csv": {
+        "before_sha256": "37d490ec50c75876959252e534349f22aca8fb31af4ce4043678ff440f56325a",
+        "after_sha256": "59c8929f7dc0e6a81e83b828aadfbb73c12960efd9f51857d7d3ec7e43df0296"
+      },
+      "paper/evidence_supersession.csv": {
+        "before_sha256": "28f0244c1680941f0c4e34bf96924d22e89f34fa3ab09c53d110b2e12283f6f4",
+        "after_sha256": "6445169ea3b124f195563e08713fa186038fabbcc2e65cc607c50c57ea731fd0"
+      },
+      "paper/tables/table4_xpoints_comparison.csv": {
+        "before_sha256": "02c3f6f36df524ae7a811c497e4ab4e3fd96814a76fdbb258f05fa48aa4608d1",
+        "after_sha256": "11abedfb90482b3757a449021cbc4a50dea2e867df6e91c6a516a259d53bbe82"
+      },
+      "paper/tables/table5_hybrid_simulation_convergence.csv": {
+        "before_sha256": "3282e613b83e19c43c8b1cac073f900cd528ae779e1ef251513ab833075ff88d",
+        "after_sha256": "96e3f2c2829fae73b57004d5e0971f98eacc8e3ae9efc4db997529ed7cdbb9c7"
+      },
+      "paper/tables/table6_old_vs_hybrid_gw1_folds.csv": {
+        "before_sha256": "b393e6e25597ce10507d74ed24fde093279dbb113f5d5e6196371b6d799d77c7",
+        "after_sha256": "e32e7d14ff36ead050c2cd544b35b7386aba410220c9568ab743846a9a7fd3d3"
+      },
+      "paper/tables/table7_decision_system_evidence.csv": {
+        "before_sha256": "60b9c9fde3a0d278ea81434c785c716c972a5861a3cb7c2bfd5a922b61a673aa",
+        "after_sha256": "60b9c9fde3a0d278ea81434c785c716c972a5861a3cb7c2bfd5a922b61a673aa"
+      },
+      "paper/tables/table8_prospective_gw1_snapshot.csv": {
+        "before_sha256": "3f6abdfb863095e92df0f35b05b921200b664c7b4c3c2f20621c62f3b930f4b4",
+        "after_sha256": "e8173df88595e69d24dcccf77c32d60dadf97353d72a0cea97e20fbd87b4ca0c"
+      }
+    },
+    "figure_sha256": {
+      "figure4_png": "b0c0a236034f4c14011121770dc944c4746f97ca71ee8a03fd4834814f003ec7",
+      "figure4_svg": "10ab4c7c0b57f033df9328ec25e6d1317524b3d95e4bb6397b8af0dc2ca0b42f",
+      "figure5_png": "8a65f53a81f9de2231620f8234ea07381804258f25411c753afe362386d2e596",
+      "figure5_svg": "7f8765c2e8da9da84401cc9895debe2bd8ad4bc6ea940ad675b960a01736d800",
+      "figure6_png": "96c1b29adaf758f23bb5b3d2bdb724b5959e56b1158e65351caedaec7713a5f7",
+      "figure6_svg": "ff011c7aaefb36f2ec1c62dfb293efc9b47109016d05c586c7f3898e71812bda",
+      "figure7_png": "3b77a66a914af3b402c5f99d2579478042e8572f8c3cc5a9e8c1af25e5a2a438",
+      "figure7_svg": "e28e9e8cd47e76ffc893eaf7d5e8f07a8a55f752a957e74bd4a323e69d323b49",
+      "figure8_png": "ba48290071c7c9463bdef025692f3a96fec587a55b350f3f864e032fddc3d15a",
+      "figure8_svg": "5b0627c4df843777059c6031d20ec78b38a3e3339c7f915799bf35afca2c7f51"
+    },
+    "repository_policy": "paper/ and scripts/build_paper_evidence.py are intentionally ignored; generated assets are local review artifacts and were not staged or published.",
+    "source_randomness": {
+      "decision_expected_realized_seed": 9113,
+      "legacy_draw_count": 80,
+      "simulation_draw_count": 10000,
+      "simulation_master_seed": 6060
+    }
+  },
   "realized_goalkeeper_goal_rows_by_season": {
     "2022-23": 0,
     "2023-24": 0,
