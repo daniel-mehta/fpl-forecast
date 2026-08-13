@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-label="Six small multiples show old and hybrid pooled GW1 metrics, including worsened MAE.">
+<rect width="100%" height="100%" fill="#FFFFFF"/>
+<text x="55.00" y="45.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="28" font-weight="700" fill="#202124">Figure 6. Pooled historical GW1 simulator trade-offs</text>
+<text x="55.00" y="72.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" fill="#6B7280">Hybrid 10,000 draws relative to old 80 draws; arrows show the desired direction.</text>
+<rect x="70.00" y="130.00" width="340.00" height="215.00" rx="8.00" fill="#F8FAFC" stroke="#E5E7EB" stroke-width="1" opacity="1"/>
+<text x="88.00" y="160.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">MAE ↓</text>
+<text x="88.00" y="213.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="400" fill="#202124">Old 80</text>
+<rect x="175.00" y="195.00" width="150.33" height="26.00" rx="3.00" fill="#6B7280" stroke="none" stroke-width="1" opacity="1"/>
+<text x="375.00" y="214.00" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">1.3032</text>
+<text x="88.00" y="278.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="400" fill="#202124">Hybrid 10k</text>
+<rect x="175.00" y="260.00" width="158.33" height="26.00" rx="3.00" fill="#009E73" stroke="none" stroke-width="1" opacity="1"/>
+<text x="375.00" y="279.00" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">1.3726</text>
+<text x="88.00" y="325.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="700" fill="#D55E00">worsened</text>
+<rect x="450.00" y="130.00" width="340.00" height="215.00" rx="8.00" fill="#F8FAFC" stroke="#E5E7EB" stroke-width="1" opacity="1"/>
+<text x="468.00" y="160.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">RMSE ↓</text>
+<text x="468.00" y="213.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="400" fill="#202124">Old 80</text>
+<rect x="555.00" y="195.00" width="158.33" height="26.00" rx="3.00" fill="#6B7280" stroke="none" stroke-width="1" opacity="1"/>
+<text x="755.00" y="214.00" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">2.1464</text>
+<text x="468.00" y="278.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="400" fill="#202124">Hybrid 10k</text>
+<rect x="555.00" y="260.00" width="157.10" height="26.00" rx="3.00" fill="#009E73" stroke="none" stroke-width="1" opacity="1"/>
+<text x="755.00" y="279.00" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">2.1296</text>
+<text x="468.00" y="325.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="700" fill="#009E73">improved</text>
+<rect x="830.00" y="130.00" width="340.00" height="215.00" rx="8.00" fill="#F8FAFC" stroke="#E5E7EB" stroke-width="1" opacity="1"/>
+<text x="848.00" y="160.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">|Bias| ↓</text>
+<text x="848.00" y="213.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="400" fill="#202124">Old 80</text>
+<rect x="935.00" y="195.00" width="158.33" height="26.00" rx="3.00" fill="#6B7280" stroke="none" stroke-width="1" opacity="1"/>
+<text x="1135.00" y="214.00" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.0996</text>
+<text x="848.00" y="278.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="400" fill="#202124">Hybrid 10k</text>
+<rect x="935.00" y="260.00" width="133.91" height="26.00" rx="3.00" fill="#009E73" stroke="none" stroke-width="1" opacity="1"/>
+<text x="1135.00" y="279.00" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.0842</text>
+<text x="848.00" y="325.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="700" fill="#009E73">improved</text>
+<rect x="70.00" y="405.00" width="340.00" height="215.00" rx="8.00" fill="#F8FAFC" stroke="#E5E7EB" stroke-width="1" opacity="1"/>
+<text x="88.00" y="435.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">Spearman ↑</text>
+<text x="88.00" y="488.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="400" fill="#202124">Old 80</text>
+<rect x="175.00" y="470.00" width="156.99" height="26.00" rx="3.00" fill="#6B7280" stroke="none" stroke-width="1" opacity="1"/>
+<text x="375.00" y="489.00" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.4895</text>
+<text x="88.00" y="553.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="400" fill="#202124">Hybrid 10k</text>
+<rect x="175.00" y="535.00" width="158.33" height="26.00" rx="3.00" fill="#009E73" stroke="none" stroke-width="1" opacity="1"/>
+<text x="375.00" y="554.00" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.4937</text>
+<text x="88.00" y="600.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="700" fill="#009E73">improved</text>
+<rect x="450.00" y="405.00" width="340.00" height="215.00" rx="8.00" fill="#F8FAFC" stroke="#E5E7EB" stroke-width="1" opacity="1"/>
+<text x="468.00" y="435.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">P(5+) Brier ↓</text>
+<text x="468.00" y="488.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="400" fill="#202124">Old 80</text>
+<rect x="555.00" y="470.00" width="158.33" height="26.00" rx="3.00" fill="#6B7280" stroke="none" stroke-width="1" opacity="1"/>
+<text x="755.00" y="489.00" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.0805</text>
+<text x="468.00" y="553.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="400" fill="#202124">Hybrid 10k</text>
+<rect x="555.00" y="535.00" width="152.52" height="26.00" rx="3.00" fill="#009E73" stroke="none" stroke-width="1" opacity="1"/>
+<text x="755.00" y="554.00" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.0776</text>
+<text x="468.00" y="600.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="700" fill="#009E73">improved</text>
+<rect x="830.00" y="405.00" width="340.00" height="215.00" rx="8.00" fill="#F8FAFC" stroke="#E5E7EB" stroke-width="1" opacity="1"/>
+<text x="848.00" y="435.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">80% coverage ↑</text>
+<text x="848.00" y="488.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="400" fill="#202124">Old 80</text>
+<rect x="935.00" y="470.00" width="153.80" height="26.00" rx="3.00" fill="#6B7280" stroke="none" stroke-width="1" opacity="1"/>
+<text x="1135.00" y="489.00" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.8819</text>
+<text x="848.00" y="553.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="400" fill="#202124">Hybrid 10k</text>
+<rect x="935.00" y="535.00" width="158.33" height="26.00" rx="3.00" fill="#009E73" stroke="none" stroke-width="1" opacity="1"/>
+<text x="1135.00" y="554.00" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.9078</text>
+<text x="848.00" y="600.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="700" fill="#009E73">improved</text>
+</svg>

@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800" role="img" aria-label="Separate rolling and GW1 panels compare xPoints models on MAE and Spearman.">
+<rect width="100%" height="100%" fill="#FFFFFF"/>
+<text x="55.00" y="45.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="28" font-weight="700" fill="#202124">Figure 4. Historical xPoints comparisons</text>
+<text x="55.00" y="72.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" fill="#6B7280">Rolling: 114 folds across 2023-24 to 2025-26; GW1: 3 folds. All use observed players.</text>
+<text x="175.00" y="108.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">Rolling MAE (lower is better)</text>
+<line x1="175.00" y1="120.00" x2="175.00" y2="335.00" stroke="#6B7280" stroke-width="1"/>
+<line x1="175.00" y1="335.00" x2="495.00" y2="335.00" stroke="#6B7280" stroke-width="1"/>
+<rect x="175.00" y="128.60" width="246.67" height="24.08" rx="3.00" fill="#6B7280" stroke="none" stroke-width="1" opacity="1"/>
+<text x="167.00" y="146.66" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">X0</text>
+<text x="427.67" y="146.66" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.983</text>
+<rect x="175.00" y="171.60" width="228.25" height="24.08" rx="3.00" fill="#56B4E9" stroke="none" stroke-width="1" opacity="1"/>
+<text x="167.00" y="189.66" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">X1</text>
+<text x="409.25" y="189.66" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.909</text>
+<rect x="175.00" y="214.60" width="227.61" height="24.08" rx="3.00" fill="#0072B2" stroke="none" stroke-width="1" opacity="1"/>
+<text x="167.00" y="232.66" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">X2-M3</text>
+<text x="408.61" y="232.66" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.907</text>
+<rect x="175.00" y="257.60" width="241.29" height="24.08" rx="3.00" fill="#E69F00" stroke="none" stroke-width="1" opacity="1"/>
+<text x="167.00" y="275.66" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">X2-M5</text>
+<text x="422.29" y="275.66" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.961</text>
+<rect x="175.00" y="300.60" width="278.26" height="24.08" rx="3.00" fill="#009E73" stroke="none" stroke-width="1" opacity="1"/>
+<text x="167.00" y="318.66" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">X2-M7</text>
+<text x="459.26" y="318.66" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">1.109</text>
+<text x="740.00" y="108.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">Rolling Spearman (higher is better)</text>
+<line x1="740.00" y1="120.00" x2="740.00" y2="335.00" stroke="#6B7280" stroke-width="1"/>
+<line x1="740.00" y1="335.00" x2="1060.00" y2="335.00" stroke="#6B7280" stroke-width="1"/>
+<rect x="740.00" y="128.60" width="256.20" height="24.08" rx="3.00" fill="#6B7280" stroke="none" stroke-width="1" opacity="1"/>
+<text x="732.00" y="146.66" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">X0</text>
+<text x="1002.20" y="146.66" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.661</text>
+<rect x="740.00" y="171.60" width="277.86" height="24.08" rx="3.00" fill="#56B4E9" stroke="none" stroke-width="1" opacity="1"/>
+<text x="732.00" y="189.66" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">X1</text>
+<text x="1023.86" y="189.66" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.717</text>
+<rect x="740.00" y="214.60" width="278.26" height="24.08" rx="3.00" fill="#0072B2" stroke="none" stroke-width="1" opacity="1"/>
+<text x="732.00" y="232.66" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">X2-M3</text>
+<text x="1024.26" y="232.66" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.718</text>
+<rect x="740.00" y="257.60" width="264.99" height="24.08" rx="3.00" fill="#E69F00" stroke="none" stroke-width="1" opacity="1"/>
+<text x="732.00" y="275.66" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">X2-M5</text>
+<text x="1010.99" y="275.66" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.684</text>
+<rect x="740.00" y="300.60" width="238.90" height="24.08" rx="3.00" fill="#009E73" stroke="none" stroke-width="1" opacity="1"/>
+<text x="732.00" y="318.66" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">X2-M7</text>
+<text x="984.90" y="318.66" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.616</text>
+<text x="175.00" y="408.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">Historical GW1 MAE (80 draws) (lower is better)</text>
+<line x1="175.00" y1="420.00" x2="175.00" y2="635.00" stroke="#6B7280" stroke-width="1"/>
+<line x1="175.00" y1="635.00" x2="495.00" y2="635.00" stroke="#6B7280" stroke-width="1"/>
+<rect x="175.00" y="428.60" width="278.26" height="24.08" rx="3.00" fill="#6B7280" stroke="none" stroke-width="1" opacity="1"/>
+<text x="167.00" y="446.66" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">X0</text>
+<text x="459.26" y="446.66" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">1.322</text>
+<rect x="175.00" y="471.60" width="263.17" height="24.08" rx="3.00" fill="#56B4E9" stroke="none" stroke-width="1" opacity="1"/>
+<text x="167.00" y="489.66" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">X1</text>
+<text x="444.17" y="489.66" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">1.251</text>
+<rect x="175.00" y="514.60" width="264.03" height="24.08" rx="3.00" fill="#0072B2" stroke="none" stroke-width="1" opacity="1"/>
+<text x="167.00" y="532.66" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">X2-M3</text>
+<text x="445.03" y="532.66" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">1.255</text>
+<rect x="175.00" y="557.60" width="263.41" height="24.08" rx="3.00" fill="#E69F00" stroke="none" stroke-width="1" opacity="1"/>
+<text x="167.00" y="575.66" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">X2-M5</text>
+<text x="444.41" y="575.66" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">1.252</text>
+<rect x="175.00" y="600.60" width="274.24" height="24.08" rx="3.00" fill="#009E73" stroke="none" stroke-width="1" opacity="1"/>
+<text x="167.00" y="618.66" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">X2-M7</text>
+<text x="455.24" y="618.66" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">1.303</text>
+<text x="740.00" y="408.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">Historical GW1 Spearman (80 draws) (higher is better)</text>
+<line x1="740.00" y1="420.00" x2="740.00" y2="635.00" stroke="#6B7280" stroke-width="1"/>
+<line x1="740.00" y1="635.00" x2="1060.00" y2="635.00" stroke="#6B7280" stroke-width="1"/>
+<text x="732.00" y="446.66" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">X0</text>
+<text x="746.00" y="446.66" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">NA (constant predictions)</text>
+<rect x="740.00" y="471.60" width="253.21" height="24.08" rx="3.00" fill="#56B4E9" stroke="none" stroke-width="1" opacity="1"/>
+<text x="732.00" y="489.66" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">X1</text>
+<text x="999.21" y="489.66" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.445</text>
+<rect x="740.00" y="514.60" width="255.64" height="24.08" rx="3.00" fill="#0072B2" stroke="none" stroke-width="1" opacity="1"/>
+<text x="732.00" y="532.66" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">X2-M3</text>
+<text x="1001.64" y="532.66" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.450</text>
+<rect x="740.00" y="557.60" width="262.23" height="24.08" rx="3.00" fill="#E69F00" stroke="none" stroke-width="1" opacity="1"/>
+<text x="732.00" y="575.66" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">X2-M5</text>
+<text x="1008.23" y="575.66" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.461</text>
+<rect x="740.00" y="600.60" width="278.26" height="24.08" rx="3.00" fill="#009E73" stroke="none" stroke-width="1" opacity="1"/>
+<text x="732.00" y="618.66" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">X2-M7</text>
+<text x="1024.26" y="618.66" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.490</text>
+<rect x="660.00" y="695.00" width="485.00" height="70.00" rx="8.00" fill="#009E73" stroke="#009E73" stroke-width="2" opacity="0.12"/>
+<text x="675.00" y="722.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" fill="#202124">Promoted hybrid GW1 block (same 3 folds):</text>
+<text x="675.00" y="748.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="15" font-weight="400" fill="#202124">X2-M7 MAE 1.373; Spearman 0.494; not a rolling result</text>
+<text x="175.00" y="742.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#6B7280">GW1 X0 Spearman is undefined because every prediction is zero.</text>
+</svg>

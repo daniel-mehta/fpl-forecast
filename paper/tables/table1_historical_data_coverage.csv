@@ -1,0 +1,5 @@
+season,player_fixture_rows,unique_players,unique_fixtures,teams,gkp_rows,def_rows,mid_rows,fwd_rows,assistant_manager_rows,gw1_history_active_rows_where_available,gw1_cold_start_rows_where_available,duplicate_key_rows,missing_critical_id_rows,source
+2022-23,26505,778,380,20,2791,9183,11418,3113,0,,,0,0,data/normalized/phase2/fact_player_fixture.parquet
+2023-24,29725,865,380,20,3413,9611,12847,3854,0,403,255,0,0,data/normalized/phase2/fact_player_fixture.parquet
+2024-25,27605,804,380,20,2869,9146,12250,3018,322,471,145,0,0,data/normalized/phase2/fact_player_fixture.parquet
+2025-26,29747,841,380,20,3427,9733,13309,3278,0,478,212,0,0,data/normalized/phase2/fact_player_fixture.parquet

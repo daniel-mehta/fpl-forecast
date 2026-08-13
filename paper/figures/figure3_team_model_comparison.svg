@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="780" viewBox="0 0 1200 780" role="img" aria-label="Four panels compare T0, T1 and selected T2 rolling team metrics, with T3 separately noted.">
+<rect width="100%" height="100%" fill="#FFFFFF"/>
+<text x="55.00" y="45.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="28" font-weight="700" fill="#202124">Figure 3. Rolling team-model comparison</text>
+<text x="55.00" y="72.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" fill="#6B7280">Same 76 folds and 760 fixtures; T3 is shown separately as a challenger.</text>
+<text x="175.00" y="113.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">Goal MAE (lower is better)</text>
+<line x1="175.00" y1="125.00" x2="175.00" y2="315.00" stroke="#6B7280" stroke-width="1"/>
+<line x1="175.00" y1="315.00" x2="505.00" y2="315.00" stroke="#6B7280" stroke-width="1"/>
+<rect x="175.00" y="137.67" width="286.96" height="35.47" rx="3.00" fill="#6B7280" stroke="none" stroke-width="1" opacity="1"/>
+<text x="167.00" y="164.27" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">T0</text>
+<text x="467.96" y="164.27" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">1.027</text>
+<rect x="175.00" y="201.00" width="275.14" height="35.47" rx="3.00" fill="#56B4E9" stroke="none" stroke-width="1" opacity="1"/>
+<text x="167.00" y="227.60" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">T1</text>
+<text x="456.14" y="227.60" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.985</text>
+<rect x="175.00" y="264.33" width="265.15" height="35.47" rx="3.00" fill="#0072B2" stroke="none" stroke-width="1" opacity="1"/>
+<text x="167.00" y="290.93" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">T2</text>
+<text x="446.15" y="290.93" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.949</text>
+<text x="740.00" y="113.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">Poisson NLL (lower is better)</text>
+<line x1="740.00" y1="125.00" x2="740.00" y2="315.00" stroke="#6B7280" stroke-width="1"/>
+<line x1="740.00" y1="315.00" x2="1070.00" y2="315.00" stroke="#6B7280" stroke-width="1"/>
+<rect x="740.00" y="137.67" width="286.96" height="35.47" rx="3.00" fill="#6B7280" stroke="none" stroke-width="1" opacity="1"/>
+<text x="732.00" y="164.27" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">T0</text>
+<text x="1032.96" y="164.27" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">1.579</text>
+<rect x="740.00" y="201.00" width="280.37" height="35.47" rx="3.00" fill="#56B4E9" stroke="none" stroke-width="1" opacity="1"/>
+<text x="732.00" y="227.60" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">T1</text>
+<text x="1026.37" y="227.60" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">1.543</text>
+<rect x="740.00" y="264.33" width="275.50" height="35.47" rx="3.00" fill="#0072B2" stroke="none" stroke-width="1" opacity="1"/>
+<text x="732.00" y="290.93" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">T2</text>
+<text x="1021.50" y="290.93" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">1.516</text>
+<text x="175.00" y="388.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">Clean-sheet Brier (lower is better)</text>
+<line x1="175.00" y1="400.00" x2="175.00" y2="590.00" stroke="#6B7280" stroke-width="1"/>
+<line x1="175.00" y1="590.00" x2="505.00" y2="590.00" stroke="#6B7280" stroke-width="1"/>
+<rect x="175.00" y="412.67" width="286.96" height="35.47" rx="3.00" fill="#6B7280" stroke="none" stroke-width="1" opacity="1"/>
+<text x="167.00" y="439.27" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">T0</text>
+<text x="467.96" y="439.27" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.173</text>
+<rect x="175.00" y="476.00" width="278.28" height="35.47" rx="3.00" fill="#56B4E9" stroke="none" stroke-width="1" opacity="1"/>
+<text x="167.00" y="502.60" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">T1</text>
+<text x="459.28" y="502.60" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.167</text>
+<rect x="175.00" y="539.33" width="272.99" height="35.47" rx="3.00" fill="#0072B2" stroke="none" stroke-width="1" opacity="1"/>
+<text x="167.00" y="565.93" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">T2</text>
+<text x="453.99" y="565.93" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.164</text>
+<text x="740.00" y="388.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">Outcome log loss (lower is better)</text>
+<line x1="740.00" y1="400.00" x2="740.00" y2="590.00" stroke="#6B7280" stroke-width="1"/>
+<line x1="740.00" y1="590.00" x2="1070.00" y2="590.00" stroke="#6B7280" stroke-width="1"/>
+<rect x="740.00" y="412.67" width="286.96" height="35.47" rx="3.00" fill="#6B7280" stroke="none" stroke-width="1" opacity="1"/>
+<text x="732.00" y="439.27" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">T0</text>
+<text x="1032.96" y="439.27" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">1.070</text>
+<rect x="740.00" y="476.00" width="271.45" height="35.47" rx="3.00" fill="#56B4E9" stroke="none" stroke-width="1" opacity="1"/>
+<text x="732.00" y="502.60" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">T1</text>
+<text x="1017.45" y="502.60" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">1.012</text>
+<rect x="740.00" y="539.33" width="259.67" height="35.47" rx="3.00" fill="#0072B2" stroke="none" stroke-width="1" opacity="1"/>
+<text x="732.00" y="565.93" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">T2</text>
+<text x="1005.67" y="565.93" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.968</text>
+<rect x="720.00" y="660.00" width="425.00" height="78.00" rx="8.00" fill="#F8FAFC" stroke="#E69F00" stroke-width="2" opacity="1"/>
+<text x="735.00" y="686.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" fill="#202124">T3 challenger (same folds; not selected)</text>
+<text x="735.00" y="714.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="15" font-weight="400" fill="#202124">Joint NLL T2 3.0324 vs T3 3.0332</text>
+<text x="175.00" y="705.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#0072B2">Selected model: T2 regularized attack-defence</text>
+</svg>

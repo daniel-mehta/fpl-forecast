@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="680" viewBox="0 0 1200 680" role="img" aria-label="Timeline of historical training, rolling validation, GW1 folds and prospective 2026-27 forecast.">
+<rect width="100%" height="100%" fill="#FFFFFF"/>
+<text x="55.00" y="45.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="28" font-weight="700" fill="#202124">Figure 2. Chronological evaluation design</text>
+<text x="55.00" y="72.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" fill="#6B7280">Historical evidence and the prospective 2026-27 forecast have different roles.</text>
+<line x1="110.00" y1="190.00" x2="1080.00" y2="190.00" stroke="#6B7280" stroke-width="3"/>
+<circle cx="120.00" cy="190.00" r="12.00" fill="#0072B2" stroke="#FFFFFF" stroke-width="1" opacity="1"/>
+<text x="120.00" y="155.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="700" fill="#202124">2022-23</text>
+<circle cx="330.00" cy="190.00" r="12.00" fill="#0072B2" stroke="#FFFFFF" stroke-width="1" opacity="1"/>
+<text x="330.00" y="155.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="700" fill="#202124">2023-24</text>
+<circle cx="540.00" cy="190.00" r="12.00" fill="#0072B2" stroke="#FFFFFF" stroke-width="1" opacity="1"/>
+<text x="540.00" y="155.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="700" fill="#202124">2024-25</text>
+<circle cx="750.00" cy="190.00" r="12.00" fill="#D55E00" stroke="#FFFFFF" stroke-width="1" opacity="1"/>
+<text x="750.00" y="155.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="700" fill="#202124">2025-26</text>
+<circle cx="960.00" cy="190.00" r="12.00" fill="#009E73" stroke="#FFFFFF" stroke-width="1" opacity="1"/>
+<text x="960.00" y="155.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="700" fill="#202124">2026-27</text>
+<rect x="240.00" y="240.00" width="180.00" height="72.00" rx="7.00" fill="#F8FAFC" stroke="#6B7280" stroke-width="1" opacity="1"/>
+<text x="330.00" y="268.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="700" fill="#202124">Rolling test folds</text>
+<rect x="450.00" y="240.00" width="180.00" height="72.00" rx="7.00" fill="#F8FAFC" stroke="#6B7280" stroke-width="1" opacity="1"/>
+<text x="540.00" y="268.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="700" fill="#202124">Rolling + GW1 test folds</text>
+<rect x="660.00" y="240.00" width="180.00" height="72.00" rx="7.00" fill="#F8FAFC" stroke="#6B7280" stroke-width="1" opacity="1"/>
+<text x="750.00" y="268.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="700" fill="#202124">Rolling + GW1</text>
+<text x="750.00" y="290.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="400" fill="#202124">hardening evidence</text>
+<rect x="90.00" y="370.00" width="650.00" height="70.00" rx="8.00" fill="#56B4E9" stroke="#0072B2" stroke-width="1" opacity="0.18"/>
+<text x="415.00" y="398.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="700" fill="#202124">Expanding historical training windows</text>
+<text x="415.00" y="424.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="15" font-weight="400" fill="#202124">Every fold uses only information available before its cutoff</text>
+<line x1="740.00" y1="405.00" x2="845.00" y2="405.00" stroke="#0072B2" stroke-width="3"/>
+<line x1="845.00" y1="405.00" x2="836.43" y2="410.16" stroke="#0072B2" stroke-width="3"/>
+<line x1="845.00" y1="405.00" x2="836.43" y2="399.84" stroke="#0072B2" stroke-width="3"/>
+<rect x="845.00" y="355.00" width="260.00" height="100.00" rx="8.00" fill="#009E73" stroke="#009E73" stroke-width="2" opacity="0.14"/>
+<text x="975.00" y="386.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="700" fill="#202124">2026-27 GW1</text>
+<text x="975.00" y="414.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" fill="#202124">Frozen prospective forecast</text>
+<text x="975.00" y="438.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="15" font-weight="400" fill="#009E73">No outcomes observed</text>
+<rect x="675.00" y="505.00" width="300.00" height="88.00" rx="8.00" fill="#F8FAFC" stroke="#D55E00" stroke-width="2" opacity="1"/>
+<text x="825.00" y="535.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">2025-26 is not an untouched holdout</text>
+<text x="825.00" y="563.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="15" font-weight="400" fill="#202124">Its results informed preseason hardening.</text>
+<text x="825.00" y="585.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="15" font-weight="400" fill="#202124">Report it as historical development evidence.</text>
+</svg>

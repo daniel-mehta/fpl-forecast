@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-label="P5 calibration plot compares old and hybrid simulators in fixed bins with sample sizes.">
+<rect width="100%" height="100%" fill="#FFFFFF"/>
+<text x="55.00" y="45.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="28" font-weight="700" fill="#202124">Figure 7. Historical GW1 P(5+) calibration</text>
+<text x="55.00" y="72.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" fill="#6B7280">Fixed probability bins, identical three folds, all observed players.</text>
+<text x="150.00" y="103.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">Observed frequency</text>
+<line x1="150.00" y1="115.00" x2="150.00" y2="635.00" stroke="#6B7280" stroke-width="1"/>
+<line x1="150.00" y1="635.00" x2="670.00" y2="635.00" stroke="#6B7280" stroke-width="1"/>
+<line x1="150.00" y1="635.00" x2="670.00" y2="635.00" stroke="#E5E7EB" stroke-width="1"/>
+<text x="138.00" y="640.00" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.0</text>
+<text x="150.00" y="660.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.0</text>
+<line x1="150.00" y1="531.00" x2="670.00" y2="531.00" stroke="#E5E7EB" stroke-width="1"/>
+<text x="138.00" y="536.00" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.2</text>
+<text x="254.00" y="660.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.2</text>
+<line x1="150.00" y1="427.00" x2="670.00" y2="427.00" stroke="#E5E7EB" stroke-width="1"/>
+<text x="138.00" y="432.00" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.4</text>
+<text x="358.00" y="660.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.4</text>
+<line x1="150.00" y1="323.00" x2="670.00" y2="323.00" stroke="#E5E7EB" stroke-width="1"/>
+<text x="138.00" y="328.00" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.6</text>
+<text x="462.00" y="660.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.6</text>
+<line x1="150.00" y1="219.00" x2="670.00" y2="219.00" stroke="#E5E7EB" stroke-width="1"/>
+<text x="138.00" y="224.00" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.8</text>
+<text x="566.00" y="660.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.8</text>
+<line x1="150.00" y1="115.00" x2="670.00" y2="115.00" stroke="#E5E7EB" stroke-width="1"/>
+<text x="138.00" y="120.00" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">1.0</text>
+<text x="670.00" y="660.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">1.0</text>
+<line x1="150.00" y1="635.00" x2="670.00" y2="115.00" stroke="#6B7280" stroke-width="2" stroke-dasharray="7 5"/>
+<circle cx="164.00" cy="605.84" r="8.52" fill="#6B7280" stroke="#FFFFFF" stroke-width="1" opacity="0.75"/>
+<circle cx="227.41" cy="533.89" r="6.42" fill="#6B7280" stroke="#FFFFFF" stroke-width="1" opacity="0.75"/>
+<circle cx="278.32" cy="509.33" r="5.56" fill="#6B7280" stroke="#FFFFFF" stroke-width="1" opacity="0.75"/>
+<circle cx="330.92" cy="340.33" r="4.78" fill="#6B7280" stroke="#FFFFFF" stroke-width="1" opacity="0.75"/>
+<circle cx="385.08" cy="461.67" r="4.35" fill="#6B7280" stroke="#FFFFFF" stroke-width="1" opacity="0.75"/>
+<circle cx="425.17" cy="288.33" r="4.25" fill="#6B7280" stroke="#FFFFFF" stroke-width="1" opacity="0.75"/>
+<circle cx="468.50" cy="115.00" r="4.14" fill="#6B7280" stroke="#FFFFFF" stroke-width="1" opacity="0.75"/>
+<polyline points="164.00,605.84 227.41,533.89 278.32,509.33 330.92,340.33 385.08,461.67 425.17,288.33 468.50,115.00" fill="none" stroke="#6B7280" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="760.00" cy="170.00" r="7.00" fill="#6B7280" stroke="#FFFFFF" stroke-width="1" opacity="1"/>
+<text x="780.00" y="176.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" fill="#202124">Old 80</text>
+<circle cx="174.36" cy="615.80" r="8.52" fill="#009E73" stroke="#FFFFFF" stroke-width="1" opacity="0.75"/>
+<circle cx="226.11" cy="552.21" r="6.86" fill="#009E73" stroke="#FFFFFF" stroke-width="1" opacity="0.75"/>
+<circle cx="276.94" cy="498.43" r="6.01" fill="#009E73" stroke="#FFFFFF" stroke-width="1" opacity="0.75"/>
+<circle cx="327.60" cy="457.73" r="4.95" fill="#009E73" stroke="#FFFFFF" stroke-width="1" opacity="0.75"/>
+<circle cx="381.87" cy="329.12" r="4.59" fill="#009E73" stroke="#FFFFFF" stroke-width="1" opacity="0.75"/>
+<circle cx="422.15" cy="115.00" r="4.25" fill="#009E73" stroke="#FFFFFF" stroke-width="1" opacity="0.75"/>
+<polyline points="174.36,615.80 226.11,552.21 276.94,498.43 327.60,457.73 381.87,329.12 422.15,115.00" fill="none" stroke="#009E73" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="760.00" cy="208.00" r="7.00" fill="#009E73" stroke="#FFFFFF" stroke-width="1" opacity="1"/>
+<text x="780.00" y="214.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" fill="#202124">Hybrid 10k</text>
+<text x="410.00" y="693.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" fill="#202124">Mean predicted P(5+)</text>
+<text x="95.00" y="375.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" fill="#202124" transform="rotate(-90 95 375.0)">Observed P(5+)</text>
+<rect x="740.00" y="265.00" width="385.00" height="230.00" rx="8.00" fill="#F8FAFC" stroke="#E5E7EB" stroke-width="1" opacity="1"/>
+<text x="760.00" y="294.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" fill="#202124">Bin sizes (old / hybrid)</text>
+<text x="760.00" y="324.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.0-0.1: 1516/1300</text>
+<text x="760.00" y="355.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.1-0.2: 288/402</text>
+<text x="760.00" y="386.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.2-0.3: 120/198</text>
+<text x="760.00" y="417.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.3-0.4: 30/44</text>
+<text x="760.00" y="448.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.4-0.5: 6/17</text>
+<text x="940.00" y="324.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="13" font-weight="400" fill="#202124">0.5-0.6: 3/3</text>
+<text x="760.00" y="535.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="400" fill="#6B7280">Point area is proportional to bin sample size.</text>
+<text x="760.00" y="562.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="400" fill="#6B7280">Perfect calibration is the dashed diagonal.</text>
+</svg>

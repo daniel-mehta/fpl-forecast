@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="680" viewBox="0 0 1200 680" role="img" aria-label="Architecture from official and historical data through T2, M7, X2, D2 and publication.">
+<rect width="100%" height="100%" fill="#FFFFFF"/>
+<text x="55.00" y="45.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="28" font-weight="700" fill="#202124">Figure 1. Leakage-safe forecast and decision architecture</text>
+<text x="55.00" y="72.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" fill="#6B7280">Frozen outcomes are evaluation targets only; they are not forecast inputs.</text>
+<rect x="55.00" y="145.00" width="165.00" height="105.00" rx="8.00" fill="#56B4E9" stroke="#6B7280" stroke-width="1" opacity="0.18"/>
+<text x="137.50" y="189.50" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">Official +</text>
+<text x="137.50" y="213.50" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">historical data</text>
+<rect x="255.00" y="145.00" width="165.00" height="105.00" rx="8.00" fill="#F8FAFC" stroke="#6B7280" stroke-width="1" opacity="1"/>
+<text x="337.50" y="189.50" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">Leakage-safe</text>
+<text x="337.50" y="213.50" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">player-fixture panel</text>
+<rect x="460.00" y="105.00" width="155.00" height="82.00" rx="8.00" fill="#0072B2" stroke="#6B7280" stroke-width="1" opacity="0.18"/>
+<text x="537.50" y="138.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">T2</text>
+<text x="537.50" y="162.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">team state</text>
+<rect x="460.00" y="215.00" width="155.00" height="82.00" rx="8.00" fill="#E69F00" stroke="#6B7280" stroke-width="1" opacity="0.18"/>
+<text x="537.50" y="248.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">M7</text>
+<text x="537.50" y="272.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">availability</text>
+<rect x="660.00" y="145.00" width="175.00" height="105.00" rx="8.00" fill="#009E73" stroke="#6B7280" stroke-width="1" opacity="0.18"/>
+<text x="747.50" y="189.50" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">X2 hybrid</text>
+<text x="747.50" y="213.50" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">player outcomes</text>
+<rect x="875.00" y="145.00" width="135.00" height="105.00" rx="8.00" fill="#CC79A7" stroke="#6B7280" stroke-width="1" opacity="0.18"/>
+<text x="942.50" y="189.50" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">D2</text>
+<text x="942.50" y="213.50" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">decisions</text>
+<rect x="1040.00" y="145.00" width="120.00" height="105.00" rx="8.00" fill="#F8FAFC" stroke="#6B7280" stroke-width="1" opacity="1"/>
+<text x="1100.00" y="189.50" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">Validated</text>
+<text x="1100.00" y="213.50" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">forecast</text>
+<line x1="220.00" y1="198.00" x2="255.00" y2="198.00" stroke="#6B7280" stroke-width="3"/>
+<line x1="255.00" y1="198.00" x2="246.43" y2="203.16" stroke="#6B7280" stroke-width="3"/>
+<line x1="255.00" y1="198.00" x2="246.43" y2="192.84" stroke="#6B7280" stroke-width="3"/>
+<line x1="420.00" y1="185.00" x2="460.00" y2="146.00" stroke="#6B7280" stroke-width="3"/>
+<line x1="460.00" y1="146.00" x2="457.46" y2="155.67" stroke="#6B7280" stroke-width="3"/>
+<line x1="460.00" y1="146.00" x2="450.27" y2="148.29" stroke="#6B7280" stroke-width="3"/>
+<line x1="420.00" y1="215.00" x2="460.00" y2="256.00" stroke="#6B7280" stroke-width="3"/>
+<line x1="460.00" y1="256.00" x2="450.33" y2="253.47" stroke="#6B7280" stroke-width="3"/>
+<line x1="460.00" y1="256.00" x2="457.71" y2="246.27" stroke="#6B7280" stroke-width="3"/>
+<line x1="615.00" y1="146.00" x2="660.00" y2="180.00" stroke="#6B7280" stroke-width="3"/>
+<line x1="660.00" y1="180.00" x2="650.06" y2="178.95" stroke="#6B7280" stroke-width="3"/>
+<line x1="660.00" y1="180.00" x2="656.27" y2="170.72" stroke="#6B7280" stroke-width="3"/>
+<line x1="615.00" y1="256.00" x2="660.00" y2="215.00" stroke="#6B7280" stroke-width="3"/>
+<line x1="660.00" y1="215.00" x2="657.14" y2="224.58" stroke="#6B7280" stroke-width="3"/>
+<line x1="660.00" y1="215.00" x2="650.19" y2="216.96" stroke="#6B7280" stroke-width="3"/>
+<line x1="835.00" y1="198.00" x2="875.00" y2="198.00" stroke="#6B7280" stroke-width="3"/>
+<line x1="875.00" y1="198.00" x2="866.43" y2="203.16" stroke="#6B7280" stroke-width="3"/>
+<line x1="875.00" y1="198.00" x2="866.43" y2="192.84" stroke="#6B7280" stroke-width="3"/>
+<line x1="1010.00" y1="198.00" x2="1040.00" y2="198.00" stroke="#6B7280" stroke-width="3"/>
+<line x1="1040.00" y1="198.00" x2="1031.43" y2="203.16" stroke="#6B7280" stroke-width="3"/>
+<line x1="1040.00" y1="198.00" x2="1031.43" y2="192.84" stroke="#6B7280" stroke-width="3"/>
+<circle cx="430.00" cy="350.00" r="8.00" fill="#0072B2" stroke="#FFFFFF" stroke-width="1" opacity="1"/>
+<text x="450.00" y="356.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">Team state</text>
+<text x="635.00" y="356.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" fill="#6B7280">Poisson scoring intensities and shared scoreline</text>
+<circle cx="430.00" cy="415.00" r="8.00" fill="#E69F00" stroke="#FFFFFF" stroke-width="1" opacity="1"/>
+<text x="450.00" y="421.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">Player availability</text>
+<text x="635.00" y="421.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" fill="#6B7280">DNP, substitute and starter minute states</text>
+<circle cx="430.00" cy="480.00" r="8.00" fill="#009E73" stroke="#FFFFFF" stroke-width="1" opacity="1"/>
+<text x="450.00" y="486.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">Player outcomes</text>
+<text x="635.00" y="486.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" fill="#6B7280">Analytic means + 10,000 joint fixture draws</text>
+<circle cx="430.00" cy="545.00" r="8.00" fill="#CC79A7" stroke="#FFFFFF" stroke-width="1" opacity="1"/>
+<text x="450.00" y="551.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">Decision optimization</text>
+<text x="635.00" y="551.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="400" fill="#6B7280">Exact 32,768 appearance states for each squad</text>
+<rect x="55.00" y="565.00" width="295.00" height="62.00" rx="8.00" fill="#F8FAFC" stroke="#D55E00" stroke-width="2" opacity="1"/>
+<text x="202.00" y="590.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="17" font-weight="700" fill="#202124">Official outcomes</text>
+<text x="202.00" y="614.00" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="400" fill="#6B7280">Scoring only after fixtures complete</text>
+<line x1="350.00" y1="596.00" x2="430.00" y2="596.00" stroke="#D55E00" stroke-width="3"/>
+<line x1="430.00" y1="596.00" x2="421.43" y2="601.16" stroke="#D55E00" stroke-width="3"/>
+<line x1="430.00" y1="596.00" x2="421.43" y2="590.84" stroke="#D55E00" stroke-width="3"/>
+<text x="445.00" y="602.00" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" fill="#D55E00">Prospective evaluation</text>
+</svg>
