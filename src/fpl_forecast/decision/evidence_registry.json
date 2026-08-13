@@ -74,9 +74,14 @@
   },
   "decision_evidence": {
     "rolling_benchmark": {
-      "authoritative_run_id": "phase7_goalkeeper_scoring_corrected_decisions_rolling_real",
+      "authoritative_run_id": "phase7_goalkeeper_scoring_corrected_decisions_rolling_real_clean_034830b041c1",
       "status": "authoritative",
       "supersedes": [
+        {
+          "run_id": "phase7_goalkeeper_scoring_corrected_decisions_rolling_real",
+          "preservation": "immutable_historical_record",
+          "reason": "Numerically equivalent corrected evidence retained unchanged; superseded because its exact dirty source tree was not preserved."
+        },
         {
           "run_id": "phase7_captain_corrected_decisions_rolling_real",
           "preservation": "immutable_historical_record",
@@ -95,9 +100,14 @@
       ]
     },
     "table7_gw1": {
-      "authoritative_run_id": "phase9b13_goalkeeper_scoring_corrected_exact_decisions_gw1",
+      "authoritative_run_id": "phase9b13_goalkeeper_scoring_corrected_exact_decisions_gw1_clean_034830b041c1",
       "status": "authoritative",
       "supersedes": [
+        {
+          "run_id": "phase9b13_goalkeeper_scoring_corrected_exact_decisions_gw1",
+          "preservation": "immutable_historical_record",
+          "reason": "Numerically equivalent corrected evidence retained unchanged; superseded because its exact dirty source tree was not preserved."
+        },
         {
           "run_id": "phase9b13_captain_corrected_decisions_gw1_v2",
           "preservation": "immutable_historical_record",

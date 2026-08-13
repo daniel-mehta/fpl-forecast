@@ -4,12 +4,11 @@ The repository tracks `scripts/build_paper_evidence.py`, the active decision con
 the evidence registry because they are source inputs to manuscript-facing tables and figures. They
 belong in the same reviewed code revision as the model and decision code.
 
-The existing `paper/` directory remains ignored until the authoritative evidence is replayed from a
-clean committed revision. The current assets are numerically verified, but some upstream manifests
-identify an unavailable dirty source state. Moving those assets into Git before the clean replay
-would preserve the provenance defect that the replay is intended to resolve.
+The clean replay from committed revision `034830b041c1` established numerical equivalence and
+promoted new immutable successors. The `paper/` directory remains ignored only while the regenerated
+bundle is verified by two identical generator runs.
 
-After the clean replay, the smallest reviewable repository bundle should track:
+After that comparison, the smallest reviewable repository bundle should track:
 
 - `paper/evidence_manifest.csv` and `paper/evidence_supersession.csv`;
 - `paper/tables/*.csv`;
@@ -31,14 +30,14 @@ Until that legally publishable evidence bundle exists, a clean clone can inspect
 generator only after the required hashed input artifacts are supplied. Documentation must not claim
 that the public repository alone reproduces every manuscript table or figure.
 
-## Clean replay boundary
+## Clean replay record
 
-The next evidence replay must start from a clean commit, use new non-overwriting run IDs, and record
-that commit plus exact source-tree and input/output hashes in every successor manifest. It must
-replay the corrected hybrid GW1 xPoints evidence, its convergence and closure checks, the rolling
-and GW1 decision evidence affected by the unavailable dirty state, and the corrected prospective
-validation. The evidence registry and correction inventory must then point to those successors
-before the publication generator is run twice and its output digest is compared.
+The completed replay started from clean commit `034830b041c1`, used non-overwriting run IDs, and
+recorded commit, source-tree, input and output hashes in the successor manifests and
+`reports/goalkeeper_scoring_fix/clean_replay_inventory_034830b041c1.json`. It replayed the corrected
+hybrid GW1 xPoints evidence, convergence and closure checks, rolling and GW1 decision evidence, and
+the corrected prospective validation. Separate comparison IDs established deterministic equality
+after excluding only run identity, documented timestamps, runtime and process-memory fields.
 
 The prospective validation and simulation checks must use
 `scripts/replay_clean_prospective_evidence.py`; the prior `/tmp` helpers are not replay inputs.

@@ -501,9 +501,12 @@ def test_publication_generator_and_policy_are_repository_inputs() -> None:
     assert Path("scripts/replay_clean_prospective_evidence.py").is_file()
     assert "!scripts/build_paper_evidence.py" in ignore_policy
     assert "/paper" in ignore_policy
-    assert "After the clean replay" in artifact_policy
+    assert "The completed replay" in artifact_policy
     assert "Raw or normalized third-party FPL data" in artifact_policy
     assert "/tmp" in artifact_policy
+    assert Path(
+        "reports/goalkeeper_scoring_fix/clean_replay_inventory_034830b041c1.json"
+    ).is_file()
 
     help_run = subprocess.run(
         [

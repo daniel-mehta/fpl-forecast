@@ -41,15 +41,14 @@ GOALKEEPER_FIX_SHA = "668ece1"
 LEGACY_DIRTY_SOURCE_IDENTITY = (
     "3ea29d9+tracked-diff-38fbd0457d1257029a8c6236f98ca611a1ba9ee78b7c9ab204f6b9f3ebdd71b4"
 )
-HISTORICAL_OFFICIAL_RUN = "preseason_sim_hybrid_10000_final_v2_abf172c"
 PROSPECTIVE_RUN = os.environ.get(
     "FPL_PAPER_PROSPECTIVE_RUN",
-    "preseason_sim_hybrid_10000_goalkeeper_corrected_validation_abf172c",
+    "preseason_sim_hybrid_10000_goalkeeper_corrected_validation_clean_034830b041c1",
 )
 PROSPECTIVE_BASE = ROOT / "outputs/operational/validation_runs" / PROSPECTIVE_RUN
 GOALKEEPER_EVIDENCE_INVENTORY = ROOT / os.environ.get(
     "FPL_PAPER_EVIDENCE_INVENTORY",
-    "reports/goalkeeper_scoring_fix/evidence_inventory.json",
+    "reports/goalkeeper_scoring_fix/clean_replay_inventory_034830b041c1.json",
 )
 CONVERGENCE_EVIDENCE = PROSPECTIVE_BASE / "preseason_simulation_convergence.json"
 CLOSURE_EVIDENCE = PROSPECTIVE_BASE / "preseason_simulation_closure.json"
@@ -61,7 +60,7 @@ XPOINTS_ROLLING_RUN = "phase9b12_xpoints_rolling_goalkeeper_corrected_exact"
 XPOINTS_GW1_RUN = "phase9b12_xpoints_gw1_goalkeeper_corrected_exact"
 HYBRID_GW1_RUN = os.environ.get(
     "FPL_PAPER_HYBRID_GW1_RUN",
-    "preseason_sim_hybrid_10000_gw1_three_fold_goalkeeper_corrected",
+    "preseason_sim_hybrid_10000_gw1_three_fold_goalkeeper_corrected_clean_034830b041c1",
 )
 DECISION_RUN = os.environ.get(
     "FPL_PAPER_DECISION_RUN",
@@ -162,6 +161,16 @@ def manifest_code_identity(path: Path, *, legacy_dirty_fallback: str = "") -> st
             return legacy_dirty_fallback
         raise ValueError(f"Dirty source state lacks an exact digest: {rel(path)}")
     if commit:
+        if len(commit) < 40:
+            resolved = subprocess.run(
+                ["git", "rev-parse", "--verify", f"{commit}^{{commit}}"],
+                cwd=ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            if resolved:
+                return resolved
         return commit
     if legacy_dirty_fallback:
         return legacy_dirty_fallback
@@ -608,32 +617,33 @@ def publication_evidence_supersession_table() -> pd.DataFrame:
                 "reason": pair["supersession_reason"],
             }
         )
+    validation_supersedes = inventory["public_validation"]["supersedes"]
     extra_rows.extend(
         [
             {
                 "evidence_scope": "table5_simulation_convergence",
-                "authoritative_run_id": "preseason_simulation_convergence_goalkeeper_corrected",
+                "authoritative_run_id": f"{PROSPECTIVE_RUN}_simulation_convergence",
                 "superseded_run_id": "preseason_simulation_convergence",
                 "superseded_status": "immutable_historical_record",
                 "reason": "Generated from prospective projections that used six-point goalkeeper goals.",
             },
             {
                 "evidence_scope": "table5_simulation_closure",
-                "authoritative_run_id": "preseason_simulation_closure_goalkeeper_corrected",
+                "authoritative_run_id": f"{PROSPECTIVE_RUN}_simulation_closure",
                 "superseded_run_id": "preseason_simulation_closure_10000_vs_20000",
                 "superseded_status": "immutable_historical_record",
                 "reason": "Generated from prospective projections that used six-point goalkeeper goals.",
             },
-            {
-                "evidence_scope": "table8_prospective_validation",
-                "authoritative_run_id": PROSPECTIVE_RUN,
-                "superseded_run_id": HISTORICAL_OFFICIAL_RUN,
-                "superseded_status": "immutable_historical_record",
-                "reason": (
-                    "Superseded only for corrected publication validation; the published predecessor "
-                    "remains immutable and was not overwritten."
-                ),
-            },
+            *[
+                {
+                    "evidence_scope": "table8_prospective_validation",
+                    "authoritative_run_id": PROSPECTIVE_RUN,
+                    "superseded_run_id": item["run_id"],
+                    "superseded_status": "immutable_historical_record",
+                    "reason": item["reason"],
+                }
+                for item in validation_supersedes
+            ],
         ]
     )
     if extra_rows:
@@ -971,7 +981,7 @@ def figure4_xpoints(table: pd.DataFrame) -> str:
     svg = Svg(1200, 800)
     svg.title(
         "Figure 4. Historical xPoints comparisons",
-        "Rolling and historical GW1 panels remain separate; all panels use all observed players.",
+        "Rolling: 114 folds across 2023-24 to 2025-26; GW1: 3 folds. All use observed players.",
     )
     mapping = {
         "X0_PHASE3_B5_EB_POINTS_PER90": "X0",
@@ -1677,7 +1687,7 @@ def evidence_rows(
 
 
 def figure_notes() -> str:
-    return """# Figure and Table Notes
+    return f"""# Figure and Table Notes
 
 This file supplies proposed captions and interpretation boundaries for the preseason technical
 paper. All paths are repository-relative. Historical and prospective evidence must remain visually
@@ -1739,7 +1749,7 @@ and narratively separate.
 
 - **Caption:** Deterministic hybrid-simulation convergence, runtime and memory evidence.
 - **Exact source:** `outputs/operational/validation_runs/
-  preseason_sim_hybrid_10000_goalkeeper_corrected_validation_abf172c/
+  {PROSPECTIVE_RUN}/
   preseason_simulation_convergence.json` and `preseason_simulation_closure.json`.
 - **Population and grain:** Current official challenger input, 554 player-fixture rows.
 - **Supports:** The declared-tolerance justification for 10,000 production draws.
@@ -1756,7 +1766,7 @@ and narratively separate.
   across three historical GW1 folds.
 - **Exact source:** Full-precision scored parquets for
   `phase9b12_xpoints_gw1_goalkeeper_corrected_exact` and
-  `preseason_sim_hybrid_10000_gw1_three_fold_goalkeeper_corrected`.
+  `{HYBRID_GW1_RUN}`.
 - **Population and grain:** All observed player-gameweeks, separately by fold and pooled.
 - **Supports:** Honest disclosure of improved distribution stability and worsened MAE.
 - **Does not support:** Broad predictive superiority.
@@ -1767,7 +1777,7 @@ and narratively separate.
 
 - **Caption:** D1 and D2 historical weekly-reset GW1 decision evidence.
 - **Exact source:**
-  `reports/decision_backtests/phase9b13_goalkeeper_scoring_corrected_exact_decisions_gw1/`.
+  `reports/decision_backtests/{DECISION_RUN}/`.
 - **Population and grain:** One frozen squad decision per historical GW1; three decisions per method.
 - **Supports:** Exact paired arithmetic and limited acceptance evidence for D2.
 - **Does not support:** Strong statistical or season-long decision superiority.
@@ -1782,7 +1792,7 @@ and narratively separate.
 - **Caption:** Prospective example, not an accuracy result: frozen 2026-27 GW1 model and decision
   snapshot.
 - **Exact source:** `outputs/operational/validation_runs/
-  preseason_sim_hybrid_10000_goalkeeper_corrected_validation_abf172c/`.
+  {PROSPECTIVE_RUN}/`.
 - **Population and grain:** Officially selectable current players; player-gameweek projections and
   one squad decision.
 - **Supports:** A concrete example of forecast outputs, lineage and the recommended decision.
@@ -1831,9 +1841,11 @@ and narratively separate.
 ## Figure 4 — Historical xPoints comparison
 
 - **Caption:** xPoints MAE and rank correlation in separate rolling and historical GW1 panels.
+- **Visible scope:** The rolling panels contain 114 folds across `2023-24` to `2025-26`; the GW1
+  panels contain three folds over the same seasons.
 - **Exact source:** `phase9b12_xpoints_rolling_goalkeeper_corrected_exact`,
   `phase9b12_xpoints_gw1_goalkeeper_corrected_exact`, and
-  `preseason_sim_hybrid_10000_gw1_three_fold_goalkeeper_corrected`.
+  `{HYBRID_GW1_RUN}`.
 - **Population and grain:** All observed player-gameweeks.
 - **Supports:** Model trade-offs under each registered evaluation mode.
 - **Does not support:** Comparing the hybrid GW1 annotation as if it were a rolling result.

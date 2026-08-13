@@ -76,13 +76,19 @@ def test_decision_evidence_registry_separates_authoritative_and_historical_runs(
     }
 
     assert authoritative == {
-        "phase7_goalkeeper_scoring_corrected_decisions_rolling_real",
-        "phase9b13_goalkeeper_scoring_corrected_exact_decisions_gw1",
+        "phase7_goalkeeper_scoring_corrected_decisions_rolling_real_clean_034830b041c1",
+        "phase9b13_goalkeeper_scoring_corrected_exact_decisions_gw1_clean_034830b041c1",
     }
     assert not authoritative.intersection(supersession["superseded_run_id"])
     assert set(supersession["superseded_status"]) == {"immutable_historical_record"}
     assert "phase7_decisions_rolling_real" in set(supersession["superseded_run_id"])
     assert "phase9b13_lineup_refined_decisions_gw1" in set(
+        supersession["superseded_run_id"]
+    )
+    assert "phase7_goalkeeper_scoring_corrected_decisions_rolling_real" in set(
+        supersession["superseded_run_id"]
+    )
+    assert "phase9b13_goalkeeper_scoring_corrected_exact_decisions_gw1" in set(
         supersession["superseded_run_id"]
     )
     assert "1.67" not in json.dumps(registry, sort_keys=True)

@@ -179,8 +179,9 @@ explicit appearance-state probabilities. Its historical results nevertheless cha
 D2 search begins from the corrected D1 solution.
 
 The corrected authoritative decision runs are
-`phase7_goalkeeper_scoring_corrected_decisions_rolling_real` and
-`phase9b13_goalkeeper_scoring_corrected_exact_decisions_gw1`. The structured registry at
+`phase7_goalkeeper_scoring_corrected_decisions_rolling_real_clean_034830b041c1` and
+`phase9b13_goalkeeper_scoring_corrected_exact_decisions_gw1_clean_034830b041c1`. The structured
+registry at
 `src/fpl_forecast/decision/evidence_registry.json` records which pre-fix and earlier corrected runs
 they supersede. Those earlier artifacts, including the decision evidence published with `v0.1.0`,
 remain immutable historical records and must not be used as current publication evidence.
