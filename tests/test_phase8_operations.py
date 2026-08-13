@@ -76,7 +76,7 @@ def test_live_result_normalization_preserves_fixture_grain_and_unknown_start() -
         retrieved_at="2026-08-16T20:00:00Z",
         raw_snapshot_path="mock/event_live.json",
         bootstrap_payload=_bootstrap_payload("2026-27", budget=1000),
-        fixtures_payload=_fixtures_payload("2026-27")[:20],
+        fixtures_payload=_event_live_fixtures(),
     )
 
     assert len(frame) == 2
@@ -174,7 +174,7 @@ def test_event_live_duplicate_components_and_unfinished_fixtures_fail_safety_gat
     payload = _event_live_payload(
         [_element(7, total=4, explain=[_fixture_explain(11, [("minutes", 90, 2), ("minutes", 90, 2)])])]
     )
-    fixtures = _fixtures_payload("2026-27")[:20]
+    fixtures = _event_live_fixtures()
     fixtures[10]["finished"] = False
     fixtures[10]["finished_provisional"] = False
     frame = normalize_event_live(
@@ -223,7 +223,7 @@ def test_event_live_preserves_assistant_managers_but_excludes_them_from_player_a
         retrieved_at="2026-08-16T20:00:00Z",
         raw_snapshot_path="mock/event_live.json",
         bootstrap_payload=bootstrap,
-        fixtures_payload=_fixtures_payload("2026-27")[:20],
+        fixtures_payload=_event_live_fixtures(),
     )
     reconciliation = audit_event_live_scoring(frame)["player_event_reconciliation"]
 
@@ -266,7 +266,7 @@ def test_mock_gw1_to_gw2_transition_publishes_and_preserves_latest_on_failure(
     )
     summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
 
-    assert result.no_op
+    assert result.no_op, json.dumps(summary, sort_keys=True)
     assert result.failure_preserved_latest
     assert summary["completed_rows_entered_gw2_history"] > 0
     assert summary["gw2_projection_rows"] > 0
@@ -731,14 +731,7 @@ def _stat_value(block: dict, identifier: str) -> int:
 
 def _normalize_test_live(payload: dict, *, retrieved_at: str = "2026-08-16T20:00:00Z") -> pd.DataFrame:
     bootstrap = _bootstrap_payload("2026-27", budget=1000)
-    fixtures = _fixtures_payload("2026-27")
-    for fixture in fixtures:
-        if fixture["id"] in {11, 12}:
-            fixture["event"] = 1
-            fixture["team_h"] = 1
-            fixture["team_a"] = 2
-            fixture["finished"] = True
-            fixture["finished_provisional"] = True
+    fixtures = _event_live_fixtures()
     return normalize_event_live(
         season="2026-27",
         gameweek=1,
@@ -748,3 +741,15 @@ def _normalize_test_live(payload: dict, *, retrieved_at: str = "2026-08-16T20:00
         bootstrap_payload=bootstrap,
         fixtures_payload=fixtures,
     )
+
+
+def _event_live_fixtures() -> list[dict]:
+    fixtures = _fixtures_payload("2026-27")[:20]
+    for fixture in fixtures:
+        if fixture["id"] in {11, 12}:
+            fixture["event"] = 1
+            fixture["team_h"] = 1
+            fixture["team_a"] = 2
+            fixture["finished"] = True
+            fixture["finished_provisional"] = True
+    return fixtures

@@ -62,6 +62,7 @@ jobs:
         id: inputs
         env:
           REQUESTED_RUN_ID: ${{ inputs.run_id }}
+          REQUESTED_GAMEWEEK: ${{ inputs.target_gameweek }}
         run: |
           if [[ -n "$REQUESTED_RUN_ID" ]]; then
             RUN_ID="$REQUESTED_RUN_ID"
@@ -70,6 +71,10 @@ jobs:
           fi
           if [[ ! "$RUN_ID" =~ ^[A-Za-z0-9._-]+$ ]]; then
             echo "Unsafe run ID: $RUN_ID" >&2
+            exit 1
+          fi
+          if [[ -n "$REQUESTED_GAMEWEEK" && ! "$REQUESTED_GAMEWEEK" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Target gameweek must be a plain positive integer: $REQUESTED_GAMEWEEK" >&2
             exit 1
           fi
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
@@ -86,6 +91,7 @@ jobs:
             --historical-seasons "2022-23,2023-24,2024-25,2025-26"
             --revision "f2090d378ebd1b0c3d14884770dde95f38c50a0d"
             --output reports/operational/publication_preparation.json
+            --run-id "${{ steps.inputs.outputs.run_id }}"
           )
           if [[ -n "$TARGET_GAMEWEEK" ]]; then
             args+=(--target-gameweek "$TARGET_GAMEWEEK")
@@ -141,6 +147,18 @@ jobs:
             --source public/data \
             --destination "$RUNNER_TEMP/frozen-forecast/data"
 
+      - name: Report frozen forecast identity
+        run: |
+          jq '{run_id, target_season, target_gameweek, completed_at, frontend_schema_version, simulator: .model_lineage.xpoints_simulator.version, output_contract: .model_lineage.xpoints_simulator.model_contract_version}' frontend/public/data/run_manifest.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run frontend lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
       - name: Persist the frozen public forecast bundle
         env:
           FROZEN_BRANCH: official-forecast-data
@@ -161,24 +179,17 @@ jobs:
           git -C "$RUNNER_TEMP/frozen-forecast-branch" commit -m "Freeze official forecast ${{ steps.inputs.outputs.run_id }}"
           git -C "$RUNNER_TEMP/frozen-forecast-branch" push origin HEAD:"$FROZEN_BRANCH"
 
-      - name: Report frozen forecast identity
-        run: |
-          jq '{run_id, target_season, target_gameweek, completed_at, frontend_schema_version, simulator: .model_lineage.xpoints_simulator.version, output_contract: .model_lineage.xpoints_simulator.model_contract_version}' frontend/public/data/run_manifest.json >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Run frontend lint
-        working-directory: frontend
-        run: npm run lint
-
-      - name: Build frontend
-        working-directory: frontend
-        run: npm run build
-
-      - name: Upload non-public publication audit
+      - name: Upload non-public reconstruction and publication audit
+        if: ${{ always() }}
         uses: actions/upload-artifact@v6
         with:
           name: publication-audit-${{ steps.inputs.outputs.run_id }}
-          path: reports/operational/publication_audit
-          if-no-files-found: error
+          path: |
+            reports/operational/
+            data/raw/fpl_api/${{ inputs.season }}/
+            data/normalized/${{ inputs.season }}/current_season_reconstruction.json
+            outputs/operational/failed/
+          if-no-files-found: warn
           retention-days: 14
 
       - name: Configure GitHub Pages

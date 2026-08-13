@@ -68,15 +68,45 @@ def normalize_event_live(
     players = _player_lookup(bootstrap_payload)
     fixtures = _fixture_lookup(fixtures_payload)
     team_fixtures = _team_fixture_lookup(fixtures.values(), gameweek=gameweek)
+    elements = payload.get("elements")
+    if not isinstance(elements, list):
+        raise ValueError("Official event-live payload must contain an elements list.")
+    element_ids = [element.get("id") for element in elements if isinstance(element, dict)]
+    if len(element_ids) != len(elements) or any(value is None for value in element_ids):
+        raise ValueError("Official event-live payload contains an invalid player element.")
+    if len(set(map(int, element_ids))) != len(element_ids):
+        raise ValueError("Official event-live payload contains duplicate player elements.")
     rows: list[dict[str, Any]] = []
-    for element in payload.get("elements", []):
+    for element in elements:
         player_id = int(element.get("id"))
+        if bootstrap_payload is not None and player_id not in players:
+            raise ValueError(f"Official event-live player {player_id} is absent from bootstrap-static.")
         player = players.get(player_id, {})
         event_stats = element.get("stats") if isinstance(element.get("stats"), dict) else {}
         explain = element.get("explain") or []
         if not explain:
             explain = _empty_explain_blocks(player, team_fixtures)
         for fixture_block in explain:
+            fixture_id = fixture_block.get("fixture")
+            if fixture_id is None or int(fixture_id) not in fixtures:
+                raise ValueError(
+                    f"Official event-live player {player_id} references unknown fixture {fixture_id}."
+                )
+            fixture = fixtures[int(fixture_id)]
+            if int(fixture.get("event") or 0) != int(gameweek):
+                raise ValueError(
+                    f"Official event-live fixture {fixture_id} belongs to gameweek "
+                    f"{fixture.get('event')}, not {gameweek}."
+                )
+            team_id = player.get("team_id")
+            if team_id is None or int(team_id) not in {
+                int(fixture.get("team_h") or -1),
+                int(fixture.get("team_a") or -1),
+            }:
+                raise ValueError(
+                    f"Official player {player_id} cannot be reconciled to fixture {fixture_id} "
+                    "from the current bootstrap snapshot."
+                )
             rows.append(
                 _normalised_fixture_row(
                     season=season,
@@ -84,7 +114,7 @@ def normalize_event_live(
                     element=element,
                     fixture_block=fixture_block,
                     player=player,
-                    fixture=fixtures.get(int(fixture_block["fixture"])) if fixture_block.get("fixture") is not None else None,
+                    fixture=fixture,
                     event_stats=event_stats,
                     retrieved_at=retrieved_at,
                     raw_snapshot_path=raw_snapshot_path,
@@ -94,7 +124,11 @@ def normalize_event_live(
     if frame.empty:
         return pd.DataFrame(columns=_output_columns())
     frame = frame[_output_columns()]
-    return frame.drop_duplicates(["season", "fixture_id", "player_uid"], keep="last")
+    frame = _mark_event_component_mismatches(frame)
+    key = ["season", "fixture_id", "player_uid"]
+    if frame.duplicated(key).any():
+        raise ValueError("Official event-live normalization produced duplicate player-fixture keys.")
+    return frame
 
 
 def audit_event_live_scoring(frame: pd.DataFrame) -> dict[str, pd.DataFrame]:
@@ -248,20 +282,33 @@ def _normalised_fixture_row(
         row["exact_start"] = bool(row["starts"])
     else:
         row["starts"] = pd.NA
-        unresolved = sorted(
-            column
-            for column in VALUE_COMPONENTS
-            if _to_number(event_stats.get(column), default=0) != _to_number(row.get(column), default=0)
-        )
-        if unresolved:
-            row["unresolved_source_limitation"] = True
-            row["unresolved_reason"] = "event_totals_not_fixture_assignable:" + ",".join(unresolved)
     row["reconstructed_points"] = sum(
         _to_number(row[f"points_{column}"], default=0) + _to_number(row[f"points_modification_{column}"], default=0)
         for column in POINT_COMPONENTS
     )
     row["total_points"] = row["reconstructed_points"]
     return row
+
+
+def _mark_event_component_mismatches(frame: pd.DataFrame) -> pd.DataFrame:
+    output = frame.copy()
+    for _, group in output.groupby(["season", "gameweek", "player_id"], sort=False):
+        if int(group["fixture_count_for_player_event"].max()) <= 1:
+            continue
+        mismatched = [
+            column
+            for column in VALUE_COMPONENTS
+            if _to_number(group[f"event_{column}"].iloc[0], default=0)
+            != _to_number(pd.to_numeric(group[column], errors="coerce").fillna(0).sum(), default=0)
+        ]
+        if mismatched:
+            output.loc[group.index, "unresolved_source_limitation"] = True
+            reason = "event_totals_not_fixture_reconciled:" + ",".join(sorted(mismatched))
+            existing = output.loc[group.index, "unresolved_reason"].fillna("").astype(str)
+            output.loc[group.index, "unresolved_reason"] = existing.map(
+                lambda value: ";".join(part for part in (value, reason) if part)
+            )
+    return output
 
 
 def _event_totals(frame: pd.DataFrame) -> pd.DataFrame:
@@ -338,7 +385,11 @@ def _player_lookup(bootstrap_payload: dict[str, Any] | None) -> dict[int, dict[s
         int(team["id"]): f"team_{str(team.get('name') or team.get('short_name') or team['id']).lower().replace(' ', '_')}"
         for team in bootstrap_payload.get("teams", [])
     }
-    for element in bootstrap_payload.get("elements", []):
+    elements = bootstrap_payload.get("elements", [])
+    ids = [int(element["id"]) for element in elements if element.get("id") is not None]
+    if len(ids) != len(elements) or len(set(ids)) != len(ids):
+        raise ValueError("bootstrap-static contains missing or duplicate player IDs.")
+    for element in elements:
         player_id = int(element["id"])
         element_type = int(element.get("element_type", 0) or 0)
         player_code = element.get("code")
@@ -356,7 +407,11 @@ def _player_lookup(bootstrap_payload: dict[str, Any] | None) -> dict[int, dict[s
 def _fixture_lookup(fixtures_payload: Iterable[dict[str, Any]] | None) -> dict[int, dict[str, Any]]:
     if fixtures_payload is None:
         return {}
-    return {int(fixture["id"]): fixture for fixture in fixtures_payload if fixture.get("id") is not None}
+    fixtures = list(fixtures_payload)
+    ids = [int(fixture["id"]) for fixture in fixtures if fixture.get("id") is not None]
+    if len(ids) != len(fixtures) or len(set(ids)) != len(ids):
+        raise ValueError("Official fixtures contain missing or duplicate fixture IDs.")
+    return {int(fixture["id"]): fixture for fixture in fixtures}
 
 
 def _team_fixture_lookup(fixtures: Iterable[dict[str, Any]], *, gameweek: int) -> dict[int, list[dict[str, Any]]]:

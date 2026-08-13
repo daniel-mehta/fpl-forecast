@@ -19,6 +19,7 @@ from fpl_forecast.operations.publication_pipeline import (
     run_official_publication_forecast,
     validate_publication_candidate,
 )
+from fpl_forecast.operations.current_panel import CurrentSeasonReconstruction
 from fpl_forecast.operations.publication import publish_failure, publish_success
 from fpl_forecast.operations.orchestrator import require_clean_source_state
 
@@ -57,7 +58,7 @@ def test_prepare_publication_reconstructs_from_empty_directories(monkeypatch, tm
         def __init__(self, *, raw_dir):
             assert raw_dir == raw_fpl
 
-        def snapshot_current(self, *, season, refresh, offline):
+        def snapshot_current(self, *, season, refresh, offline, extra_metadata=None):
             recorded.append(f"current:{season}:{refresh}:{offline}")
 
     def fake_normalize_history(*, season, raw_dir, normalized_dir):
@@ -153,7 +154,7 @@ def test_prepare_publication_fails_when_historical_source_is_missing(monkeypatch
         )
 
 
-def test_phase9b2a_preparation_fails_closed_beyond_gw1(monkeypatch, tmp_path) -> None:
+def test_preparation_reconstructs_completed_current_season_beyond_gw1(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(
         "fpl_forecast.operations.publication_pipeline.resolve_target_gameweek",
         lambda **kwargs: TargetGameweekResolution(
@@ -164,10 +165,6 @@ def test_phase9b2a_preparation_fails_closed_beyond_gw1(monkeypatch, tmp_path) ->
             method="validated_workflow_input",
             prior_events_verified=1,
         ),
-    )
-    monkeypatch.setattr(
-        "fpl_forecast.operations.publication_pipeline._snapshot_source_hashes",
-        lambda *args, **kwargs: {"bootstrap_static": "a" * 64, "fixtures": "b" * 64},
     )
     monkeypatch.setattr(
         "fpl_forecast.operations.publication_pipeline.VaastavIngestor",
@@ -205,17 +202,49 @@ def test_phase9b2a_preparation_fails_closed_beyond_gw1(monkeypatch, tmp_path) ->
             status=SimpleNamespace(state=SimpleNamespace(value="READY_TO_REFRESH"), reason="ready")
         ),
     )
+    manifest = tmp_path / "normalized" / "2026-27" / "current_season_reconstruction.json"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text("{}", encoding="utf-8")
+    reconstructed: dict[str, object] = {}
 
-    with pytest.raises(PublicationError, match="limited to GW1"):
-        prepare_publication_data(
-            season="2026-27",
-            requested_gameweek=2,
-            historical_seasons=("2025-26",),
-            raw_fpl_dir=tmp_path / "fpl",
-            raw_vaastav_dir=tmp_path / "history",
-            normalized_dir=tmp_path / "normalized",
-            now=NOW,
+    def fake_reconstruct(**kwargs):
+        reconstructed.update(kwargs)
+        return CurrentSeasonReconstruction(
+            player_history_path=None,
+            team_history_path=None,
+            manifest_path=manifest,
+            player_rows=0,
+            team_rows=0,
+            event_count=1,
+            blank_events=(),
+            source_hashes={
+                "bootstrap_static": "a" * 64,
+                "fixtures": "b" * 64,
+                "event_live_1": "c" * 64,
+            },
         )
+
+    monkeypatch.setattr(
+        "fpl_forecast.operations.publication_pipeline.reconstruct_completed_current_season",
+        fake_reconstruct,
+    )
+
+    prepared = prepare_publication_data(
+        season="2026-27",
+        requested_gameweek=2,
+        historical_seasons=("2025-26",),
+        raw_fpl_dir=tmp_path / "fpl",
+        raw_vaastav_dir=tmp_path / "history",
+        normalized_dir=tmp_path / "normalized",
+        now=NOW,
+        run_id="official_gw2_test",
+    )
+
+    assert prepared.target.gameweek == 2
+    assert prepared.reconstructed_events == 1
+    assert prepared.source_hashes["event_live_1"] == "c" * 64
+    assert reconstructed["target_gameweek"] == 2
+    assert reconstructed["run_id"] == "official_gw2_test"
 
 
 def test_target_gameweek_rejects_completed_or_past_event() -> None:

@@ -93,12 +93,17 @@ def run_mock_gw1_to_gw2_transition(
         "completed_gw1_available_at": available_at.isoformat(),
         "gw2_run_id": gw2_run_id,
         "gw2_published": published.status.state.value,
+        "gw2_publication_reason": published.status.reason,
+        "gw2_publication_warning": published.status.warning,
         "gw2_projection_rows": _csv_rows(Path(published.run_dir) / "player_gameweek_projections.csv") if published.run_dir else 0,
         "gw2_optimized_squad_rows": _csv_rows(Path(published.run_dir) / "optimized_squad.csv") if published.run_dir else 0,
         "completed_rows_entered_gw2_history": int(len(completed_players)),
         "max_completed_source_available_time": str(completed_players["source_available_time"].max()),
         "gw2_targets_absent_from_inputs": True,
         "repeated_unchanged_run_no_op": bool(no_op.no_op),
+        "repeated_run_state": no_op.status.state.value,
+        "repeated_run_reason": no_op.status.reason,
+        "repeated_run_warning": no_op.status.warning,
         "injected_validation_failure_state": failed.status.state.value,
         "failure_preserved_latest": latest_before_failure == latest_after_failure,
     }
@@ -114,7 +119,10 @@ def run_mock_gw1_to_gw2_transition(
 
 
 def _mock_completed_players(result: OperationalModelChainResult, *, available_at: pd.Timestamp) -> pd.DataFrame:
-    minutes = result.minutes_predictions.loc[result.minutes_predictions["minutes_variant"].eq("M3")].copy()
+    minutes = result.minutes_predictions.loc[
+        result.minutes_predictions["minutes_variant"].eq("M3")
+        & result.minutes_predictions["stable_fixture_uid"].notna()
+    ].copy()
     candidates = result.decision_candidates.loc[
         result.decision_candidates["model_name"].eq("X2_TEAM_CONSTRAINED_SIM_M3")
     ].copy()

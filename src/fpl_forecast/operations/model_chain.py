@@ -76,6 +76,7 @@ def run_operational_model_chain(
             normalized_dir=normalized_dir,
             price_variant=price_variant,
             team_identity=official_context["team_identity"],
+            completed_player_fixtures=completed_player_fixtures,
         )
     else:
         target_fixtures = _target_fixtures(
@@ -105,8 +106,12 @@ def run_operational_model_chain(
     minutes_config = load_minutes_config()
     minutes_train = load_minutes_frame(seasons=training_seasons, normalized_dir=normalized_dir)
     if completed_player_fixtures is not None and not completed_player_fixtures.empty:
+        completed_minutes = _completed_minutes_training_frame(
+            completed_player_fixtures,
+            historical=minutes_train,
+        )
         minutes_train = pd.concat(
-            [minutes_train, _completed_minutes_training_frame(completed_player_fixtures)],
+            [minutes_train, completed_minutes],
             ignore_index=True,
         )
     target_minutes_frame = _target_minutes_frame(target_rows, minutes_train)
@@ -143,6 +148,14 @@ def run_operational_model_chain(
         xpoints_predictions,
         draws,
         key_columns=["season", "gameweek", "player_uid", "model_name", "pre_deadline_population"],
+    )
+    gameweek_predictions, minutes_predictions = _add_blank_target_predictions(
+        gameweek_predictions,
+        minutes_predictions,
+        target_players=target_players,
+        season=season,
+        target_gameweek=target_gameweek,
+        draw_count=xpoints_config.draw_count,
     )
     gameweek_predictions = _add_gameweek_fixture_metadata(gameweek_predictions, target_rows)
     decision_candidates = _decision_candidates(gameweek_predictions, target_players, minutes_predictions)
@@ -586,6 +599,7 @@ def _official_target_players(
     normalized_dir: Path | str,
     price_variant: str,
     team_identity: pd.DataFrame,
+    completed_player_fixtures: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     season_dir = Path(normalized_dir) / season
     players = pd.read_parquet(season_dir / "current_players.parquet")
@@ -631,12 +645,26 @@ def _official_target_players(
     for optional_column in ("chance_of_playing_next_round", "chance_of_playing_this_round"):
         if optional_column not in frame.columns:
             frame[optional_column] = pd.NA
-    frame["cold_start_no_history"] = frame["historical_player_team_uid"].isna()
+    current_seen: set[str] = set()
+    if completed_player_fixtures is not None and not completed_player_fixtures.empty:
+        current_seen = set(
+            completed_player_fixtures.loc[
+                completed_player_fixtures["entity_type"].eq("player"), "player_uid"
+            ].dropna().astype(str)
+        )
+    frame["current_season_history"] = frame["player_uid"].isin(current_seen)
+    frame["cold_start_no_history"] = (
+        frame["historical_player_team_uid"].isna() & ~frame["current_season_history"]
+    )
     frame["fallback_flag"] = frame["cold_start_no_history"]
     frame["transferred_player"] = frame["historical_player_team_uid"].notna() & frame["historical_player_team_uid"].ne(frame["player_team_uid"])
     frame["position_change"] = frame["historical_fpl_position"].notna() & frame["historical_fpl_position"].ne(frame["fpl_position"])
     frame["lineage_note"] = "returning_player"
     frame.loc[frame["cold_start_no_history"], "lineage_note"] = "new_player_cold_start"
+    frame.loc[
+        frame["historical_player_team_uid"].isna() & frame["current_season_history"],
+        "lineage_note",
+    ] = "current_season_history_only"
     frame.loc[frame["transferred_player"], "lineage_note"] = "transferred_player"
     frame.loc[frame["position_change"], "lineage_note"] = "position_change"
     if price_variant == "premium_target":
@@ -656,6 +684,7 @@ def _official_target_players(
             "fpl_position",
             "historical_fpl_position",
             "cold_start_no_history",
+            "current_season_history",
             "transferred_player",
             "position_change",
             "lineage_note",
@@ -773,6 +802,18 @@ def _official_snapshot_metadata(season_dir: Path) -> dict[str, dict[str, Any]]:
             item["sha256"] = meta.get("sha256")
             item["source_url"] = meta.get("source_url")
         metadata[endpoint] = item
+    reconstruction_path = season_dir / "current_season_reconstruction.json"
+    if reconstruction_path.exists():
+        reconstruction = json.loads(reconstruction_path.read_text(encoding="utf-8"))
+        for endpoint, item in (reconstruction.get("official_snapshots") or {}).items():
+            metadata[endpoint] = {
+                "retrieved_at": item.get("retrieved_at"),
+                "sha256": item.get("sha256"),
+                "source_url": item.get("endpoint"),
+                "raw_snapshot_file": "/".join(
+                    Path(str(item.get("raw_snapshot_path") or "")).parts[-4:]
+                ),
+            }
     return metadata
 
 
@@ -798,6 +839,12 @@ def _official_lineage(
     identity = pd.read_parquet(current_identity_path) if current_identity_path.exists() else pd.DataFrame()
     cold_start_count = int(target_players["cold_start_no_history"].astype(bool).sum())
     neutral_count = int(team_identity["neutral_team_strength_fallback"].astype(bool).sum())
+    reconstruction_path = Path(normalized_dir) / str(target_players["season"].iloc[0]) / "current_season_reconstruction.json"
+    reconstruction = (
+        json.loads(reconstruction_path.read_text(encoding="utf-8"))
+        if reconstruction_path.exists()
+        else {}
+    )
     return {
         "official_deadline": official_context["deadline"].isoformat(),
         "official_snapshots": official_context["snapshot_metadata"],
@@ -818,6 +865,10 @@ def _official_lineage(
         "player_lineage_note_counts": target_players["lineage_note"].value_counts().to_dict(),
         "mock_markers_present": False,
         "decision_candidate_count": int(len(decision_candidates)),
+        "reconstructed_current_season_events": int(len(reconstruction.get("events") or [])),
+        "reconstructed_blank_events": reconstruction.get("blank_events") or [],
+        "current_season_temporal_policy": reconstruction.get("temporal_policy"),
+        "current_season_source_available_policy": reconstruction.get("source_available_policy"),
     }
 
 
@@ -991,6 +1042,80 @@ def _add_gameweek_fixture_metadata(gameweek: pd.DataFrame, target_rows: pd.DataF
             output[column] = output[column].fillna(value)
     output["fixture_count"] = pd.to_numeric(output["fixture_count"], errors="coerce").fillna(0).astype(int)
     return output
+
+
+def _add_blank_target_predictions(
+    gameweek: pd.DataFrame,
+    minutes: pd.DataFrame,
+    *,
+    target_players: pd.DataFrame,
+    season: str,
+    target_gameweek: int,
+    draw_count: int,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    predicted = set(gameweek["player_uid"].astype(str)) if not gameweek.empty else set()
+    blank = target_players.loc[~target_players["player_uid"].astype(str).isin(predicted)].copy()
+    if blank.empty:
+        return gameweek, minutes
+    xpoints_rows: list[dict[str, Any]] = []
+    minute_rows: list[dict[str, Any]] = []
+    pairs = (
+        ("M3", "M3_EWMA_MINUTES", "X2_TEAM_CONSTRAINED_SIM_M3"),
+        ("M5", "M5_REGULARIZED_STATE_SOFTMAX", "X2_TEAM_CONSTRAINED_SIM_M5"),
+        ("M7", "M7_HIERARCHICAL_AVAILABILITY_STATE", "X2_TEAM_CONSTRAINED_SIM_M7"),
+    )
+    for player in blank.itertuples(index=False):
+        population = (
+            "cold_start_no_history" if bool(player.cold_start_no_history) else "pre_deadline_history_active"
+        )
+        for minutes_variant, minutes_model, xpoints_model in pairs:
+            minute_rows.append(
+                {
+                    "season": season,
+                    "gameweek": target_gameweek,
+                    "player_uid": player.player_uid,
+                    "player_name": player.player_name,
+                    "player_team_uid": player.player_team_uid,
+                    "fpl_position": player.fpl_position,
+                    "model_name": minutes_model,
+                    "minutes_variant": minutes_variant,
+                    "predicted_minutes": 0.0,
+                    "p_appearance": 0.0,
+                    "p_start": 0.0,
+                    "p_reached_60": 0.0,
+                }
+            )
+            xpoints_rows.append(
+                {
+                    "season": season,
+                    "gameweek": target_gameweek,
+                    "player_uid": player.player_uid,
+                    "model_name": xpoints_model,
+                    "pre_deadline_population": population,
+                    "expected_points": 0.0,
+                    "simulated_expected_points": 0.0,
+                    "expected_points_unconditional": 0.0,
+                    "raw_expected_points_given_appearance": 0.0,
+                    "expected_points_given_appearance": 0.0,
+                    "points_std": 0.0,
+                    "points_p10": 0.0,
+                    "points_p25": 0.0,
+                    "points_p50": 0.0,
+                    "points_p75": 0.0,
+                    "points_p90": 0.0,
+                    "prob_points_eq_0": 1.0,
+                    "prob_points_ge_1": 0.0,
+                    "prob_points_ge_5": 0.0,
+                    "prob_points_ge_10": 0.0,
+                    "simulation_draw_count": draw_count,
+                    "conditional_estimate_source": "zero_fixture_rule",
+                    "conditional_coherence_error": 0.0,
+                }
+            )
+    return (
+        pd.concat([gameweek, pd.DataFrame(xpoints_rows)], ignore_index=True, sort=False),
+        pd.concat([minutes, pd.DataFrame(minute_rows)], ignore_index=True, sort=False),
+    )
 
 
 def _gameweek_fixture_metadata(target_rows: pd.DataFrame) -> pd.DataFrame:
@@ -1257,7 +1382,11 @@ def _validate_completed_inputs(
             raise ValueError(f"{name} include unresolved source limitations.")
 
 
-def _completed_minutes_training_frame(frame: pd.DataFrame) -> pd.DataFrame:
+def _completed_minutes_training_frame(
+    frame: pd.DataFrame,
+    *,
+    historical: pd.DataFrame | None = None,
+) -> pd.DataFrame:
     output = frame.copy()
     output["player_team_uid"] = output.get("player_team_uid", output.get("team_uid"))
     output["opponent_team_uid"] = output.get("opponent_team_uid", output.get("opponent_uid"))
@@ -1303,13 +1432,22 @@ def _completed_minutes_training_frame(frame: pd.DataFrame) -> pd.DataFrame:
         "days_since_last_source",
     ]:
         output[column] = 0.0
-    output["lag_source_available_time"] = pd.NaT
+    output["lag_source_available_time"] = pd.Series(
+        pd.NaT,
+        index=output.index,
+        dtype="datetime64[ns, UTC]",
+    )
     output["prior_seen_before"] = False
-    output["max_feature_source_available_time"] = pd.Timestamp("1900-01-01T00:00:00Z")
+    output["max_feature_source_available_time"] = pd.Series(
+        pd.Timestamp("1900-01-01T00:00:00Z"),
+        index=output.index,
+        dtype="datetime64[ns, UTC]",
+    )
     output["transferred_player"] = output.get("lineage_note", "").eq("transferred_player")
     output["position_change"] = output.get("lineage_note", "").eq("position_change")
-    output["pre_deadline_history_active"] = output["actual_appearance"].astype(bool)
-    output["cold_start_no_history"] = False
+    output = _populate_completed_minutes_features(output, historical=historical)
+    output["pre_deadline_history_active"] = output["prior_seen_before"].astype(bool)
+    output["cold_start_no_history"] = ~output["prior_seen_before"].astype(bool)
     output["actual_appearances_diagnostic"] = output["actual_appearance"].astype(bool)
     output["evaluation_population"] = np.where(output["actual_appearance"].astype(bool), "pre_deadline_history_active", "cold_start_no_history")
     output["primary_data_quality_population"] = "all_observed_players"
@@ -1317,6 +1455,63 @@ def _completed_minutes_training_frame(frame: pd.DataFrame) -> pd.DataFrame:
     output["source_version"] = output.get("source_version", "event_live")
     output["raw_snapshot_path"] = output.get("raw_snapshot_path", "")
     return output
+
+
+def _populate_completed_minutes_features(
+    output: pd.DataFrame,
+    *,
+    historical: pd.DataFrame | None,
+) -> pd.DataFrame:
+    current = output.copy()
+    pool_frames = [current]
+    if historical is not None and not historical.empty:
+        pool_frames.insert(0, historical.copy())
+    pool = pd.concat(pool_frames, ignore_index=True, sort=False)
+    pool["source_available_time"] = pd.to_datetime(pool["source_available_time"], utc=True)
+    pool["actual_minutes"] = pd.to_numeric(pool["actual_minutes"], errors="coerce").fillna(0)
+    pool["actual_start"] = pd.to_numeric(pool.get("actual_start", 0), errors="coerce").fillna(0)
+    fallback = pd.Timestamp("1900-01-01T00:00:00Z")
+    for index, row in current.iterrows():
+        cutoff = pd.Timestamp(row["information_cutoff"])
+        cutoff = cutoff.tz_localize("UTC") if cutoff.tzinfo is None else cutoff.tz_convert("UTC")
+        available = pool.loc[
+            pool["player_uid"].eq(row["player_uid"])
+            & pool["source_available_time"].lt(cutoff)
+        ].sort_values(["source_available_time", "kickoff_time", "fixture_key"])
+        minutes = available["actual_minutes"]
+        starts = available["actual_start"]
+        for window in (1, 3, 5, 10):
+            current.loc[index, f"lag{window}_minutes_mean"] = (
+                float(minutes.tail(window).mean()) if not available.empty else 0.0
+            )
+            current.loc[index, f"lag{window}_appearance_rate"] = (
+                float(minutes.tail(window).gt(0).mean()) if not available.empty else 0.0
+            )
+            current.loc[index, f"lag{window}_start_rate"] = (
+                float(starts.tail(window).mean()) if not available.empty else 0.0
+            )
+        same_season = available.loc[available["season"].astype(str).eq(str(row["season"]))]
+        prior_seasons = available.loc[~available["season"].astype(str).eq(str(row["season"]))]
+        current.loc[index, "season_minutes_before"] = float(same_season["actual_minutes"].sum())
+        current.loc[index, "season_appearance_before"] = float(same_season["actual_minutes"].gt(0).sum())
+        current.loc[index, "season_starts_before"] = float(same_season["actual_start"].sum())
+        current.loc[index, "prior_season_minutes"] = float(prior_seasons["actual_minutes"].sum())
+        current.loc[index, "prior_season_appearances"] = float(
+            prior_seasons["actual_minutes"].gt(0).sum()
+        )
+        current.loc[index, "prior_seen_before"] = not available.empty
+        current.loc[index, "lag_source_available_time"] = (
+            available["source_available_time"].max() if not available.empty else pd.NaT
+        )
+        current.loc[index, "max_feature_source_available_time"] = (
+            available["source_available_time"].max() if not available.empty else fallback
+        )
+        current.loc[index, "days_since_last_source"] = (
+            (cutoff - available["source_available_time"].max()).total_seconds() / 86400
+            if not available.empty
+            else 999.0
+        )
+    return current
 
 
 def _completed_xpoints_training_frame(frame: pd.DataFrame) -> pd.DataFrame:

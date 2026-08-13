@@ -1,8 +1,7 @@
 # Manual Publication And Recovery
 
-This runbook covers the manually triggered official GW1 publication workflow. It does not bypass
-validation gates, support scheduled forecast publication, or support clean-runner publication after
-GW1.
+This runbook covers manually triggered official GW1 and later-gameweek publication. It does not
+bypass validation gates or support scheduled forecast publication.
 
 ## Publish An Official Forecast
 
@@ -12,7 +11,7 @@ GW1.
 3. Select **Run workflow** on the reviewed `main` commit.
 4. Set `season` to the official season, currently `2026-27`.
 5. Leave `target_gameweek` empty for deterministic resolution, or enter the reviewed official
-   gameweek. Phase 9B2A rejects values after GW1.
+   gameweek as a plain integer such as `2`.
 6. Leave `run_id` empty for the workflow-generated identifier unless a stable review identifier is
    needed.
 7. Set `confirm_official_publication` to `yes`.
@@ -20,9 +19,10 @@ GW1.
    build step before reviewing the deployment job.
 
 The workflow reconstructs the four pinned historical seasons, downloads fresh official FPL inputs,
-resolves the target gameweek, runs the reviewed T2/M7/X2/D2 chain, applies the publication gates,
-synchronizes seven allowlisted public artifacts, builds Vite, and deploys only after the build job
-succeeds.
+resolves the target gameweek, reconstructs every required completed current-season event at
+player-fixture and fixture grain, runs the reviewed T2/M7/X2/D2 chain, applies the publication gates,
+synchronizes seven allowlisted public artifacts, builds Vite, freezes the validated bundle, and
+deploys only after the build job succeeds.
 
 ## Review The Publication
 
@@ -33,7 +33,9 @@ expires. Confirm:
 - requested and inferred seasons match;
 - target gameweek and deadline match official metadata;
 - source mode is `official_current_season`;
-- bootstrap and fixture retrieval times and SHA-256 hashes are recorded;
+- bootstrap, fixture, and required event-live retrieval times and SHA-256 hashes are recorded;
+- each current-season row traces to archived event-live, fixture, and bootstrap snapshots;
+- every included source has `source_available_time < information_cutoff`;
 - the pinned historical source revision is recorded;
 - all publication gates passed;
 - model lineage identifies T2, M7, X2, and D2;
@@ -92,6 +94,20 @@ Retain the previous deployment. Reproduce the same run locally from clean inputs
 lineage and failing stage, and correct the general implementation or input problem. Do not add
 player-specific exceptions.
 
+### A Prior Event Is Incomplete
+
+Wait for the official event to be finished and data-checked and for every fixture still assigned to
+that event to be both `finished` and `finished_provisional`. Do not discard an unfinished or
+postponed fixture to unlock publication. If the official service later reassigns the fixture to
+another event, use the new complete official metadata in a fresh run.
+
+### Event-Live Reconstruction Fails
+
+Inspect the archived payload and reconstruction manifest. Missing event-live data, fixture/event
+conflicts, duplicate player-fixture keys, unresolved player/team identities, aggregate-versus-explain
+point mismatches, and sources retrieved at or after the target deadline all block publication. Do
+not infer ambiguous raw statistics from awarded points or backdate availability.
+
 ### Frontend Sanitization Fails
 
 Inspect only the staged public inventory. Remove the private path, secret-like value, raw metadata,
@@ -125,7 +141,10 @@ CSV files.
 
 ## GW2 And Later
 
-Phase 9B2A supports the first official GW1 publication only. Clean-runner reconstruction of official
-current-season `event-live` outcomes is not implemented or verified. The workflow therefore fails
-closed for GW2 and later. Scheduling remains disabled. Implement and verify event-live
-reconstruction before claiming or enabling later-gameweek publication.
+The manual workflow supports GW2 and later by using official current-season results only for events
+strictly earlier than the target. Normal and double gameweeks are reconstructed at player-fixture
+grain. Teams without a target fixture receive explicit zero-fixture projections. A completed prior
+blank event is recorded with zero rows; a globally blank target is rejected because the current
+optimizer publication contract does not support an all-zero event. Incomplete or postponed prior
+fixtures block the run while the last successful forecast remains unchanged. Scheduling remains
+disabled until a real manual GW2 publication has been reviewed successfully.

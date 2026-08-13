@@ -6,7 +6,14 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from fpl_forecast.operations.model_chain import _add_gameweek_fixture_metadata, _gameweek_fixture_metadata, run_operational_model_chain
+from fpl_forecast.operations.model_chain import (
+    _add_blank_target_predictions,
+    _add_gameweek_fixture_metadata,
+    _gameweek_fixture_metadata,
+    _official_current_context,
+    _official_target_players,
+    run_operational_model_chain,
+)
 from fpl_forecast.operations.training_seasons import resolve_historical_training_seasons
 
 
@@ -187,6 +194,90 @@ def test_gameweek_fixture_metadata_handles_missing_optional_opponent_fields() ->
 
     assert metadata.iloc[0]["fixture_count"] == 1
     assert metadata.iloc[0]["opponent_display"] == "No fixture"
+
+
+def test_blank_team_players_receive_explicit_zero_fixture_predictions() -> None:
+    players = pd.DataFrame(
+        [
+            {
+                "player_uid": "player_fixture",
+                "player_name": "Fixture",
+                "player_team_uid": "team_a",
+                "fpl_position": "MID",
+                "cold_start_no_history": False,
+            },
+            {
+                "player_uid": "player_blank",
+                "player_name": "Blank",
+                "player_team_uid": "team_blank",
+                "fpl_position": "DEF",
+                "cold_start_no_history": False,
+            },
+        ]
+    )
+    gameweek = pd.DataFrame(
+        [
+            {
+                "season": "2026-27",
+                "gameweek": 2,
+                "player_uid": "player_fixture",
+                "model_name": "X2_TEAM_CONSTRAINED_SIM_M7",
+                "expected_points": 4.0,
+            }
+        ]
+    )
+
+    predicted, minutes = _add_blank_target_predictions(
+        gameweek,
+        pd.DataFrame(),
+        target_players=players,
+        season="2026-27",
+        target_gameweek=2,
+        draw_count=10_000,
+    )
+    blank = predicted.loc[
+        predicted["player_uid"].eq("player_blank")
+        & predicted["model_name"].eq("X2_TEAM_CONSTRAINED_SIM_M7")
+    ].iloc[0]
+
+    assert blank["expected_points"] == 0
+    assert blank["prob_points_eq_0"] == 1
+    assert set(minutes.loc[minutes["player_uid"].eq("player_blank"), "minutes_variant"]) == {
+        "M3",
+        "M5",
+        "M7",
+    }
+
+
+def test_current_season_history_ends_new_player_cold_start(tmp_path, phase8_normalized_dir) -> None:
+    normalized_dir = _copy_phase8_normalized(tmp_path, phase8_normalized_dir)
+    _write_official_current_tables(normalized_dir)
+    context = _official_current_context(
+        "2026-27",
+        normalized_dir=normalized_dir,
+        target_gameweek=1,
+    )
+    before = _official_target_players(
+        "2026-27",
+        normalized_dir=normalized_dir,
+        price_variant="base",
+        team_identity=context["team_identity"],
+    )
+    cold = before.loc[before["cold_start_no_history"].astype(bool)].iloc[0]
+
+    after = _official_target_players(
+        "2026-27",
+        normalized_dir=normalized_dir,
+        price_variant="base",
+        team_identity=context["team_identity"],
+        completed_player_fixtures=pd.DataFrame(
+            [{"entity_type": "player", "player_uid": cold["player_uid"]}]
+        ),
+    )
+    updated = after.loc[after["player_uid"].eq(cold["player_uid"])].iloc[0]
+
+    assert not bool(updated["cold_start_no_history"])
+    assert updated["lineage_note"] == "current_season_history_only"
 
 
 def _copy_phase8_normalized(tmp_path: Path, source: Path) -> Path:

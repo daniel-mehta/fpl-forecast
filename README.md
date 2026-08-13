@@ -12,9 +12,11 @@ Fantasy Premier League.
 
 ## Status
 The first official-data 2026-27 GW1 forecast is published through the manually triggered,
-clean-runner workflow. Launch verification covers the public artifacts and operational lineage, not
-predictive superiority: live-season forecast performance has not yet been established, scheduling
-is disabled, and clean-runner publication after GW1 remains blocked. The promoted preseason
+clean-runner workflow. The reviewed implementation now reconstructs completed current-season
+results for manual GW2-and-later publication, but no real GW2 publication has yet validated that
+path operationally. Launch verification covers the public artifacts and operational lineage, not
+predictive superiority: live-season forecast performance has not yet been established and
+scheduling remains disabled. The promoted preseason
 implementation is commit `365f0009a4e12397555c71cc950c7b4ef80c3ca4`.
 
 The currently deployed dashboard contains the first verified official-data GW1 publication. The
@@ -239,10 +241,12 @@ GitHub Pages` automatically deploys qualifying frontend-only pushes to `main`, o
 manually in Actions. It retrieves the exact frozen, sanitized official forecast bundle and fails if
 that bundle cannot be retrieved and validated; it never generates a forecast, runs Python, or uses
 sample data. Backend or forecasting changes still require `Publish official FPL forecast`, which
-reconstructs the pinned historical inputs, retrieves fresh official inputs, runs the verified
+reconstructs the pinned historical inputs, retrieves fresh official `bootstrap-static/`,
+`fixtures/`, and required prior `event/{gameweek}/live/` inputs, runs the verified
 forecast chain, freezes the sanitized public bundle, and then deploys it. Ordinary UI work therefore
-does not require backend forecast generation. Phase 9B2A is limited to GW1 until clean-runner
-event-live reconstruction is added.
+does not require backend forecast generation. For GW2 and later, every prior official event must be
+finished and data-checked, every assigned fixture must be finished and provisional, and every raw
+source retrieval must precede the target deadline.
 
 Local Python dashboard support from Phase 8 still exists:
 

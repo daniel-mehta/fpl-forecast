@@ -92,6 +92,7 @@ class FPLApiClient:
         url: str,
         refresh: bool = False,
         offline: bool = False,
+        extra_metadata: dict[str, Any] | None = None,
     ) -> SnapshotRecord:
         cached_path = latest_snapshot_path(
             self.raw_dir,
@@ -134,6 +135,7 @@ class FPLApiClient:
             source="fpl_api",
             source_version=None,
             content_type="json",
+            extra_metadata=extra_metadata,
         )
 
     def snapshot_current(
@@ -142,6 +144,7 @@ class FPLApiClient:
         season: str,
         refresh: bool = False,
         offline: bool = False,
+        extra_metadata: dict[str, Any] | None = None,
     ) -> list[SnapshotRecord]:
         cached_records = self._cached_current_records(season=season)
         if len(cached_records) == 2 and not refresh:
@@ -187,7 +190,7 @@ class FPLApiClient:
         except SeasonIdentityError as exc:
             raise FPLApiError(f"FPL current snapshots failed season identity checks: {exc}") from exc
 
-        season_metadata = season_identity.as_metadata()
+        season_metadata = {**season_identity.as_metadata(), **(extra_metadata or {})}
         return [
             write_raw_snapshot(
                 self.raw_dir,
@@ -242,6 +245,7 @@ class FPLApiClient:
         gameweek: int,
         refresh: bool = False,
         offline: bool = False,
+        extra_metadata: dict[str, Any] | None = None,
     ) -> SnapshotRecord:
         return self.fetch_endpoint(
             season=season,
@@ -249,6 +253,7 @@ class FPLApiClient:
             url=self.event_live_url(gameweek),
             refresh=refresh,
             offline=offline,
+            extra_metadata=extra_metadata,
         )
 
     def _get_json_bytes(self, url: str) -> tuple[bytes, int, httpx.Headers]:

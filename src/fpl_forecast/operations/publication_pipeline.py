@@ -6,7 +6,7 @@ import math
 import re
 import subprocess
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -21,7 +21,8 @@ from fpl_forecast.normalize.current import normalize_current
 from fpl_forecast.normalize.historical import normalize_historical
 from fpl_forecast.operations.config import load_operational_config
 from fpl_forecast.operations.launch import check_season_launch
-from fpl_forecast.operations.orchestrator import RefreshResult, refresh_operational
+from fpl_forecast.operations.current_panel import reconstruct_completed_current_season
+from fpl_forecast.operations.orchestrator import RefreshResult, _source_state, refresh_operational
 from fpl_forecast.panel.build import build_identities, build_panel
 from fpl_forecast.validation.data_quality import validate_all
 
@@ -68,6 +69,15 @@ class PublicationPreparation:
     stage_seconds: dict[str, float]
     launch_state: str
     source_hashes: dict[str, str]
+    run_id: str = "unassigned"
+    current_season_player_rows: int = 0
+    current_season_team_rows: int = 0
+    reconstructed_events: int = 0
+    blank_events: tuple[int, ...] = ()
+    player_history_path: str | None = None
+    team_history_path: str | None = None
+    reconstruction_manifest_path: str | None = None
+    source_state: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -91,6 +101,7 @@ def prepare_publication_data(
     normalized_dir: Path = NORMALIZED_DIR,
     refresh: bool = True,
     now: datetime | None = None,
+    run_id: str = "publication_preparation",
 ) -> PublicationPreparation:
     if not historical_seasons:
         raise PublicationError("Publication preparation requires at least one historical season.")
@@ -139,10 +150,18 @@ def prepare_publication_data(
     timings["phase2_and_validation"] = time.perf_counter() - started
 
     started = time.perf_counter()
+    source_state = _source_state()
     FPLApiClient(raw_dir=raw_fpl_dir).snapshot_current(
         season=season,
         refresh=refresh,
         offline=False,
+        extra_metadata={
+            "requested_target_gameweek": requested_gameweek,
+            "publication_run_id": run_id,
+            "git_commit": source_state.get("commit"),
+            "clean_source": not bool(source_state.get("dirty")),
+            "source_mode": "official_current_season",
+        },
     )
     normalize_current(
         season=season,
@@ -169,12 +188,25 @@ def prepare_publication_data(
         requested_gameweek=requested_gameweek,
         now=now,
     )
+    started = time.perf_counter()
     if target.gameweek > 1:
-        raise PublicationError(
-            "Phase 9B2A publication is limited to GW1. Later gameweeks require verified "
-            "event-live reconstruction of completed current-season results."
+        reconstruction = reconstruct_completed_current_season(
+            season=season,
+            target_gameweek=target.gameweek,
+            information_cutoff=target.deadline_time,
+            raw_fpl_dir=raw_fpl_dir,
+            normalized_dir=normalized_dir,
+            run_id=run_id,
+            requested_gameweek=requested_gameweek,
+            git_commit=source_state.get("commit"),
+            clean_source=not bool(source_state.get("dirty")),
+            refresh=refresh,
         )
-    source_hashes = _snapshot_source_hashes(raw_fpl_dir, season=season)
+        source_hashes = reconstruction.source_hashes
+    else:
+        reconstruction = None
+        source_hashes = _snapshot_source_hashes(raw_fpl_dir, season=season)
+    timings["current_season_reconstruction"] = time.perf_counter() - started
     return PublicationPreparation(
         season=season,
         historical_seasons=historical_seasons,
@@ -184,6 +216,23 @@ def prepare_publication_data(
         stage_seconds={key: round(value, 3) for key, value in timings.items()},
         launch_state=launch.status.state.value,
         source_hashes=source_hashes,
+        run_id=run_id,
+        current_season_player_rows=reconstruction.player_rows if reconstruction else 0,
+        current_season_team_rows=reconstruction.team_rows if reconstruction else 0,
+        reconstructed_events=reconstruction.event_count if reconstruction else 0,
+        blank_events=reconstruction.blank_events if reconstruction else (),
+        player_history_path=(
+            str(reconstruction.player_history_path)
+            if reconstruction and reconstruction.player_history_path
+            else None
+        ),
+        team_history_path=(
+            str(reconstruction.team_history_path)
+            if reconstruction and reconstruction.team_history_path
+            else None
+        ),
+        reconstruction_manifest_path=str(reconstruction.manifest_path) if reconstruction else None,
+        source_state=source_state,
     )
 
 
@@ -194,6 +243,16 @@ def run_official_publication_forecast(
     raw_fpl_dir: Path = RAW_FPL_API_DIR,
     normalized_dir: Path = NORMALIZED_DIR,
 ) -> RefreshResult:
+    if preparation.run_id not in {"unassigned", "publication_preparation", run_id}:
+        raise PublicationError(
+            f"Preparation run ID {preparation.run_id!r} does not match forecast run ID {run_id!r}."
+        )
+    completed_players = _read_optional_parquet(preparation.player_history_path)
+    completed_teams = _read_optional_parquet(preparation.team_history_path)
+    if len(completed_players) != preparation.current_season_player_rows:
+        raise PublicationError("Prepared current-season player row count changed before forecasting.")
+    if len(completed_teams) != preparation.current_season_team_rows:
+        raise PublicationError("Prepared current-season team row count changed before forecasting.")
     result = refresh_operational(
         season=preparation.season,
         offline=True,
@@ -204,6 +263,8 @@ def run_official_publication_forecast(
         normalized_dir=normalized_dir,
         raw_fpl_dir=raw_fpl_dir,
         authoritative_publication=True,
+        completed_player_fixtures=completed_players,
+        completed_team_fixtures=completed_teams,
     )
     if result.status.state.value != "SUCCEEDED" or result.run_dir is None:
         raise PublicationError(
@@ -268,7 +329,14 @@ def resolve_target_gameweek(
         )
     target_fixtures = fixtures.loc[pd.to_numeric(fixtures["gameweek"], errors="coerce").eq(gameweek)]
     if target_fixtures.empty:
-        raise PublicationError(f"Gameweek {gameweek} has no official fixtures.")
+        raise PublicationError(
+            f"Gameweek {gameweek} is a globally blank official event; the current model chain "
+            "does not support publishing a zero-fixture event."
+        )
+    target_started = target_fixtures.get("started", pd.Series(False, index=target_fixtures.index))
+    target_finished = target_fixtures["finished"].fillna(False).astype(bool)
+    if target_started.fillna(False).astype(bool).any() or target_finished.any():
+        raise PublicationError(f"Gameweek {gameweek} contains a started or finished target fixture.")
 
     prior = frame.loc[frame["gameweek"].lt(gameweek)]
     incomplete_prior = prior.loc[
@@ -407,6 +475,35 @@ def validate_publication_candidate(
             for endpoint, expected_hash in preparation.source_hashes.items()
         ),
     )
+    _gate(
+        gates,
+        "current_season_rows_match",
+        int(lineage.get("completed_player_fixture_rows_used") or 0)
+        == preparation.current_season_player_rows
+        and int(lineage.get("completed_team_fixture_rows_used") or 0)
+        == preparation.current_season_team_rows,
+    )
+    _gate(
+        gates,
+        "current_season_events_reconstructed",
+        int(lineage.get("reconstructed_current_season_events") or 0)
+        == preparation.reconstructed_events,
+    )
+    _gate(
+        gates,
+        "clean_preparation_source",
+        not preparation.source_state or preparation.source_state.get("dirty") is False,
+    )
+    manifest_source_state = manifest.get("source_state") or {}
+    _gate(
+        gates,
+        "preparation_forecast_source_match",
+        not preparation.source_state
+        or all(
+            preparation.source_state.get(key) == manifest_source_state.get(key)
+            for key in ("commit", "tracked_diff_sha256", "source_tree_sha256")
+        ),
+    )
     disclaimer = str(status.get("disclaimer") or freshness.get("disclaimer") or "")
     _gate(gates, "disclaimer_present", bool(disclaimer.strip()))
 
@@ -455,6 +552,13 @@ def validate_publication_candidate(
         "historical_source_revision": preparation.source_revision,
         "historical_rows": preparation.historical_rows,
         "source_hashes": preparation.source_hashes,
+        "current_season_reconstruction": {
+            "events": preparation.reconstructed_events,
+            "blank_events": list(preparation.blank_events),
+            "player_fixture_rows": preparation.current_season_player_rows,
+            "team_fixture_rows": preparation.current_season_team_rows,
+            "manifest_path": preparation.reconstruction_manifest_path,
+        },
         "model_lineage": {
             key: lineage.get(key)
             for key in (
@@ -497,7 +601,17 @@ def read_preparation(path: Path) -> PublicationPreparation:
     payload = _read_json(path)
     target = TargetGameweekResolution(**payload.pop("target"))
     payload["historical_seasons"] = tuple(payload["historical_seasons"])
+    payload["blank_events"] = tuple(payload.get("blank_events", ()))
     return PublicationPreparation(target=target, **payload)
+
+
+def _read_optional_parquet(path: str | None) -> pd.DataFrame:
+    if path is None:
+        return pd.DataFrame()
+    resolved = Path(path)
+    if not resolved.is_file():
+        raise PublicationError(f"Prepared current-season artifact is missing: {resolved}.")
+    return pd.read_parquet(resolved)
 
 
 def _validate_historical_publication_frame(frame: pd.DataFrame, *, season: str) -> None:

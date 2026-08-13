@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Annotated
 
@@ -843,6 +844,10 @@ def refresh_operational(
 
 @app.command("prepare-publication-data")
 def prepare_publication_data(
+    run_id: Annotated[
+        str,
+        typer.Option(help="Immutable official publication run ID recorded in source lineage."),
+    ],
     season: Annotated[str, typer.Option(help="Requested official season.")] = "2026-27",
     target_gameweek: Annotated[
         int | None,
@@ -883,9 +888,27 @@ def prepare_publication_data(
             raw_vaastav_dir=raw_vaastav_dir,
             normalized_dir=normalized_dir,
             refresh=True,
+            run_id=run_id,
         )
         path = write_preparation(prepared, output)
     except Exception as exc:  # noqa: BLE001
+        failure = output.with_name("publication_preparation_failure.json")
+        failure.parent.mkdir(parents=True, exist_ok=True)
+        failure.write_text(
+            json.dumps(
+                {
+                    "schema_version": "publication_preparation_failure_v1",
+                    "season": season,
+                    "requested_target_gameweek": target_gameweek,
+                    "run_id": run_id,
+                    "error": str(exc),
+                    "latest_successful_unchanged": True,
+                },
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
         console.print(f"[red]Publication preparation failed:[/red] {exc}")
         raise typer.Exit(1) from exc
     console.print(f"preparation={path}")

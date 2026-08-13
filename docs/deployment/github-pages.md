@@ -14,8 +14,10 @@ does not make it open source; licence selection is a separate decision.
 7. Confirm the requested official season, optionally supply the target gameweek or run ID, and set
    `confirm_official_publication` to `yes`.
 
-Phase 9B2A is intentionally limited to the first official GW1 publication. A later gameweek fails
-closed until clean-runner current-season event-live reconstruction is implemented and reviewed.
+GW2 and later use the same workflow after reconstructing all completed prior current-season events
+from official event-live snapshots. Enter `target_gameweek` as a plain integer such as `2`, never a
+presentation label such as `Week 2`. Leaving it empty retains deterministic earliest-future-event
+resolution.
 
 The project site should use:
 
@@ -28,15 +30,18 @@ For this repository's current remote, the expected URL is
 
 The public page previously showed the waiting state because generated forecast files are ignored by
 Git. A Pages clean runner therefore had only the tracked frontend shell. The manual publication
-workflow now reconstructs all four pinned historical seasons, downloads fresh official inputs,
-resolves the pre-deadline gameweek, runs the official forecast chain, validates its public contract,
-and runs `npm run sync-data` before building Vite.
+workflow now reconstructs all four pinned historical seasons, downloads fresh official
+`bootstrap-static/` and `fixtures/` inputs, resolves the pre-deadline gameweek, downloads each
+required prior `event/{gameweek}/live/` payload, reconstructs completed player and team results,
+runs the official forecast chain, validates its public contract, and runs `npm run sync-data` before
+building Vite.
 
 The workflow has no mock-launch input and no forecast schedule. The deployment job depends on the
 entire reconstruction, forecasting, validation, synchronization, lint, and build job succeeding.
-Any earlier failure leaves the previous successful Pages deployment untouched. A small audit
-artifact is retained for 14 days; it contains hashes, validation results, model lineage, and a
-sanitized inventory, not raw or normalized datasets.
+Any earlier failure leaves the previous successful Pages deployment untouched. A non-public audit
+artifact is retained for 14 days even when a later build step fails. It includes preparation or
+failure records, official raw snapshots and metadata, the current-season reconstruction manifest,
+validation results, model lineage, and the sanitized inventory. None enters the public bundle.
 
 ## Frontend-only deployments
 
