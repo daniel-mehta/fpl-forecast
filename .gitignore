@@ -57,3 +57,8 @@ scripts/build_paper_evidence.py
 /paper
 /phase reports
 reports/goalkeeper_scoring_fix/v4_to_v5_manuscript_change_ledger.md
+!reports/decision_backtests/
+reports/decision_backtests/*
+!reports/decision_backtests/goalkeeper_scoring_corrected_config.json
+!reports/decision_backtests/goalkeeper_scoring_corrected_phase7_rolling_config.json
+!scripts/build_paper_evidence.py

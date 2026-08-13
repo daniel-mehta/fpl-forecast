@@ -8,6 +8,7 @@ import pandas as pd
 
 from fpl_forecast.config import NORMALIZED_DIR, PROJECT_ROOT
 from fpl_forecast.operations.model_chain import OperationalModelChainResult, run_operational_model_chain
+from fpl_forecast.operations.config import resolve_operational_paths
 from fpl_forecast.operations.orchestrator import refresh_operational
 from fpl_forecast.operations.publication import latest_successful
 
@@ -29,9 +30,15 @@ def run_mock_gw1_to_gw2_transition(
     season: str,
     run_id: str = "phase8_gw1_to_gw2",
     normalized_dir: Path | str = NORMALIZED_DIR,
+    operational_root: Path | None = None,
+    reports_root: Path | None = None,
 ) -> TransitionResult:
-    run_dir = TRANSITION_REPORTS_DIR / run_id
+    transition_reports_dir = (reports_root or TRANSITION_REPORTS_DIR).resolve()
+    run_dir = transition_reports_dir / run_id
+    if run_dir.exists():
+        raise FileExistsError(f"Refusing to overwrite existing transition report: {run_dir}")
     run_dir.mkdir(parents=True, exist_ok=True)
+    paths = resolve_operational_paths(operational_root)
     gw1 = run_operational_model_chain(
         season=season,
         run_id=f"{run_id}_gw1_frozen",
@@ -55,6 +62,7 @@ def run_mock_gw1_to_gw2_transition(
         completed_player_fixtures=completed_players,
         completed_team_fixtures=completed_teams,
         normalized_dir=normalized_dir,
+        operational_root=paths.output_dir,
     )
     no_op = refresh_operational(
         season=season,
@@ -63,8 +71,9 @@ def run_mock_gw1_to_gw2_transition(
         completed_player_fixtures=completed_players,
         completed_team_fixtures=completed_teams,
         normalized_dir=normalized_dir,
+        operational_root=paths.output_dir,
     )
-    latest_before_failure = latest_successful()
+    latest_before_failure = latest_successful(paths.latest_successful_path)
     bad_players = completed_players.copy()
     bad_players.loc[bad_players.index[0], "source_available_time"] = pd.Timestamp(f"{season[:4]}-08-22T12:00:00Z")
     failed = refresh_operational(
@@ -76,8 +85,9 @@ def run_mock_gw1_to_gw2_transition(
         completed_player_fixtures=bad_players,
         completed_team_fixtures=completed_teams,
         normalized_dir=normalized_dir,
+        operational_root=paths.output_dir,
     )
-    latest_after_failure = latest_successful()
+    latest_after_failure = latest_successful(paths.latest_successful_path)
     summary = {
         "gw1_frozen_before_kickoff": True,
         "completed_gw1_available_at": available_at.isoformat(),

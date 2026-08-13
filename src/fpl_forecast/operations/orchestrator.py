@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import shutil
 import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -13,12 +12,11 @@ import pandas as pd
 
 from fpl_forecast.config import NORMALIZED_DIR, PROJECT_ROOT, RAW_FPL_API_DIR
 from fpl_forecast.operations.config import (
-    LATEST_SUCCESSFUL_PATH,
-    OPERATIONAL_OUTPUT_DIR,
     OPERATIONAL_RUNS_DIR,
     STATUS_PATH,
+    OperationalPaths,
     load_operational_config,
-    operational_paths,
+    resolve_operational_paths,
 )
 from fpl_forecast.operations.launch import LaunchCheck, check_season_launch
 from fpl_forecast.operations.locking import RefreshLock, RefreshLockError
@@ -51,12 +49,26 @@ def refresh_operational(
     completed_team_fixtures: pd.DataFrame | None = None,
     normalized_dir: Path | str = NORMALIZED_DIR,
     raw_fpl_dir: Path = RAW_FPL_API_DIR,
+    operational_root: Path | None = None,
+    authoritative_publication: bool = False,
 ) -> RefreshResult:
-    _ensure_dirs()
+    source_state = _source_state()
+    if authoritative_publication:
+        require_clean_source_state(
+            source_state,
+            operation="Authoritative publication",
+        )
+    paths = resolve_operational_paths(operational_root)
+    _ensure_dirs(paths)
     config = load_operational_config()
-    latest = latest_successful()
+    latest = latest_successful(paths.latest_successful_path)
+    run_class = (
+        "authoritative_publication"
+        if authoritative_publication
+        else ("test" if mock_launch else "operational")
+    )
     try:
-        with RefreshLock():
+        with RefreshLock(paths.lock_path):
             launch = _mock_launch_check(season) if mock_launch else check_season_launch(
                 season=season,
                 raw_dir=raw_fpl_dir,
@@ -64,7 +76,7 @@ def refresh_operational(
             )
             if status_only or launch.status.state != OperationalStateName.READY_TO_REFRESH:
                 status = _with_latest(launch.status, latest)
-                write_status(status)
+                write_status(status, paths.status_path)
                 return RefreshResult(status, None, None, None, no_op=False)
             fingerprint = _input_fingerprint(
                 launch,
@@ -73,6 +85,8 @@ def refresh_operational(
                 completed_player_fixtures=completed_player_fixtures,
                 completed_team_fixtures=completed_team_fixtures,
                 normalized_dir=normalized_dir,
+                source_state=source_state,
+                run_class=run_class,
             )
             if latest and latest.get("input_fingerprint") == fingerprint and not force:
                 status = OperationalStatus(
@@ -87,13 +101,12 @@ def refresh_operational(
                     retry_automatically=False,
                     extra={"no_op": True, "input_fingerprint": fingerprint},
                 )
-                write_status(status)
+                write_status(status, paths.status_path)
                 return RefreshResult(status, latest.get("run_id"), Path(latest["run_dir"]), Path(latest["manifest_path"]), True)
 
             run_id = run_id or f"phase8_operational_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
-            temp_dir = OPERATIONAL_OUTPUT_DIR / f".tmp_{run_id}"
-            if temp_dir.exists():
-                shutil.rmtree(temp_dir)
+            temp_dir = paths.output_dir / f".tmp_{run_id}"
+            _assert_run_id_available(run_id, paths=paths, temp_dir=temp_dir)
             temp_dir.mkdir(parents=True)
             stages: list[str] = []
             try:
@@ -128,7 +141,9 @@ def refresh_operational(
                     "completed_at": completed_at,
                     "input_fingerprint": fingerprint,
                     "code_revision": _git(["rev-parse", "--short", "HEAD"]),
-                    "dirty_worktree": bool(_git(["status", "--short"])),
+                    "dirty_worktree": source_state["dirty"],
+                    "source_state": source_state,
+                    "run_class": run_class,
                     "models": config.default_models,
                     "model_lineage": _read_json(temp_dir / "model_lineage.json"),
                     "warnings": ["mock_target_season_transition"] if mock_launch else [],
@@ -138,10 +153,18 @@ def refresh_operational(
                     "completion_stage": "published",
                 }
                 _maybe_fail("publication", fail_stage)
-                final_dir = publish_success(temp_dir, run_id=run_id, manifest={**manifest, "input_fingerprint": fingerprint})
-                pointer = json.loads(LATEST_SUCCESSFUL_PATH.read_text(encoding="utf-8"))
+                final_dir = publish_success(
+                    temp_dir,
+                    run_id=run_id,
+                    manifest={**manifest, "input_fingerprint": fingerprint},
+                    runs_dir=paths.runs_dir,
+                    pointer_path=paths.latest_successful_path,
+                )
+                pointer = json.loads(paths.latest_successful_path.read_text(encoding="utf-8"))
                 pointer["input_fingerprint"] = fingerprint
-                LATEST_SUCCESSFUL_PATH.write_text(json.dumps(pointer, indent=2, sort_keys=True), encoding="utf-8")
+                paths.latest_successful_path.write_text(
+                    json.dumps(pointer, indent=2, sort_keys=True), encoding="utf-8"
+                )
                 status = OperationalStatus(
                     state=OperationalStateName.SUCCEEDED,
                     target_season=season,
@@ -154,7 +177,7 @@ def refresh_operational(
                     retry_automatically=False,
                     extra={"run_dir": str(final_dir), "input_fingerprint": fingerprint},
                 )
-                write_status(status)
+                write_status(status, paths.status_path)
                 return RefreshResult(status, run_id, final_dir, final_dir / "run_manifest.json", no_op=False)
             except Exception as exc:
                 failed_at = now_utc()
@@ -167,12 +190,19 @@ def refresh_operational(
                     "created_at": failed_at,
                     "completed_at": failed_at,
                     "input_fingerprint": fingerprint,
+                    "source_state": source_state,
+                    "run_class": run_class,
                     "completion_stage": fail_stage or "unknown",
                     "error": str(exc),
                     "previous_latest_successful_run_id": latest.get("run_id") if latest else None,
                     "stages": stages,
                 }
-                failed_dir = publish_failure(temp_dir, run_id=run_id, manifest=manifest)
+                failed_dir = publish_failure(
+                    temp_dir,
+                    run_id=run_id,
+                    manifest=manifest,
+                    failed_runs_dir=paths.failed_dir,
+                )
                 status = OperationalStatus(
                     state=OperationalStateName.FAILED_USING_LAST_SUCCESS,
                     target_season=season,
@@ -186,7 +216,7 @@ def refresh_operational(
                     retry_automatically=True,
                     extra={"failed_dir": str(failed_dir)},
                 )
-                write_status(status)
+                write_status(status, paths.status_path)
                 return RefreshResult(status, None, None, None, no_op=False)
     except RefreshLockError as exc:
         status = OperationalStatus(
@@ -199,7 +229,7 @@ def refresh_operational(
             dashboard_can_display_forecasts=bool(latest),
             retry_automatically=True,
         )
-        write_status(status)
+        write_status(status, paths.status_path)
         return RefreshResult(status, None, None, None, no_op=False)
 
 
@@ -479,10 +509,13 @@ def _input_fingerprint(
     completed_player_fixtures: pd.DataFrame | None = None,
     completed_team_fixtures: pd.DataFrame | None = None,
     normalized_dir: Path | str = NORMALIZED_DIR,
+    source_state: dict[str, Any] | None = None,
+    run_class: str = "operational",
 ) -> str:
     digest = hashlib.sha256()
     digest.update(json.dumps(load_operational_config().__dict__, sort_keys=True, default=str).encode())
-    digest.update(_git(["rev-parse", "HEAD"]).encode())
+    digest.update(json.dumps(source_state or _source_state(), sort_keys=True).encode())
+    digest.update(run_class.encode())
     digest.update(str(mock_launch).encode())
     digest.update(str(target_gameweek).encode())
     digest.update(str(Path(normalized_dir)).encode())
@@ -495,9 +528,27 @@ def _input_fingerprint(
     return digest.hexdigest()
 
 
-def _ensure_dirs() -> None:
-    for path in operational_paths():
+def _ensure_dirs(paths: OperationalPaths) -> None:
+    for path in (paths.output_dir, paths.runs_dir, paths.failed_dir):
         path.mkdir(parents=True, exist_ok=True)
+
+
+def _assert_run_id_available(
+    run_id: str,
+    *,
+    paths: OperationalPaths,
+    temp_dir: Path,
+) -> None:
+    existing = [
+        path
+        for path in (paths.runs_dir / run_id, paths.failed_dir / run_id, temp_dir)
+        if path.exists()
+    ]
+    if existing:
+        raise FileExistsError(
+            "Refusing to reuse operational run id; existing path(s): "
+            + ", ".join(str(path) for path in existing)
+        )
 
 
 def _with_latest(status: OperationalStatus, latest: dict[str, Any] | None) -> OperationalStatus:
@@ -518,6 +569,60 @@ def _maybe_fail(stage: str, fail_stage: str | None) -> None:
 def _git(args: list[str]) -> str:
     result = subprocess.run(["git", *args], cwd=PROJECT_ROOT, check=False, capture_output=True, text=True)
     return result.stdout.strip()
+
+
+def _git_bytes(args: list[str]) -> bytes:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=PROJECT_ROOT,
+        check=False,
+        capture_output=True,
+    )
+    return result.stdout
+
+
+def _source_state() -> dict[str, Any]:
+    status = _git(["status", "--short", "--untracked-files=all"])
+    tracked_diff = _git_bytes(["diff", "--binary", "HEAD"])
+    listed = _git_bytes(
+        ["ls-files", "--cached", "--others", "--exclude-standard", "-z"]
+    )
+    source_tree = hashlib.sha256()
+    files = sorted(path for path in listed.split(b"\0") if path)
+    for encoded_path in files:
+        relative_path = encoded_path.decode("utf-8", errors="surrogateescape")
+        source_tree.update(encoded_path)
+        source_tree.update(b"\0")
+        path = PROJECT_ROOT / relative_path
+        if path.is_file():
+            source_tree.update(path.read_bytes())
+        else:
+            source_tree.update(b"<missing>")
+        source_tree.update(b"\0")
+    return {
+        "commit": _git(["rev-parse", "HEAD"]),
+        "dirty": bool(status),
+        "status_short": status.splitlines(),
+        "tracked_diff_sha256": hashlib.sha256(tracked_diff).hexdigest(),
+        "source_tree_sha256": source_tree.hexdigest(),
+        "source_file_count": len(files),
+        "source_tree_definition": (
+            "sorted Git tracked and untracked non-ignored repository paths and worktree contents; "
+            "missing tracked files use an explicit marker"
+        ),
+    }
+
+
+def require_clean_source_state(
+    source_state: dict[str, Any],
+    *,
+    operation: str,
+) -> None:
+    if source_state.get("dirty"):
+        raise RuntimeError(
+            f"{operation} requires a clean Git worktree; commit or remove tracked and "
+            "untracked source changes before retrying."
+        )
 
 
 def _default_information_cutoff(season: str, *, target_gameweek: int) -> pd.Timestamp:

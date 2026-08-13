@@ -1,12 +1,16 @@
 {
   "decision_rules_version": "fpl_2025_26_api_verified",
-  "default_model": "X2_TEAM_CONSTRAINED_SIM_M7",
+  "default_model": "X2_TEAM_CONSTRAINED_SIM_M3",
   "comparison_models": [
-    "X2_TEAM_CONSTRAINED_SIM_M7"
+    "X2_TEAM_CONSTRAINED_SIM_M3",
+    "X2_TEAM_CONSTRAINED_SIM_M5",
+    "X1_INDEPENDENT_COMPONENT_RATES_M3",
+    "X0_PHASE3_B5_EB_POINTS_PER90",
+    "D0_PRICE_VALUE_BASELINE"
   ],
   "xpoints_runs": {
-    "rolling": "phase9b12_xpoints_rolling_goalkeeper_corrected_exact",
-    "gw1": "phase9b12_xpoints_gw1_goalkeeper_corrected_exact"
+    "rolling": "phase6_xpoints_rolling_goalkeeper_corrected_exact",
+    "gw1": "phase6_xpoints_gw1_goalkeeper_corrected_exact"
   },
   "squad_candidate_limits": {
     "GKP": 4,
@@ -21,8 +25,7 @@
   "near_optimal_gap": 0.5,
   "transfer_candidate_limit": 8,
   "optimizer_variants": [
-    "D1_MEAN_ONLY_MILP",
-    "D2_EXPECTED_REALIZED_POINTS"
+    "D1_MEAN_ONLY_MILP"
   ],
   "expected_realized_search_limit": 0,
   "expected_realized_search_iterations": 3,

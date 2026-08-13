@@ -11,11 +11,14 @@ from fpl_forecast.decision.config import load_decision_config
 from fpl_forecast.decision.evidence import (
     D1_VARIANT,
     D2_VARIANT,
+    active_decision_configurations,
     authoritative_decision_run,
+    authoritative_xpoints_run,
     build_decision_evidence_table_from_frames,
     decision_evidence_supersession_table,
     load_decision_evidence_registry,
     publication_round,
+    superseded_evidence_run_ids,
 )
 from fpl_forecast.decision.inputs import assert_frozen_decisions_target_free
 from fpl_forecast.decision.expected_realized import (
@@ -83,6 +86,29 @@ def test_decision_evidence_registry_separates_authoritative_and_historical_runs(
         supersession["superseded_run_id"]
     )
     assert "1.67" not in json.dumps(registry, sort_keys=True)
+
+
+def test_active_decision_configs_follow_registry_and_reject_superseded_inputs() -> None:
+    active_configs = active_decision_configurations()
+    superseded = superseded_evidence_run_ids()
+
+    assert {record["status"] for record in active_configs.values()} == {
+        "active_default",
+        "active_correction_replay",
+    }
+    for config_path, record in active_configs.items():
+        config = load_decision_config(config_path)
+        divergences = record["documented_divergences"]
+        for mode, scope in record["xpoints_evidence"].items():
+            configured_run = config.xpoints_runs[mode]
+            authoritative_run = authoritative_xpoints_run(scope)
+            if configured_run != authoritative_run:
+                reason = str(divergences.get(mode, "")).strip()
+                assert reason, (
+                    f"{config_path} maps {mode} to {configured_run}, not active evidence "
+                    f"{authoritative_run}, without a documented reason"
+                )
+            assert configured_run not in superseded
 
 
 def test_decision_replay_refuses_to_overwrite_historical_evidence(tmp_path: Path) -> None:

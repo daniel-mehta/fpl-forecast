@@ -1,5 +1,77 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "xpoints_evidence": {
+    "phase6_rolling": {
+      "authoritative_run_id": "phase6_xpoints_rolling_goalkeeper_corrected_exact",
+      "status": "authoritative",
+      "supersedes": [
+        {
+          "run_id": "phase6_xpoints_rolling_real",
+          "preservation": "immutable_historical_record",
+          "reason": "Post-2023-24 goalkeeper goals were scored at six rather than ten."
+        }
+      ]
+    },
+    "phase6_gw1": {
+      "authoritative_run_id": "phase6_xpoints_gw1_goalkeeper_corrected_exact",
+      "status": "authoritative",
+      "supersedes": [
+        {
+          "run_id": "phase6_xpoints_gw1_real",
+          "preservation": "immutable_historical_record",
+          "reason": "Post-2023-24 goalkeeper goals were scored at six rather than ten."
+        }
+      ]
+    },
+    "phase9b12_rolling": {
+      "authoritative_run_id": "phase9b12_xpoints_rolling_goalkeeper_corrected_exact",
+      "status": "authoritative",
+      "supersedes": [
+        {
+          "run_id": "phase9b12_xpoints_rolling",
+          "preservation": "immutable_historical_record",
+          "reason": "Post-2023-24 goalkeeper goals were scored at six rather than ten."
+        }
+      ]
+    },
+    "phase9b12_gw1": {
+      "authoritative_run_id": "phase9b12_xpoints_gw1_goalkeeper_corrected_exact",
+      "status": "authoritative",
+      "supersedes": [
+        {
+          "run_id": "phase9b12_xpoints_gw1",
+          "preservation": "immutable_historical_record",
+          "reason": "Post-2023-24 goalkeeper goals were scored at six rather than ten."
+        }
+      ]
+    }
+  },
+  "decision_configurations": {
+    "src/fpl_forecast/decision/config.json": {
+      "status": "active_default",
+      "xpoints_evidence": {
+        "rolling": "phase9b12_rolling",
+        "gw1": "phase9b12_gw1"
+      },
+      "documented_divergences": {}
+    },
+    "reports/decision_backtests/goalkeeper_scoring_corrected_config.json": {
+      "status": "active_correction_replay",
+      "xpoints_evidence": {
+        "rolling": "phase9b12_rolling",
+        "gw1": "phase9b12_gw1"
+      },
+      "documented_divergences": {}
+    },
+    "reports/decision_backtests/goalkeeper_scoring_corrected_phase7_rolling_config.json": {
+      "status": "active_correction_replay",
+      "xpoints_evidence": {
+        "rolling": "phase6_rolling",
+        "gw1": "phase6_gw1"
+      },
+      "documented_divergences": {}
+    }
+  },
   "decision_evidence": {
     "rolling_benchmark": {
       "authoritative_run_id": "phase7_goalkeeper_scoring_corrected_decisions_rolling_real",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from uuid import uuid4
 
 import pandas as pd
 import pytest
@@ -9,7 +10,7 @@ import pytest
 from fpl_forecast.dashboard.app import run_dashboard
 from fpl_forecast.ingest.fpl_api import BOOTSTRAP_STATIC, FIXTURES
 from fpl_forecast.ingest.snapshots import write_raw_snapshot
-from fpl_forecast.operations.config import LATEST_SUCCESSFUL_PATH, LOCK_PATH
+from fpl_forecast.operations.config import resolve_operational_paths
 from fpl_forecast.operations.current_panel import build_current_player_fixture_history
 from fpl_forecast.operations.event_live_audit import _legacy_score_from_values
 from fpl_forecast.operations.launch import check_season_launch
@@ -21,7 +22,11 @@ from fpl_forecast.operations.live_results import (
 )
 from fpl_forecast.operations.locking import RefreshLock
 from fpl_forecast.operations.model_chain import run_operational_model_chain
-from fpl_forecast.operations.orchestrator import refresh_operational
+from fpl_forecast.operations.orchestrator import (
+    _input_fingerprint,
+    _mock_launch_check,
+    refresh_operational,
+)
 from fpl_forecast.operations.state import OperationalStateName
 from fpl_forecast.operations.transition import run_mock_gw1_to_gw2_transition
 
@@ -246,11 +251,18 @@ def test_event_live_reingestion_is_idempotent_and_revised_snapshot_replaces_by_k
 
 
 @pytest.mark.slow
-def test_mock_gw1_to_gw2_transition_publishes_and_preserves_latest_on_failure(phase8_normalized_dir) -> None:
+def test_mock_gw1_to_gw2_transition_publishes_and_preserves_latest_on_failure(
+    tmp_path, phase8_normalized_dir
+) -> None:
+    run_id = f"phase8_transition_test_{uuid4().hex}"
+    operational_root = tmp_path / "operational"
+    reports_root = tmp_path / "transition_reports"
     result = run_mock_gw1_to_gw2_transition(
         season="2026-27",
-        run_id="phase8_transition_test",
+        run_id=run_id,
         normalized_dir=phase8_normalized_dir,
+        operational_root=operational_root,
+        reports_root=reports_root,
     )
     summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
 
@@ -260,6 +272,8 @@ def test_mock_gw1_to_gw2_transition_publishes_and_preserves_latest_on_failure(ph
     assert summary["gw2_projection_rows"] > 0
     assert summary["gw2_optimized_squad_rows"] == 15
     assert summary["gw2_targets_absent_from_inputs"]
+    assert result.run_dir.parent == reports_root.resolve()
+    assert (operational_root / "runs" / result.gw2_run_id).is_dir()
 
 
 def test_finalized_fixture_policy_requires_finished_and_provisional() -> None:
@@ -297,23 +311,36 @@ def test_current_panel_rebuild_is_idempotent_and_excludes_assistant_managers() -
 
 
 @pytest.mark.slow
-def test_mock_operational_refresh_noop_failure_and_lock_behaviors(phase8_normalized_dir) -> None:
+def test_mock_operational_refresh_noop_failure_and_lock_behaviors(
+    tmp_path, phase8_normalized_dir
+) -> None:
+    paths = resolve_operational_paths(tmp_path / "operational")
+    success_run_id = f"phase8_test_success_{uuid4().hex}"
+    failure_run_id = f"phase8_test_fail_{uuid4().hex}"
     first = refresh_operational(
         season="2026-27",
         mock_launch=True,
         force=True,
-        run_id="phase8_test_success",
+        run_id=success_run_id,
         normalized_dir=phase8_normalized_dir,
+        operational_root=paths.output_dir,
     )
     assert first.status.state == OperationalStateName.SUCCEEDED
-    before = json.loads(LATEST_SUCCESSFUL_PATH.read_text(encoding="utf-8"))
+    before = json.loads(paths.latest_successful_path.read_text(encoding="utf-8"))
     manifest = json.loads(first.manifest_path.read_text(encoding="utf-8"))
     assert manifest["model_lineage"]["team_model"] == "T2_REGULARIZED_ATTACK_DEFENCE"
-    assert manifest["model_lineage"]["decision_run_id"] == "phase8_test_success_decision_current"
+    assert manifest["model_lineage"]["decision_run_id"] == f"{success_run_id}_decision_current"
+    assert manifest["run_class"] == "test"
+    assert manifest["source_state"]["source_tree_sha256"]
     freshness = json.loads((first.run_dir / "data_freshness.json").read_text(encoding="utf-8"))
     assert freshness["source"] == "mocked target-season production model chain"
 
-    second = refresh_operational(season="2026-27", mock_launch=True, normalized_dir=phase8_normalized_dir)
+    second = refresh_operational(
+        season="2026-27",
+        mock_launch=True,
+        normalized_dir=phase8_normalized_dir,
+        operational_root=paths.output_dir,
+    )
     assert second.no_op
     assert second.status.state == OperationalStateName.SUCCEEDED
 
@@ -321,37 +348,107 @@ def test_mock_operational_refresh_noop_failure_and_lock_behaviors(phase8_normali
         season="2026-27",
         mock_launch=True,
         force=True,
-        run_id="phase8_test_fail",
+        run_id=failure_run_id,
         fail_stage="modeling",
         normalized_dir=phase8_normalized_dir,
+        operational_root=paths.output_dir,
     )
-    after = json.loads(LATEST_SUCCESSFUL_PATH.read_text(encoding="utf-8"))
+    after = json.loads(paths.latest_successful_path.read_text(encoding="utf-8"))
     assert failed.status.state == OperationalStateName.FAILED_USING_LAST_SUCCESS
     assert before["run_id"] == after["run_id"]
 
-    with RefreshLock():
-        locked = refresh_operational(season="2026-27", mock_launch=True, normalized_dir=phase8_normalized_dir)
+    with RefreshLock(paths.lock_path):
+        locked = refresh_operational(
+            season="2026-27",
+            mock_launch=True,
+            normalized_dir=phase8_normalized_dir,
+            operational_root=paths.output_dir,
+        )
     assert locked.status.state == OperationalStateName.FAILED_USING_LAST_SUCCESS
-    assert not LOCK_PATH.exists()
+    assert not paths.lock_path.exists()
+
+
+def test_authoritative_publication_rejects_dirty_source_before_writing(
+    monkeypatch, tmp_path
+) -> None:
+    operational_root = tmp_path / "operational"
+    monkeypatch.setattr(
+        "fpl_forecast.operations.orchestrator._source_state",
+        lambda: {
+            "commit": "a" * 40,
+            "dirty": True,
+            "status_short": [" M src/example.py"],
+            "tracked_diff_sha256": "b" * 64,
+            "source_tree_sha256": "c" * 64,
+            "source_file_count": 1,
+            "source_tree_definition": "test",
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="requires a clean Git worktree"):
+        refresh_operational(
+            season="2026-27",
+            mock_launch=True,
+            authoritative_publication=True,
+            operational_root=operational_root,
+        )
+
+    assert not operational_root.exists()
+
+
+def test_operational_fingerprint_changes_with_exact_dirty_source_state(tmp_path) -> None:
+    launch = _mock_launch_check("2026-27")
+    shared = {
+        "commit": "a" * 40,
+        "dirty": True,
+        "status_short": [" M src/example.py"],
+        "tracked_diff_sha256": "b" * 64,
+        "source_file_count": 1,
+        "source_tree_definition": "test",
+    }
+
+    first = _input_fingerprint(
+        launch,
+        mock_launch=True,
+        normalized_dir=tmp_path,
+        source_state={**shared, "source_tree_sha256": "c" * 64},
+        run_class="test",
+    )
+    second = _input_fingerprint(
+        launch,
+        mock_launch=True,
+        normalized_dir=tmp_path,
+        source_state={**shared, "source_tree_sha256": "d" * 64},
+        run_class="test",
+    )
+
+    assert first != second
 
 
 @pytest.mark.slow
-def test_dashboard_smoke_builds_html_without_server(phase8_normalized_dir) -> None:
+def test_dashboard_smoke_builds_html_without_server(tmp_path, phase8_normalized_dir) -> None:
+    paths = resolve_operational_paths(tmp_path / "operational")
+    run_id = f"phase8_dashboard_smoke_{uuid4().hex}"
     refresh_operational(
         season="2026-27",
         mock_launch=True,
         force=True,
-        run_id="phase8_dashboard_smoke",
+        run_id=run_id,
         normalized_dir=phase8_normalized_dir,
+        operational_root=paths.output_dir,
     )
 
-    path = run_dashboard(smoke=True)
+    path = run_dashboard(
+        smoke=True,
+        pointer_path=paths.latest_successful_path,
+        output_path=tmp_path / "dashboard" / "index.html",
+    )
     html = path.read_text(encoding="utf-8")
 
     assert path.exists()
     assert "FPL Forecast" in html
     assert "mocked target-season production model chain" in html
-    assert "phase8_dashboard_smoke_team_current" in html
+    assert f"{run_id}_team_current" in html
 
 
 @pytest.mark.slow

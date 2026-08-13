@@ -10,22 +10,29 @@ import pandas as pd
 
 
 EVIDENCE_REGISTRY_PATH = Path(__file__).with_name("evidence_registry.json")
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 D1_VARIANT = "D1_MEAN_ONLY_MILP"
 D2_VARIANT = "D2_EXPECTED_REALIZED_POINTS"
 
 
 def load_decision_evidence_registry(path: Path = EVIDENCE_REGISTRY_PATH) -> dict[str, Any]:
     registry = json.loads(path.read_text(encoding="utf-8"))
-    if registry.get("schema_version") != 1:
+    if registry.get("schema_version") != 2:
         raise ValueError("Unsupported decision evidence registry schema.")
+    xpoints_evidence = registry.get("xpoints_evidence")
+    if not isinstance(xpoints_evidence, dict) or not xpoints_evidence:
+        raise ValueError("Decision evidence registry is missing xPoints evidence scopes.")
+    configurations = registry.get("decision_configurations")
+    if not isinstance(configurations, dict) or not configurations:
+        raise ValueError("Decision evidence registry is missing active decision configurations.")
     evidence = registry.get("decision_evidence")
     if not isinstance(evidence, dict) or set(evidence) != {"rolling_benchmark", "table7_gw1"}:
         raise ValueError("Decision evidence registry is missing required scopes.")
     authoritative = []
     superseded = []
-    for scope, record in evidence.items():
+    for scope, record in {**xpoints_evidence, **evidence}.items():
         if record.get("status") != "authoritative":
-            raise ValueError(f"Decision evidence scope is not authoritative: {scope}")
+            raise ValueError(f"Evidence scope is not authoritative: {scope}")
         authoritative.append(str(record["authoritative_run_id"]))
         for item in record.get("supersedes", []):
             if item.get("preservation") != "immutable_historical_record":
@@ -34,8 +41,54 @@ def load_decision_evidence_registry(path: Path = EVIDENCE_REGISTRY_PATH) -> dict
     if len(authoritative) != len(set(authoritative)):
         raise ValueError("Authoritative decision run ids must be unique.")
     if set(authoritative).intersection(superseded):
-        raise ValueError("An authoritative decision run is also marked superseded.")
+        raise ValueError("An authoritative run is also marked superseded.")
+    for config_path, record in configurations.items():
+        if record.get("status") not in {"active_default", "active_correction_replay"}:
+            raise ValueError(f"Decision configuration has unsupported status: {config_path}")
+        scopes = record.get("xpoints_evidence")
+        if not isinstance(scopes, dict) or set(scopes) != {"rolling", "gw1"}:
+            raise ValueError(f"Decision configuration is missing xPoints scopes: {config_path}")
+        unknown = set(scopes.values()).difference(xpoints_evidence)
+        if unknown:
+            raise ValueError(
+                f"Decision configuration references unknown xPoints evidence: {config_path}: "
+                f"{sorted(unknown)}"
+            )
+        divergences = record.get("documented_divergences")
+        if not isinstance(divergences, dict):
+            raise ValueError(f"Decision configuration divergences must be a mapping: {config_path}")
     return registry
+
+
+def active_decision_configurations(
+    path: Path = EVIDENCE_REGISTRY_PATH,
+) -> dict[Path, dict[str, Any]]:
+    registry = load_decision_evidence_registry(path)
+    return {
+        PROJECT_ROOT / config_path: dict(record)
+        for config_path, record in registry["decision_configurations"].items()
+    }
+
+
+def authoritative_xpoints_run(scope: str, path: Path = EVIDENCE_REGISTRY_PATH) -> str:
+    registry = load_decision_evidence_registry(path)
+    try:
+        return str(registry["xpoints_evidence"][scope]["authoritative_run_id"])
+    except KeyError as exc:
+        raise ValueError(f"Unknown xPoints evidence scope: {scope}") from exc
+
+
+def superseded_evidence_run_ids(path: Path = EVIDENCE_REGISTRY_PATH) -> set[str]:
+    registry = load_decision_evidence_registry(path)
+    records = [
+        *registry["xpoints_evidence"].values(),
+        *registry["decision_evidence"].values(),
+    ]
+    return {
+        str(item["run_id"])
+        for record in records
+        for item in record.get("supersedes", [])
+    }
 
 
 def authoritative_decision_run(scope: str, path: Path = EVIDENCE_REGISTRY_PATH) -> str:

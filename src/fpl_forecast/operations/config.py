@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from fpl_forecast.config import OUTPUTS_DIR, PROJECT_ROOT
+from fpl_forecast.config import OUTPUTS_DIR
 
 
 OPERATIONAL_OUTPUT_DIR = OUTPUTS_DIR / "operational"
@@ -26,6 +26,16 @@ class OperationalConfig:
     current_result_finalization: dict[str, object]
 
 
+@dataclass(frozen=True)
+class OperationalPaths:
+    output_dir: Path
+    runs_dir: Path
+    failed_dir: Path
+    latest_successful_path: Path
+    status_path: Path
+    lock_path: Path
+
+
 def load_operational_config(path: Path = CONFIG_PATH) -> OperationalConfig:
     data = json.loads(path.read_text(encoding="utf-8"))
     return OperationalConfig(
@@ -38,11 +48,13 @@ def load_operational_config(path: Path = CONFIG_PATH) -> OperationalConfig:
     )
 
 
-def operational_paths() -> list[Path]:
-    return [
-        OPERATIONAL_OUTPUT_DIR,
-        OPERATIONAL_RUNS_DIR,
-        OPERATIONAL_FAILED_DIR,
-        PROJECT_ROOT / "reports" / "operational",
-        PROJECT_ROOT / "logs" / "operational",
-    ]
+def resolve_operational_paths(root: Path | None = None) -> OperationalPaths:
+    output_dir = (root or OPERATIONAL_OUTPUT_DIR).resolve()
+    return OperationalPaths(
+        output_dir=output_dir,
+        runs_dir=output_dir / "runs",
+        failed_dir=output_dir / "failed",
+        latest_successful_path=output_dir / "latest_successful.json",
+        status_path=output_dir / "operational_status.json",
+        lock_path=output_dir / "refresh.lock",
+    )

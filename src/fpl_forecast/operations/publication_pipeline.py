@@ -203,6 +203,7 @@ def run_official_publication_forecast(
         target_gameweek=preparation.target.gameweek,
         normalized_dir=normalized_dir,
         raw_fpl_dir=raw_fpl_dir,
+        authoritative_publication=True,
     )
     if result.status.state.value != "SUCCEEDED" or result.run_dir is None:
         raise PublicationError(
@@ -321,6 +322,11 @@ def validate_publication_candidate(
     lineup = pd.read_csv(run_dir / "optimized_lineup.csv")
 
     gates: dict[str, str] = {}
+    _gate(
+        gates,
+        "authoritative_run_class",
+        manifest.get("run_class") == "authoritative_publication",
+    )
     _gate(gates, "official_source", lineage.get("source_mode") == "official_current_season")
     _gate(gates, "mock_rejected", not manifest.get("warnings") and not status.get("warning"))
     _gate(gates, "season_match", manifest.get("target_season") == preparation.season)

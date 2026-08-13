@@ -334,6 +334,11 @@ outputs/synthetic_demo/  Quarantined pre-real-data synthetic demo artifacts
 
 Generated real-data artifacts live under ignored directories such as `data/raw/`,
 `data/normalized/`, `reports/`, `outputs/operational/`, and `logs/operational/`.
+The tracked publication generator and the policy for manuscript-facing tables, figures, manifests,
+and release attachments are documented in
+[`docs/research/publication-artifacts.md`](docs/research/publication-artifacts.md). The current
+repository does not yet claim clean-clone reproduction of those assets because the required
+research evidence bundle and redistribution review are separate pending work.
 
 ## Known Limitations
 

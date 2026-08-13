@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,9 +16,11 @@ from fpl_forecast.operations.publication_pipeline import (
     TargetGameweekResolution,
     prepare_publication_data,
     resolve_target_gameweek,
+    run_official_publication_forecast,
     validate_publication_candidate,
 )
 from fpl_forecast.operations.publication import publish_failure, publish_success
+from fpl_forecast.operations.orchestrator import require_clean_source_state
 
 
 NOW = datetime(2026, 7, 24, 12, tzinfo=UTC)
@@ -263,6 +267,37 @@ def test_publication_candidate_accepts_legal_official_contract(tmp_path) -> None
     assert audit["target_gameweek_resolution"]["gameweek"] == 1
 
 
+def test_official_publication_requires_authoritative_clean_run_class(
+    monkeypatch, tmp_path
+) -> None:
+    _, preparation = _publication_candidate(tmp_path)
+    captured = {}
+
+    def fake_refresh(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            status=SimpleNamespace(
+                state=SimpleNamespace(value="SUCCEEDED"), reason="published"
+            ),
+            run_dir=tmp_path / "official_run",
+        )
+
+    monkeypatch.setattr(
+        "fpl_forecast.operations.publication_pipeline.refresh_operational", fake_refresh
+    )
+
+    run_official_publication_forecast(
+        preparation=preparation,
+        run_id="official_clean_run",
+        raw_fpl_dir=tmp_path / "raw",
+        normalized_dir=tmp_path / "normalized",
+    )
+
+    assert captured["authoritative_publication"] is True
+    assert captured["mock_launch"] is False
+    assert captured["run_id"] == "official_clean_run"
+
+
 def test_publication_candidate_rejects_mock_source(tmp_path) -> None:
     run_dir, preparation = _publication_candidate(tmp_path)
     manifest = _read(run_dir / "run_manifest.json")
@@ -413,6 +448,35 @@ def test_failed_publication_does_not_change_latest_successful_pointer(monkeypatc
     assert pointer.read_text(encoding="utf-8") == before
 
 
+def test_operational_publication_refuses_to_replace_existing_run(monkeypatch, tmp_path) -> None:
+    runs = tmp_path / "runs"
+    pointer = tmp_path / "latest_successful.json"
+    existing = runs / "immutable"
+    existing.mkdir(parents=True)
+    marker = existing / "run_manifest.json"
+    marker.write_text('{"preserve": true}\n', encoding="utf-8")
+    temp = tmp_path / "temp"
+    temp.mkdir()
+    monkeypatch.setattr("fpl_forecast.operations.publication.OPERATIONAL_RUNS_DIR", runs)
+    monkeypatch.setattr(
+        "fpl_forecast.operations.publication.LATEST_SUCCESSFUL_PATH", pointer
+    )
+
+    with pytest.raises(FileExistsError, match="Refusing to overwrite"):
+        publish_success(
+            temp,
+            run_id="immutable",
+            manifest={
+                "completed_at": "2026-07-24T11:00:00Z",
+                "frontend_schema_version": "phase9_frontend_v1",
+            },
+        )
+
+    assert marker.read_text(encoding="utf-8") == '{"preserve": true}\n'
+    assert temp.is_dir()
+    assert not pointer.exists()
+
+
 def test_ci_workflows_separate_fast_full_and_frontend_jobs() -> None:
     fast = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
     full = Path(".github/workflows/full-python.yml").read_text(encoding="utf-8")
@@ -425,6 +489,44 @@ def test_ci_workflows_separate_fast_full_and_frontend_jobs() -> None:
     assert "npm run lint" in frontend and "npm run build" in frontend
     assert "pytest" not in frontend
     assert "deploy-pages" not in frontend
+
+
+def test_publication_generator_and_policy_are_repository_inputs() -> None:
+    ignore_policy = Path(".gitignore").read_text(encoding="utf-8")
+    artifact_policy = Path("docs/research/publication-artifacts.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert Path("scripts/build_paper_evidence.py").is_file()
+    assert Path("scripts/replay_clean_prospective_evidence.py").is_file()
+    assert "!scripts/build_paper_evidence.py" in ignore_policy
+    assert "/paper" in ignore_policy
+    assert "After the clean replay" in artifact_policy
+    assert "Raw or normalized third-party FPL data" in artifact_policy
+    assert "/tmp" in artifact_policy
+
+    help_run = subprocess.run(
+        [
+            sys.executable,
+            "scripts/replay_clean_prospective_evidence.py",
+            "--help",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "--run-id" in help_run.stdout
+
+
+def test_clean_prospective_replay_rejects_dirty_source() -> None:
+    with pytest.raises(RuntimeError, match="requires a clean Git worktree"):
+        require_clean_source_state(
+            {"dirty": True}, operation="Clean prospective evidence replay"
+        )
+
+    require_clean_source_state(
+        {"dirty": False}, operation="Clean prospective evidence replay"
+    )
 
 
 def _events() -> pd.DataFrame:
@@ -488,6 +590,7 @@ def _publication_candidate(tmp_path):
         "schema_version": "phase8_operational_v1",
         "frontend_schema_version": "phase9_frontend_v1",
         "run_id": "official_publication",
+        "run_class": "authoritative_publication",
         "target_season": "2026-27",
         "target_gameweek": 1,
         "inferred_official_season": "2026-27",
