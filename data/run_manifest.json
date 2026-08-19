@@ -1,8 +1,8 @@
 {
   "code_revision": "6a2bbb2",
-  "completed_at": "2026-08-17T18:54:17.891114Z",
+  "completed_at": "2026-08-19T00:33:47.436672Z",
   "completion_stage": "published",
-  "created_at": "2026-08-17T18:54:17.891114Z",
+  "created_at": "2026-08-19T00:33:47.436672Z",
   "dirty_worktree": false,
   "fall_back_flags": [
     "cold_start_new_player",
@@ -10,25 +10,25 @@
   ],
   "frontend_schema_version": "phase9_frontend_v1",
   "inferred_official_season": "2026-27",
-  "input_fingerprint": "68b7a25ce85c6fc9780ad9a2fa65945d5a11344b999843796d7c0869ea77d18d",
+  "input_fingerprint": "0eec39d7271e70bb4851e414c07de4e2d62510edb9066db4fa37304ba52aa3b4",
   "launch_state": "READY_TO_REFRESH",
   "model_lineage": {
-    "cold_start_count": 89,
+    "cold_start_count": 90,
     "completed_player_fixture_rows_used": 0,
     "completed_team_fixture_rows_used": 0,
     "conservation_rows": 60,
-    "current_player_count": 564,
+    "current_player_count": 560,
     "current_season_source_available_policy": null,
     "current_season_temporal_policy": null,
     "current_team_count": 20,
-    "decision_candidate_count": 2820,
+    "decision_candidate_count": 2800,
     "decision_optimizer": "D2_EXPECTED_REALIZED_POINTS",
     "decision_optimizer_scope": "D1 globally optimal full-candidate MILP seed, then deterministic full-pool one-swap local search scored by exact expected realized points; termination=configured_iteration_bound_reached; final fixed-squad lineup refined to a single-change local optimum; not a global proof for D2.",
-    "decision_run_id": "official_2026-27_32056431380_1_decision_current",
+    "decision_run_id": "official_2026-27_32201089937_1_decision_current",
     "fixture_variant": "base",
     "identity_coverage": {
-      "players_total": 564,
-      "players_with_stable_uid": 564,
+      "players_total": 560,
+      "players_with_stable_uid": 560,
       "teams_total": 20,
       "teams_with_stable_uid": 20
     },
@@ -81,7 +81,7 @@
         "training_rows": 113260
       }
     ],
-    "minutes_model_run_id": "official_2026-27_32056431380_1_minutes_current",
+    "minutes_model_run_id": "official_2026-27_32201089937_1_minutes_current",
     "minutes_models": [
       "M3_EWMA_MINUTES",
       "M5_REGULARIZED_STATE_SOFTMAX",
@@ -92,25 +92,25 @@
     "official_deadline": "2026-08-21T17:30:00+00:00",
     "official_snapshots": {
       "bootstrap_static": {
-        "raw_snapshot_file": "fpl_api/2026-27/bootstrap_static/20260817T184628311507Z.json",
-        "retrieved_at": "2026-08-17T18:46:28.311507Z",
-        "sha256": "5a89ab8be92a0d920401b299a01cf691ed6cfd8f01d0d99af4ac769ad57a16b4",
+        "raw_snapshot_file": "fpl_api/2026-27/bootstrap_static/20260819T002547481787Z.json",
+        "retrieved_at": "2026-08-19T00:25:47.481787Z",
+        "sha256": "2ab815efc22911e6781ca897ae35f0417cbe5db85ac1dbb22cd3dc462c5e8f6c",
         "source_url": "https://fantasy.premierleague.com/api/bootstrap-static/",
         "source_version": "2026-27"
       },
       "fixtures": {
-        "raw_snapshot_file": "fpl_api/2026-27/fixtures/20260817T184628313409Z.json",
-        "retrieved_at": "2026-08-17T18:46:28.313409Z",
-        "sha256": "9e7484118381f8202830906ba993c176475d8ca1796571f5dd78cbfc2d73bd3e",
+        "raw_snapshot_file": "fpl_api/2026-27/fixtures/20260819T002547483880Z.json",
+        "retrieved_at": "2026-08-19T00:25:47.483880Z",
+        "sha256": "18745575078b4bbf1c3a1c85862945e8d5ff15825130c68b4d11124e2c7bbc54",
         "source_url": "https://fantasy.premierleague.com/api/fixtures/",
         "source_version": "2026-27"
       }
     },
     "player_lineage_note_counts": {
-      "new_player_cold_start": 89,
+      "new_player_cold_start": 90,
       "position_change": 11,
-      "returning_player": 407,
-      "transferred_player": 57
+      "returning_player": 400,
+      "transferred_player": 59
     },
     "price_source": "official_bootstrap_static.now_cost",
     "price_variant": "base",
@@ -149,7 +149,7 @@
       "historical": 18
     },
     "team_model": "T2_REGULARIZED_ATTACK_DEFENCE",
-    "team_model_run_id": "official_2026-27_32056431380_1_team_current",
+    "team_model_run_id": "official_2026-27_32201089937_1_team_current",
     "team_ratings_rows": 25,
     "training_seasons": [
       "2022-23",
@@ -157,7 +157,7 @@
       "2024-25",
       "2025-26"
     ],
-    "xpoints_model_run_id": "official_2026-27_32056431380_1_xpoints_current",
+    "xpoints_model_run_id": "official_2026-27_32201089937_1_xpoints_current",
     "xpoints_models": [
       "X2_TEAM_CONSTRAINED_SIM_M3",
       "X2_TEAM_CONSTRAINED_SIM_M5",
@@ -209,7 +209,7 @@
   },
   "previous_latest_successful_run_id": null,
   "run_class": "authoritative_publication",
-  "run_id": "official_2026-27_32056431380_1",
+  "run_id": "official_2026-27_32201089937_1",
   "schema_version": "phase8_operational_v1",
   "source_state": {
     "commit": "6a2bbb276cf0413014c791b95c5e2c0c6742e05a",
