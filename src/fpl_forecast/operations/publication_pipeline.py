@@ -419,6 +419,11 @@ def validate_publication_candidate(
         "nonnegative_xpoints",
         pd.to_numeric(projections["expected_points"], errors="coerce").ge(0).all(),
     )
+    _gate(
+        gates,
+        "conditional_xpoints_required",
+        "expected_points_given_appearance" in projections.columns,
+    )
     conditional_columns = [
         column for column in projections.columns if "given_appearance" in column or "conditional" in column
     ]

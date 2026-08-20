@@ -331,6 +331,7 @@ def _build_frontend_artifacts(
         "home_away_sequence",
         "kickoff_times",
         "expected_points",
+        "expected_points_given_appearance",
         "points_std",
         "points_p10",
         "points_p50",
@@ -457,6 +458,7 @@ def _validate_frontend_artifacts(paths: dict[str, Path]) -> None:
         "fixture_count",
         "opponent_display",
         "expected_points",
+        "expected_points_given_appearance",
     }
     missing = required_columns.difference(projections.columns)
     if missing:

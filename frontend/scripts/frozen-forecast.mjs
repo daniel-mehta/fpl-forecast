@@ -102,7 +102,12 @@ export async function validateFrozenBundle(directory, { requireManifest = true }
   if (!value(simulator, "version") || !value(simulator, "model_contract_version")) {
     fail("Forecast simulator identity is missing.");
   }
-  const projectionRows = await validateCsv(directory, "player_gameweek_projections.csv", ["schema_version", "stable_player_id", "gameweek"]);
+  const projectionRows = await validateCsv(directory, "player_gameweek_projections.csv", [
+    "schema_version",
+    "stable_player_id",
+    "gameweek",
+    "expected_points_given_appearance",
+  ]);
   await validateCsv(directory, "optimized_squad.csv");
   await validateCsv(directory, "optimized_lineup.csv");
   await validateCsv(directory, "model_comparison.csv");

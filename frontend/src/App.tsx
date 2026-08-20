@@ -32,6 +32,7 @@ import {
   type OfficialPosition,
   validForecastPlayers,
 } from "./playerFinder";
+import { YourTeamPage } from "./YourTeam";
 
 const repositoryUrl =
   import.meta.env.VITE_REPOSITORY_URL ?? "https://github.com/daniel-mehta/fpl-forecast#readme";
@@ -69,6 +70,9 @@ function App({ initialData }: AppProps) {
   );
   const [customPageSize, setCustomPageSize] = useState("");
   const [customPageSizeError, setCustomPageSizeError] = useState("");
+  const [view, setView] = useState<"forecast" | "your-team">(() =>
+    window.location.hash === "#your-team" ? "your-team" : "forecast",
+  );
 
   useEffect(() => {
     if (initialData) {
@@ -76,6 +80,12 @@ function App({ initialData }: AppProps) {
     }
     loadFrontendData().then(setData).catch(() => setWaiting(true));
   }, [initialData]);
+
+  useEffect(() => {
+    const updateView = () => setView(window.location.hash === "#your-team" ? "your-team" : "forecast");
+    window.addEventListener("hashchange", updateView);
+    return () => window.removeEventListener("hashchange", updateView);
+  }, []);
 
   const projections = useMemo(() => {
     if (!data) {
@@ -202,6 +212,10 @@ function App({ initialData }: AppProps) {
           <div>
             <p className="eyebrow">Experimental forecasting</p>
             <h1>FPL Forecast</h1>
+            <nav className="site-navigation" aria-label="Primary navigation">
+              <a href="#forecast" aria-current={view === "forecast" ? "page" : undefined}>Forecast dashboard</a>
+              <a href="#your-team" aria-current={view === "your-team" ? "page" : undefined}>Your Team</a>
+            </nav>
           </div>
           <dl className="header-meta">
             <div>
@@ -228,6 +242,9 @@ function App({ initialData }: AppProps) {
         </div>
       </header>
 
+      {view === "your-team" ? (
+        <YourTeamPage data={data} />
+      ) : (
       <main className="page-shell content">
         <section aria-labelledby="status-heading">
           <div className="section-heading">
@@ -687,6 +704,7 @@ function App({ initialData }: AppProps) {
           <a href={repositoryUrl}>Read the repository documentation</a>
         </section>
       </main>
+      )}
 
       <SiteFooter />
     </>

@@ -45,6 +45,29 @@ touch-accessible explanations. Publication timestamps are shown explicitly in UT
 recommended squad is separated into the starting XI and ordered bench with total cost and remaining
 bank.
 
+The hash-based `#your-team` view works on the same static GitHub Pages document and uses only the
+single frozen official forecast already loaded by the dashboard. Users manually select a legal
+15-player squad, enter bank and free transfers, and correct each player's selling price when it
+differs from the current official market price. The squad, selling prices, bank and free-transfer
+count are stored only in browser `localStorage`; the saved record is invalidated when season,
+Gameweek, run ID or the frozen player identity changes. No squad data are transmitted.
+
+Your Team ports the Python D2 fixed-squad lineup refinement and exact independent-appearance
+objective to TypeScript. Shared deterministic fixtures are recalculated by Python and asserted by
+Vitest within an absolute `1e-8` tolerance. Transfer recommendations cover one same-position move
+and the currently published Gameweek only. Affordability is incoming official price less the
+user-entered outgoing selling price and available bank; a four-point hit is applied only when the
+user enters zero free transfers. Because exact browser refinement is expensive, the complete legal
+pool is deterministically ranked by the authoritative unconditional player value and the top five
+moves are exactly re-optimized across 32,768 appearance states. The UI identifies this shortlist.
+
+`expected_points_given_appearance` is an additive required column in
+`player_gameweek_projections.csv`. It is exported directly from the xPoints simulation, never
+reconstructed from rounded public xP. Frozen-bundle validation and publication validation fail
+closed when it is absent. An existing frozen bundle must therefore be republished through the
+normal authoritative publication workflow before Your Team becomes available; the dashboard itself
+continues to render while the new view reports the missing contract clearly.
+
 The manual official Pages workflow runs `sync-data` only after clean-runner reconstruction, an
 official forecast, and fail-closed publication validation. Frontend-only CI still does not deploy,
 because its clean runner has no last-successful ignored forecast artifacts. See

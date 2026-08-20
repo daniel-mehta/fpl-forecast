@@ -236,6 +236,15 @@ maximum official price. Optionally choose a player to compare same-position repl
 same current official forecast. It does not account for complete-squad legality, selling prices,
 bank balance, free transfers, transfer hits, or multi-gameweek planning.
 
+The static `Your Team` view accepts a manually entered legal 15-player squad and applies the
+Python-authoritative fixed-squad D2 lineup, bench-order and captaincy logic in the browser. It uses
+only the frozen target-Gameweek projection, including the additive direct
+`expected_points_given_appearance` simulation output. Squad selections, entered selling prices,
+bank and free transfers are saved only in browser `localStorage` and are invalidated when the frozen
+forecast identity changes. Single-transfer recommendations use the outgoing entered selling price,
+available bank and a four-point hit when no free transfer is available. They optimize only the
+currently published Gameweek; projections are estimates rather than guarantees.
+
 `Frontend CI` validates frontend changes with lint and a production build. `Deploy frontend to
 GitHub Pages` automatically deploys qualifying frontend-only pushes to `main`, or can be selected
 manually in Actions. It retrieves the exact frozen, sanitized official forecast bundle and fails if

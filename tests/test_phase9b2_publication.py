@@ -372,6 +372,22 @@ def test_publication_candidate_rejects_invalid_identity_or_frontend_schema(tmp_p
         )
 
 
+def test_publication_candidate_requires_direct_conditional_xpoints(tmp_path) -> None:
+    run_dir, preparation = _publication_candidate(tmp_path)
+    projections = pd.read_csv(run_dir / "player_gameweek_projections.csv").drop(
+        columns=["expected_points_given_appearance"]
+    )
+    projections.to_csv(run_dir / "player_gameweek_projections.csv", index=False)
+
+    with pytest.raises(PublicationError, match="conditional_xpoints_required"):
+        validate_publication_candidate(
+            run_dir=run_dir,
+            preparation=preparation,
+            audit_dir=tmp_path / "audit",
+            now=NOW,
+        )
+
+
 def test_publication_candidate_rejects_stale_artifact(tmp_path) -> None:
     run_dir, preparation = _publication_candidate(tmp_path)
     freshness = _read(run_dir / "data_freshness.json")
@@ -674,6 +690,7 @@ def _publication_candidate(tmp_path):
                 "fixture_count": 1,
                 "opponent_display": "CHE (H)",
                 "expected_points": 4.2,
+                "expected_points_given_appearance": 4.7,
                 "expected_minutes": 75,
                 "p_appearance": 0.9,
                 "p_start": 0.8,

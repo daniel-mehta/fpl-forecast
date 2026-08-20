@@ -3,6 +3,9 @@ import Papa from "papaparse";
 export type JsonRecord = Record<string, unknown>;
 
 export interface ProjectionRow {
+  schema_version?: string;
+  season?: string;
+  gameweek?: string;
   stable_player_id: string;
   player: string;
   team: string;
@@ -14,6 +17,7 @@ export interface ProjectionRow {
   opponent_official_names?: string;
   home_away_sequence?: string;
   expected_points: string;
+  expected_points_given_appearance?: string;
   expected_minutes: string;
   p_appearance: string;
   p_start: string;
