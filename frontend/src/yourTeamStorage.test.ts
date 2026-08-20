@@ -19,7 +19,7 @@ describe("Your Team persistence", () => {
   it("restores saved inputs for the identical frozen player identity", () => {
     const storage = memoryStorage();
     saveYourTeam(storage, { schemaVersion: 1, forecastIdentity: identity, playerIds: ["a"], sellingPrices: { a: 50 }, bankTenths: 3, freeTransfers: 2 });
-    expect(restoreYourTeam(storage, identity)?.bankTenths).toBe(3);
+    expect(restoreYourTeam(storage, identity)).toMatchObject({ bankTenths: 3, freeTransfers: 2 });
   });
 
   it("invalidates saved data after season, gameweek, run or player identity changes", () => {

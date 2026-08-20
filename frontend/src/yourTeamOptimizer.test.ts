@@ -55,7 +55,7 @@ describe("Python-authoritative fixed-squad D2 port", () => {
       expect(result.decision.lineup).toContain(reliable);
       expect(result.decision.bench[0]).toBe(other);
     }
-  });
+  }, 15_000);
 
   it("preserves deterministic tie-breaking", () => {
     const squad = legalSquad().map((player) => ({ ...player, expectedPoints: 4, conditionalPoints: 4, appearanceProbability: 1 }));

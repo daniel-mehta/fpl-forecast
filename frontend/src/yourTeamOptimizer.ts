@@ -55,7 +55,16 @@ export const POSITION_QUOTAS: Record<FplPosition, number> = {
 const MIN_STARTERS: Record<FplPosition, number> = { GKP: 1, DEF: 3, MID: 2, FWD: 1 };
 const MAX_STARTERS: Record<FplPosition, number> = { GKP: 1, DEF: 5, MID: 5, FWD: 3 };
 const POSITIONS = Object.keys(POSITION_QUOTAS) as FplPosition[];
-const autosubCache = new Map<string, { usedMask: number; unreplaced: number }>();
+interface AutosubOutcome {
+  usedMask: number;
+  unreplaced: number;
+}
+
+const autosubStructureCache = new Map<string, Map<string, AutosubOutcome[]>>();
+const missingDistributionCache = new Map<string, Map<string, number>>();
+const benchProbabilityCache = new Map<string, Float64Array>();
+const AUTOSUB_STRUCTURE_CACHE_LIMIT = 512;
+const PROBABILITY_CACHE_LIMIT = 2048;
 
 export function optimizerPlayersFromProjections(rows: ProjectionRow[]): OptimizerPlayer[] {
   return rows.map((row) => {
@@ -151,6 +160,40 @@ export function optimizeInheritedFixedSquad(
   return refineFixedSquad(players, initial);
 }
 
+// Multi-swap extension of milp.py::_inherited_expected_realized_solution. It applies a complete
+// simultaneous replacement map to the reference lineup and bench, then runs the same authoritative
+// fixed-squad D2 refinement. Python remains authoritative for the underlying lineup semantics.
+export function optimizeInheritedCombinedFixedSquad(
+  players: readonly OptimizerPlayer[],
+  reference: LineupDecision,
+  replacements: ReadonlyMap<string, string>,
+): FixedSquadResult {
+  const errors = validateSquad(players);
+  if (errors.length) throw new Error(errors.join(" "));
+  const frame = playerMap(players);
+  const lineup = reference.lineup.map((id) => replacements.get(id) ?? id);
+  const bench = reference.bench.map((id) => replacements.get(id) ?? id);
+  if (
+    new Set([...lineup, ...bench]).size !== 15 ||
+    !isLegalLineup(lineup, frame) ||
+    bench[0] === undefined ||
+    frame.get(bench[0])?.position !== "GKP"
+  ) {
+    return optimizeFixedSquad(players);
+  }
+  const [captain, viceCaptain] = bestCaptainPair(lineup, frame);
+  const initial: LineupDecision = {
+    lineup,
+    captain,
+    viceCaptain,
+    bench,
+    formation: formation(lineup, frame),
+    objective: 0,
+  };
+  initial.objective = evaluateExpectedRealized(players, initial).expectedRealizedTotal;
+  return refineFixedSquad(players, initial);
+}
+
 // Exact sum over the same 2^15 independent appearance states used by
 // expected_realized.py::evaluate_expected_realized_points. The browser groups starter states
 // before applying four bench masks; no sampling or xP/p(appearance) reconstruction is used.
@@ -181,16 +224,18 @@ export function evaluateExpectedRealized(
   );
   let probabilityMass = 0;
   const benchStateCount = 1 << bench.length;
-  const benchProbabilities = stateProbabilities(bench);
-  const missingSequences = missingSequenceDistribution(starters);
+  const benchProbabilities = cachedStateProbabilities(bench);
+  const missingSequences = cachedMissingSequenceDistribution(starters);
   const starterPositions = starters.map((player) => player.position);
+  const autosubOutcomes = autosubOutcomesForStructure(starterPositions, bench);
   for (const [missingKey, starterProbability] of missingSequences) {
     if (starterProbability === 0) continue;
+    const outcomes = cachedAutosubOutcomes(autosubOutcomes, missingKey, starterPositions, bench);
     for (let benchMask = 0; benchMask < benchStateCount; benchMask += 1) {
       const stateProbability = starterProbability * benchProbabilities[benchMask];
       if (stateProbability === 0) continue;
       probabilityMass += stateProbability;
-      const outcome = cachedAutosubOutcome(missingKey, starterPositions, bench, benchMask);
+      const outcome = outcomes[benchMask];
       const usedMask = outcome.usedMask;
       let autosubPoints = 0;
       for (let index = 0; index < bench.length; index += 1) {
@@ -267,10 +312,20 @@ function refineFixedSquad(
   initial: LineupDecision,
 ): FixedSquadResult {
   const frame = playerMap(players);
+  const evaluationCache = new Map<string, ExpectedRealizedBreakdown>();
+  const evaluate = (decision: LineupDecision) => {
+    const key = `${decision.lineup.join(",")}|${decision.bench.join(",")}|${decision.captain}|${decision.viceCaptain}`;
+    const cached = evaluationCache.get(key);
+    if (cached) return { breakdown: cached, evaluated: false };
+    const breakdown = evaluateExpectedRealized(players, decision);
+    evaluationCache.set(key, breakdown);
+    return { breakdown, evaluated: true };
+  };
   let best = cloneDecision(initial);
-  let bestBreakdown = evaluateExpectedRealized(players, best);
+  const initialEvaluation = evaluate(best);
+  let bestBreakdown = initialEvaluation.breakdown;
   best.objective = bestBreakdown.expectedRealizedTotal;
-  let exactEvaluations = 1;
+  let exactEvaluations = initialEvaluation.evaluated ? 1 : 0;
   let iterations = 0;
   while (true) {
     iterations += 1;
@@ -285,8 +340,9 @@ function refineFixedSquad(
         formation: formation(candidate.lineup, frame),
         objective: 0,
       };
-      const breakdown = evaluateExpectedRealized(players, decision);
-      exactEvaluations += 1;
+      const evaluation = evaluate(decision);
+      const breakdown = evaluation.breakdown;
+      if (evaluation.evaluated) exactEvaluations += 1;
       decision.objective = breakdown.expectedRealizedTotal;
       if (compareDecisions(decision, breakdown, iterationBest, iterationBreakdown, frame) > 0) {
         iterationBest = decision;
@@ -331,23 +387,34 @@ function fixedSquadCandidates(
   return candidates;
 }
 
-function cachedAutosubOutcome(
+function autosubOutcomesForStructure(
+  starterPositions: FplPosition[],
+  bench: OptimizerPlayer[],
+): Map<string, AutosubOutcome[]> {
+  const key = `${starterPositions.join(",")}|${bench.map((player) => player.position).join(",")}`;
+  let outcomes = autosubStructureCache.get(key);
+  if (!outcomes) {
+    outcomes = new Map();
+    evictOldestIfFull(autosubStructureCache, AUTOSUB_STRUCTURE_CACHE_LIMIT);
+    autosubStructureCache.set(key, outcomes);
+  }
+  return outcomes;
+}
+
+function cachedAutosubOutcomes(
+  cache: Map<string, AutosubOutcome[]>,
   missingKey: string,
   starterPositions: FplPosition[],
   bench: OptimizerPlayer[],
-  benchMask: number,
-): { usedMask: number; unreplaced: number } {
-  const key = `${starterPositions.join(",")}|${missingKey}|${bench.map((player) => player.position).join(",")}|${benchMask}`;
-  const cached = autosubCache.get(key);
+): AutosubOutcome[] {
+  const cached = cache.get(missingKey);
   if (cached) return cached;
-  const outcome = autosubOutcome(
-    missingKey ? (missingKey.split(",") as FplPosition[]) : [],
-    starterPositions,
-    bench,
-    benchMask,
+  const missing = missingKey ? (missingKey.split(",") as FplPosition[]) : [];
+  const outcomes = Array.from({ length: 1 << bench.length }, (_, benchMask) =>
+    autosubOutcome(missing, starterPositions, bench, benchMask),
   );
-  autosubCache.set(key, outcome);
-  return outcome;
+  cache.set(missingKey, outcomes);
+  return outcomes;
 }
 
 function autosubOutcome(
@@ -404,6 +471,19 @@ function missingSequenceDistribution(starters: OptimizerPlayer[]): Map<string, n
   return distribution;
 }
 
+function cachedMissingSequenceDistribution(starters: OptimizerPlayer[]): Map<string, number> {
+  const key = starters
+    .map((player) => `${player.id}:${player.position}:${player.appearanceProbability}`)
+    .join("|");
+  let distribution = missingDistributionCache.get(key);
+  if (!distribution) {
+    distribution = missingSequenceDistribution(starters);
+    evictOldestIfFull(missingDistributionCache, PROBABILITY_CACHE_LIMIT);
+    missingDistributionCache.set(key, distribution);
+  }
+  return distribution;
+}
+
 function stateProbabilities(players: OptimizerPlayer[]): Float64Array {
   let probabilities = new Float64Array([1]);
   for (const player of players) {
@@ -417,10 +497,27 @@ function stateProbabilities(players: OptimizerPlayer[]): Float64Array {
   return probabilities;
 }
 
+function cachedStateProbabilities(players: OptimizerPlayer[]): Float64Array {
+  const key = players.map((player) => `${player.id}:${player.appearanceProbability}`).join("|");
+  let probabilities = benchProbabilityCache.get(key);
+  if (!probabilities) {
+    probabilities = stateProbabilities(players);
+    evictOldestIfFull(benchProbabilityCache, PROBABILITY_CACHE_LIMIT);
+    benchProbabilityCache.set(key, probabilities);
+  }
+  return probabilities;
+}
+
 function bitCount(value: number): number {
   let count = 0;
   for (let current = value; current; current >>= 1) count += current & 1;
   return count;
+}
+
+function evictOldestIfFull<K, V>(cache: Map<K, V>, limit: number): void {
+  if (cache.size < limit) return;
+  const oldest = cache.keys().next().value as K | undefined;
+  if (oldest !== undefined) cache.delete(oldest);
 }
 
 function bestCaptainPair(lineup: string[], frame: Map<string, OptimizerPlayer>): [string, string] {

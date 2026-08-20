@@ -1133,19 +1133,137 @@ footer {
   line-height: 1.55;
 }
 
-.transfer-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
-}
-
 .transfer-changes {
   padding: 10px;
   border-top: 1px solid #e6ebe9;
 }
 
-.negative-transfer {
-  border-color: #d7aaa6;
+.transfer-plan-decision {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 13px 14px;
+  border-left: 4px solid #087f5b;
+  background: #edf6f2;
+}
+
+.transfer-plan-decision span,
+.primary-plan-line,
+.transfer-dependency-note {
+  color: #435a53;
+  line-height: 1.5;
+}
+
+.transfer-plan-summary {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin: 0;
+  border: 1px solid #cad5d1;
+  background: #fff;
+}
+
+.transfer-plan-summary div {
+  padding: 11px 12px;
+  border-right: 1px solid #dce4e1;
+}
+
+.transfer-plan-summary div:last-child {
+  border-right: 0;
+}
+
+.transfer-plan-summary dt,
+.transfer-option-card dt {
+  color: #557068;
+  font-size: 0.69rem;
+  font-weight: 700;
+}
+
+.transfer-plan-summary dd,
+.transfer-option-card dd {
+  margin: 4px 0 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+
+.primary-plan-line {
+  margin: 12px 0 0;
+}
+
+.transfer-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.transfer-group-card {
+  min-width: 0;
+  border: 1px solid #cad5d1;
+  background: #fff;
+}
+
+.transfer-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+}
+
+.transfer-option-card {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #dce4e1;
+  background: #f9fbfa;
+}
+
+.transfer-option-card:first-child {
+  border-color: #78a795;
+  background: #edf6f2;
+}
+
+.transfer-option-card h4 {
+  margin: 3px 0;
+  overflow-wrap: anywhere;
+  font-size: 0.94rem;
+}
+
+.transfer-option-card > p:not(.transfer-changes) {
+  margin: 0;
+  color: #557068;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.transfer-option-card .option-rank {
+  color: #087f5b;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.transfer-option-card dl {
+  margin: 9px 0 0;
+}
+
+.transfer-option-card dl div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid #e1e7e4;
+}
+
+.transfer-option-card dl div:last-child {
+  border-bottom: 0;
+}
+
+.transfer-option-card .transfer-changes {
+  margin-top: 6px;
+  padding: 8px 0 0;
 }
 
 .visually-hidden {
@@ -1213,8 +1331,20 @@ footer {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .transfer-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .transfer-plan-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .transfer-plan-summary div:nth-child(3) {
+    border-right: 0;
+  }
+
+  .transfer-plan-summary div:nth-child(-n + 3) {
+    border-bottom: 1px solid #dce4e1;
+  }
+
+  .transfer-groups {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1260,8 +1390,32 @@ footer {
   .recommendation-grid,
   .team-entry-controls,
   .lineup-summary-cards,
-  .transfer-grid {
+  .transfer-groups,
+  .transfer-options {
     grid-template-columns: 1fr;
+  }
+
+  .transfer-plan-decision {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .transfer-plan-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .transfer-plan-summary div,
+  .transfer-plan-summary div:nth-child(3) {
+    border-right: 1px solid #dce4e1;
+    border-bottom: 1px solid #dce4e1;
+  }
+
+  .transfer-plan-summary div:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .transfer-plan-summary div:nth-last-child(-n + 2) {
+    border-bottom: 0;
   }
 
   .team-entry {

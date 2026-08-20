@@ -11,7 +11,7 @@ import {
 } from "./yourTeamOptimizer";
 import {
   changedRoleSummary,
-  recommendSingleTransfers,
+  recommendTransfers,
   type TransferRecommendationResult,
 } from "./yourTeamTransfers";
 import {
@@ -26,7 +26,7 @@ interface YourTeamPageProps {
   data: FrontendData;
 }
 
-interface Calculation {
+export interface Calculation {
   baseline: FixedSquadResult;
   transfers: TransferRecommendationResult;
   elapsedMilliseconds: number;
@@ -45,6 +45,7 @@ export function YourTeamPage({ data }: YourTeamPageProps) {
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
   const [calculation, setCalculation] = useState<Calculation | null>(null);
+  const [calculating, setCalculating] = useState(false);
 
   useEffect(() => {
     if (!identity || !contract.valid) return;
@@ -129,7 +130,7 @@ export function YourTeamPage({ data }: YourTeamPageProps) {
     invalidateCalculation();
   }
 
-  function calculate() {
+  async function calculate() {
     const inputErrors = [
       ...squadErrors,
       ...validateMoneyAndTransfers(selected, sellingPrices, bankTenths, freeTransfers),
@@ -138,18 +139,28 @@ export function YourTeamPage({ data }: YourTeamPageProps) {
       setMessage(inputErrors.join(" "));
       return;
     }
-    const started = performance.now();
-    const baseline = optimizeFixedSquad(selected);
-    const transfers = recommendSingleTransfers({
-      squad: selected,
-      pool,
-      sellingPrices,
-      bankTenths,
-      freeTransfers,
-      baseline,
-    });
-    setCalculation({ baseline, transfers, elapsedMilliseconds: performance.now() - started });
     setMessage("");
+    setCalculation(null);
+    setCalculating(true);
+    await allowCalculatingStateToPaint();
+    const started = performance.now();
+    try {
+      const baseline = optimizeFixedSquad(selected);
+      const transfers = recommendTransfers({
+        squad: selected,
+        pool,
+        sellingPrices,
+        bankTenths,
+        freeTransfers,
+        baseline,
+      });
+      setCalculation({ baseline, transfers, elapsedMilliseconds: performance.now() - started });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Unknown calculation error.";
+      setMessage(`Calculation failed: ${detail} No recommendation was produced.`);
+    } finally {
+      setCalculating(false);
+    }
   }
 
   function reset() {
@@ -199,7 +210,7 @@ export function YourTeamPage({ data }: YourTeamPageProps) {
         </dl>
       </section>
 
-      <section className="team-entry" aria-labelledby="team-entry-heading">
+      <section className="team-entry" aria-labelledby="team-entry-heading" aria-busy={calculating}>
         <div className="section-heading">
           <div><p className="eyebrow">15-player squad</p><h2 id="team-entry-heading">Team entry</h2></div>
           <p className="section-note">Squad cost {formatPrice(squadCost)} · {selected.length}/15 selected</p>
@@ -278,9 +289,10 @@ export function YourTeamPage({ data }: YourTeamPageProps) {
           Selling price defaults to the current official price. Correct it if FPL shows a different
           sale value; affordability uses your entered selling price plus bank.
         </p>
-        <button type="button" className="primary-action" onClick={calculate} disabled={squadErrors.length > 0}>
-          Optimize lineup and transfers
+        <button type="button" className="primary-action" onClick={calculate} disabled={squadErrors.length > 0 || calculating}>
+          {calculating ? "Calculating…" : "Optimize lineup and transfers"}
         </button>
+        {calculating && <p className="field-help" role="status" aria-live="polite">Calculating the exact lineup and bounded transfer plan…</p>}
       </section>
 
       {calculation && (
@@ -296,8 +308,9 @@ export function YourTeamPage({ data }: YourTeamPageProps) {
         <p>
           The browser applies the Python-authoritative D2 fixed-squad decision method to this exact
           frozen forecast. It evaluates ordinary autosubs and captain fallback across 32,768
-          independent appearance states. It does not regenerate forecasts, plan future Gameweeks,
-          or model chips, wildcards, Free Hit or transfer combinations.
+          independent appearance states. Transfer plans may use up to the entered number of free
+          transfers, but cover this Gameweek only. It does not regenerate forecasts, plan future
+          Gameweeks, or model chips, wildcards or Free Hit.
         </p>
         <p>Projections and recommendations are estimates, not guarantees.</p>
       </section>
@@ -372,32 +385,92 @@ function LineupResult({ result, pool }: { result: FixedSquadResult; pool: Optimi
   );
 }
 
-function TransferResults({ calculation }: { calculation: Calculation }) {
+export function TransferResults({ calculation }: { calculation: Calculation }) {
   const { baseline, transfers } = calculation;
+  const searchDescription = transfers.shortlisted
+    ? `${transfers.exactPlanEvaluations} exact D2 plan evaluations from a deterministic bounded shortlist of ${transfers.candidatePlanCount} legal candidate plans`
+    : `${transfers.exactPlanEvaluations} exact D2 plan evaluations across ${transfers.candidatePlanCount} legal candidate plans`;
   return (
     <section aria-labelledby="transfer-heading">
-      <div className="section-heading"><div><p className="eyebrow">Single transfer · current Gameweek</p><h2 id="transfer-heading">Transfer recommendations</h2></div><p className="section-note">{transfers.legalCandidatesEvaluated} of {transfers.legalCandidateCount} legal moves exactly evaluated{transfers.shortlisted ? " after deterministic shortlisting" : ""} · {(calculation.elapsedMilliseconds / 1000).toFixed(2)}s</p></div>
-      {transfers.recommendNoTransfer && <div className="notice" role="status"><strong>No transfer recommended.</strong> The strongest legal move has a non-positive net expected-points improvement.</div>}
-      {transfers.recommendations.length === 0 ? <div className="finder-empty">No legal affordable single transfer is available.</div> : (
-        <div className="transfer-grid">{transfers.recommendations.map((recommendation, index) => (
-          <article className={`recommendation-card ${recommendation.netImprovement < 0 ? "negative-transfer" : ""}`} key={`${recommendation.playerOut.id}-${recommendation.playerIn.id}`}>
-            <div className="recommendation-title"><span className="recommendation-rank">{index + 1}</span><div><h3>{recommendation.playerOut.name} → {recommendation.playerIn.name}</h3><p>{recommendation.playerIn.position} · {recommendation.netImprovement <= 0 ? "Negative expected value" : "Positive expected value"}</p></div></div>
-            <dl>
-              <TransferMetric label="Incoming price" value={formatPrice(recommendation.incomingPriceTenths)} />
-              <TransferMetric label="Selling price" value={formatPrice(recommendation.outgoingSellingPriceTenths)} />
-              <TransferMetric label="Bank remaining" value={formatPrice(recommendation.bankRemainingTenths)} />
-              <TransferMetric label="Before" value={formatNumber(recommendation.expectedRealizedBefore, 2)} />
-              <TransferMetric label="After" value={formatNumber(recommendation.expectedRealizedAfter, 2)} />
-              <TransferMetric label="Gross improvement" value={signed(recommendation.grossImprovement)} />
-              <TransferMetric label="Points hit" value={`−${recommendation.pointsHit}`} />
-              <TransferMetric label="Net improvement" value={signed(recommendation.netImprovement)} />
-            </dl>
-            <p className="transfer-changes">{changedRoleSummary(baseline.decision, recommendation.result.decision).join(" · ") || "Starting XI, captaincy and bench order unchanged"}</p>
-          </article>
-        ))}</div>
+      <div className="section-heading">
+        <div><p className="eyebrow">Combined transfers · current Gameweek</p><h2 id="transfer-heading">Transfer recommendations</h2></div>
+        <p className="section-note">{searchDescription} · {(calculation.elapsedMilliseconds / 1000).toFixed(2)}s</p>
+      </div>
+      {transfers.recommendNoTransfer ? (
+        <div className="notice" role="status">
+          <strong>No transfer recommended.</strong>{" "}
+          {transfers.freeTransfersAvailable === 0
+            ? "No paid move has a positive net expected-points improvement after the four-point hit."
+            : `Use 0 of ${transfers.freeTransfersAvailable} free transfers and roll ${transfers.freeTransfersRolled}.`}
+        </div>
+      ) : (
+        <>
+          <div className="transfer-plan-decision" role="status">
+            <strong>{transferUsageText(transfers)}</strong>
+            <span>The first replacement in each group forms the primary combined plan.</span>
+          </div>
+          <dl className="transfer-plan-summary" aria-label="Primary transfer plan summary">
+            <TransferMetric label="Baseline" value={formatNumber(transfers.expectedRealizedBefore, 2)} />
+            <TransferMetric label="Resulting total" value={formatNumber(transfers.expectedRealizedAfter, 2)} />
+            <TransferMetric label="Gross improvement" value={signed(transfers.grossImprovement)} />
+            <TransferMetric label="Points hit" value={`−${transfers.pointsHit}`} />
+            <TransferMetric label="Net improvement" value={signed(transfers.netImprovement)} />
+            <TransferMetric label="Bank remaining" value={formatPrice(transfers.bankRemainingTenths)} />
+          </dl>
+          <p className="primary-plan-line">
+            <strong>Primary plan:</strong>{" "}
+            {transfers.primaryTransfers.map((transfer) => `${transfer.playerOut.name} → ${transfer.playerIn.name}`).join(" · ")}
+          </p>
+          <p className="transfer-changes">
+            {transfers.result
+              ? changedRoleSummary(baseline.decision, transfers.result.decision).join(" · ") || "Starting XI, captaincy and bench order unchanged"
+              : "Starting XI, captaincy and bench order unchanged"}
+          </p>
+          <div className="transfer-groups">
+            {transfers.groups.map((group, groupIndex) => (
+              <article className="transfer-group-card" key={group.playerOut.id}>
+                <div className="recommendation-title">
+                  <span className="recommendation-rank">{groupIndex + 1}</span>
+                  <div><h3>{group.playerOut.name} out</h3><p>{group.playerOut.position} · selling price {formatPrice(group.outgoingSellingPriceTenths)}</p></div>
+                </div>
+                <div className="transfer-options">
+                  {group.options.map((option, optionIndex) => (
+                    <article className="transfer-option-card" key={option.playerIn.id}>
+                      <p className="option-rank">{optionIndex === 0 ? "Primary option" : `Alternative ${optionIndex + 1}`}</p>
+                      <h4>{option.playerIn.name}</h4>
+                      <p>{formatTeam(option.playerIn.team)} · {formatPrice(option.incomingPriceTenths)}</p>
+                      <dl>
+                        <TransferMetric label="Plan total" value={formatNumber(option.expectedRealizedAfter, 2)} />
+                        <TransferMetric label="Net improvement" value={signed(option.netImprovement)} />
+                        <TransferMetric label="Bank remaining" value={formatPrice(option.bankRemainingTenths)} />
+                      </dl>
+                      <p className="transfer-changes">{changedRoleSummary(baseline.decision, option.result.decision).join(" · ") || "Lineup roles unchanged"}</p>
+                    </article>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+          <p className="field-help transfer-dependency-note">
+            Alternatives are evaluated with every other primary transfer fixed. Options that would duplicate an incoming player, exceed the combined budget or break a squad rule are omitted.
+          </p>
+          {transfers.shortlisted && (
+            <div className="notice" role="note">
+              This is a deterministic bounded-shortlist plan, not a claim of the global multi-transfer optimum.
+            </div>
+          )}
+        </>
       )}
     </section>
   );
+}
+
+function transferUsageText(transfers: TransferRecommendationResult): string {
+  if (transfers.freeTransfersAvailable === 0) return "Make 1 paid transfer after a four-point hit.";
+  if (transfers.freeTransfersRolled === 0) {
+    return `Use all ${transfers.transfersUsed} available free transfer${transfers.transfersUsed === 1 ? "" : "s"}.`;
+  }
+  return `Use ${transfers.transfersUsed} of ${transfers.freeTransfersAvailable} free transfers and roll ${transfers.freeTransfersRolled}.`;
 }
 
 function Metric({ label, value }: { label: string; value: number }) {
@@ -471,4 +544,15 @@ function browserStorage(): Storage | null {
   } catch {
     return null;
   }
+}
+
+function allowCalculatingStateToPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame === "function") {
+      // The second frame starts only after the first frame has painted the busy state.
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
 }

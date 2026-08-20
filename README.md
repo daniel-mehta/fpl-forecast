@@ -241,8 +241,13 @@ Python-authoritative fixed-squad D2 lineup, bench-order and captaincy logic in t
 only the frozen target-Gameweek projection, including the additive direct
 `expected_points_given_appearance` simulation output. Squad selections, entered selling prices,
 bank and free transfers are saved only in browser `localStorage` and are invalidated when the frozen
-forecast identity changes. Single-transfer recommendations use the outgoing entered selling price,
-available bank and a four-point hit when no free transfer is available. They optimize only the
+forecast identity changes. The entered free-transfer count is the maximum number of distinct
+players recommended out: the primary choices form one legal combined plan, while up to two
+alternatives per outgoing player are evaluated with every other primary choice fixed. The search
+uses entered selling prices and the evolving bank, rolls unused free transfers when another move
+does not improve the best exact plan, and recommends a paid move only when its improvement exceeds
+the four-point hit. Every permitted transfer depth is searched before the strongest retained exact
+plan is selected, so a temporary downgrade may fund a stronger combined plan. It optimizes only the
 currently published Gameweek; projections are estimates rather than guarantees.
 
 `Frontend CI` validates frontend changes with lint and a production build. `Deploy frontend to

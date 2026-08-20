@@ -54,12 +54,24 @@ Gameweek, run ID or the frozen player identity changes. No squad data are transm
 
 Your Team ports the Python D2 fixed-squad lineup refinement and exact independent-appearance
 objective to TypeScript. Shared deterministic fixtures are recalculated by Python and asserted by
-Vitest within an absolute `1e-8` tolerance. Transfer recommendations cover one same-position move
-and the currently published Gameweek only. Affordability is incoming official price less the
-user-entered outgoing selling price and available bank; a four-point hit is applied only when the
-user enters zero free transfers. Because exact browser refinement is expensive, the complete legal
-pool is deterministically ranked by the authoritative unconditional player value and the top five
-moves are exactly re-optimized across 32,768 appearance states. The UI identifies this shortlist.
+Vitest within an absolute `1e-8` tolerance. Transfer recommendations cover the entered maximum of
+distinct same-position moves and the currently published Gameweek only. Affordability uses every
+outgoing entered selling price plus the evolving bank; a four-point hit is applied only when the
+user enters zero free transfers, and a paid move is shown only when its net improvement is positive.
+Unused free transfers are rolled when the best exact retained plan uses fewer moves than the entered
+maximum.
+
+The multi-transfer search is deliberately bounded. For every owned player, the six strongest
+same-position replacements by authoritative unconditional expected points enter a deterministic
+beam of 120 partial legal-plan candidates. The strongest retained legal plan at each permitted
+transfer depth receives exact inherited D2 refinement across 32,768 appearance states. The chosen
+plan is the strongest exact result across depth zero and every permitted transfer depth; an
+individually negative move can therefore survive the bounded beam when it releases funds for a
+positive later upgrade. Up to two additional replacements per outgoing player are then exactly
+evaluated with all other primary transfers fixed; illegal, duplicated or unaffordable dependent
+alternatives are omitted. Reusable appearance distributions, bench probabilities and autosub
+legality tables are memoized without changing the exact objective. The UI paints a calculating
+state and discloses that this is a bounded shortlist, not a global multi-transfer optimum.
 
 `expected_points_given_appearance` is an additive required column in
 `player_gameweek_projections.csv`. It is exported directly from the xPoints simulation, never
