@@ -48,18 +48,24 @@ bank.
 The hash-based `#your-team` view works on the same static GitHub Pages document and uses only the
 single frozen official forecast already loaded by the dashboard. Users manually select a legal
 15-player squad, enter bank and free transfers, and correct each player's selling price when it
-differs from the current official market price. The squad, selling prices, bank and free-transfer
-count are stored only in browser `localStorage`; the saved record is invalidated when season,
+differs from the current official market price. The squad, selling prices, bank, free-transfer
+count and transfer-mode preference are stored only in browser `localStorage`; the saved record is invalidated when season,
 Gameweek, run ID or the frozen player identity changes. No squad data are transmitted.
 
 Your Team ports the Python D2 fixed-squad lineup refinement and exact independent-appearance
 objective to TypeScript. Shared deterministic fixtures are recalculated by Python and asserted by
-Vitest within an absolute `1e-8` tolerance. Transfer recommendations cover the entered maximum of
-distinct same-position moves and the currently published Gameweek only. Affordability uses every
-outgoing entered selling price plus the evolving bank; a four-point hit is applied only when the
-user enters zero free transfers, and a paid move is shown only when its net improvement is positive.
-Unused free transfers are rolled when the best exact retained plan uses fewer moves than the entered
-maximum.
+Vitest within an absolute `1e-8` tolerance. Independent suggestions are the default. They show up
+to the entered number of distinct outgoing-player groups, but every option is exactly one
+same-position transfer from the unchanged baseline squad. Its affordability uses only that
+player's entered selling price and the original bank; money and club-limit changes never pass
+between independent groups. Only positive exact options are shown. With zero free transfers, at
+most one paid move is shown and only if its net improvement remains positive after the four-point
+hit.
+
+Selecting **Combine recommendations into one plan** retains the connected multi-transfer planner.
+Affordability then uses every outgoing selling price and the evolving bank. Unused free transfers
+are rolled when the best exact retained plan uses fewer moves than the entered maximum. Both modes
+cover the currently published Gameweek only.
 
 The multi-transfer search is deliberately bounded. For every owned player, the six strongest
 same-position replacements by authoritative unconditional expected points enter a deterministic
@@ -72,6 +78,11 @@ evaluated with all other primary transfers fixed; illegal, duplicated or unaffor
 alternatives are omitted. Reusable appearance distributions, bench probabilities and autosub
 legality tables are memoized without changing the exact objective. The UI paints a calculating
 state and discloses that this is a bounded shortlist, not a global multi-transfer optimum.
+
+Independent search is also deterministic and bounded, but diversity is applied first: each owned
+player contributes up to three of their strongest individually legal proxy candidates for exact
+single-transfer D2 refinement. Exact results are then grouped by outgoing player and ranked by net
+improvement. It does not reuse a combined plan or its released funds.
 
 `expected_points_given_appearance` is an additive required column in
 `player_gameweek_projections.csv`. It is exported directly from the xPoints simulation, never

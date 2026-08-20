@@ -1042,12 +1042,19 @@ footer {
   gap: 14px;
 }
 
-.team-entry-controls label {
+.team-entry-controls label,
+.team-entry-field {
   display: grid;
   gap: 5px;
   color: #334d45;
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+.team-entry-field .control-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 
 .team-entry-controls input,
@@ -1060,8 +1067,44 @@ footer {
   background: #fff;
 }
 
+.transfer-mode-control {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid #cad5d1;
+  background: #f7faf9;
+}
+
+.transfer-mode-control label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #173f34;
+  font-weight: 700;
+}
+
+.transfer-mode-control input {
+  width: 18px;
+  height: 18px;
+  accent-color: #087f5b;
+}
+
+.transfer-mode-control p {
+  margin: 0 0 0 6px;
+  color: #435a53;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .your-team-table input {
   width: 82px;
+}
+
+.mobile-metric-help {
+  display: none;
 }
 
 .player-search-results {
@@ -1162,6 +1205,16 @@ footer {
   margin: 0;
   border: 1px solid #cad5d1;
   background: #fff;
+}
+
+.transfer-plan-summary.independent-baseline {
+  grid-template-columns: minmax(220px, 1fr);
+  max-width: 360px;
+  margin: 12px 0;
+}
+
+.transfer-plan-summary.independent-baseline div {
+  border: 0;
 }
 
 .transfer-plan-summary div {
@@ -1422,6 +1475,15 @@ footer {
     padding: 16px;
   }
 
+  .transfer-mode-control {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .transfer-mode-control p {
+    grid-column: 1 / -1;
+    margin-left: 0;
+  }
+
   .site-navigation {
     flex-wrap: wrap;
   }
@@ -1622,6 +1684,11 @@ footer {
     font-weight: 800;
     text-align: left;
     text-transform: uppercase;
+  }
+
+  .your-team-table .mobile-metric-help {
+    display: inline-flex;
+    margin-left: auto;
   }
 
   .your-team-table tbody tr > :last-child {

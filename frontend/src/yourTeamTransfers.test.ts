@@ -8,6 +8,7 @@ import {
 } from "./yourTeamOptimizer";
 import {
   applyPrimaryTransfers,
+  recommendIndependentTransfers,
   recommendTransfers,
   REPLACEMENT_OPTIONS_LIMIT,
 } from "./yourTeamTransfers";
@@ -248,8 +249,8 @@ describe("combined transfer recommendations", () => {
     expect(noPaid.transfersUsed).toBe(0);
   }, 30_000);
 
-  it("keeps bounded search practical for an official-sized 554-player pool", () => {
-    const rows = projectionPool(135).slice(0, 554);
+  it("keeps bounded search practical for an official-sized 561-player pool", () => {
+    const rows = projectionPool(137).slice(0, 561);
     const rawPool = optimizerPlayersFromProjections(rows);
     const squad = legalSquad(rows);
     const owned = new Set(squad.map((player) => player.id));
@@ -263,12 +264,119 @@ describe("combined transfer recommendations", () => {
     const started = performance.now();
     const result = recommendTransfers({ squad, pool, baseline, sellingPrices, bankTenths: 20, freeTransfers: 5 });
     const elapsed = performance.now() - started;
-    expect(pool).toHaveLength(554);
+    expect(pool).toHaveLength(561);
     expect(result.shortlisted).toBe(true);
     expect(result.transfersUsed).toBeGreaterThan(0);
     expect(result.transfersUsed).toBeLessThanOrEqual(5);
     expect(result.groups.every((group) => group.options.length <= 3)).toBe(true);
     expect(result.searchedDepths).toEqual([0, 1, 2, 3, 4, 5]);
     expect(elapsed).toBeLessThan(5_000);
+  }, 35_000);
+});
+
+describe("independent transfer recommendations", () => {
+  it("returns up to five distinct outgoing groups with at most three positive exact options", () => {
+    const input = setup(3);
+    const result = recommendIndependentTransfers({
+      ...input,
+      pool: withStrongReplacements(input),
+      bankTenths: 30,
+      freeTransfers: 5,
+    });
+    expect(result.groups.length).toBeGreaterThan(0);
+    expect(result.groups.length).toBeLessThanOrEqual(5);
+    expect(new Set(result.groups.map((group) => group.playerOut.id)).size).toBe(result.groups.length);
+    expect(result.groups.every((group) => group.options.length <= 3)).toBe(true);
+    for (const group of result.groups) {
+      for (const option of group.options) {
+        expect(option.playerIn.position).toBe(group.playerOut.position);
+        expect(input.squad.some((player) => player.id === option.playerIn.id)).toBe(false);
+        expect(option.bankRemainingTenths).toBeGreaterThanOrEqual(0);
+        expect(option.pointsHit).toBe(0);
+        expect(option.netImprovement).toBeGreaterThan(0);
+        expect(validateSquad(applyPrimaryTransfers(input.squad, [option]))).toEqual([]);
+      }
+      expect([...group.options].sort((left, right) => right.netImprovement - left.netImprovement))
+        .toEqual(group.options);
+    }
+    expect([...result.groups].sort((left, right) => right.options[0].netImprovement - left.options[0].netImprovement))
+      .toEqual(result.groups);
+  }, 30_000);
+
+  it("keeps a negative Bruno Fernandes funding downgrade out of independent suggestions", () => {
+    const input = setup(1);
+    const squad = input.squad.map((player) => player.id === "MID_04" ? { ...player, name: "Bruno Fernandes" } : player);
+    const baseline = optimizeFixedSquad(squad);
+    const pool = input.pool.map((player) => {
+      const owned = squad.find((candidate) => candidate.id === player.id);
+      if (owned) return owned;
+      if (player.id === "MID_05") return { ...player, expectedPoints: 0, conditionalPoints: 0, priceTenths: 30, team: "cheap_mid" };
+      if (player.id === "FWD_03") return { ...player, expectedPoints: 30, conditionalPoints: 30, appearanceProbability: 1, priceTenths: 95, team: "premium_fwd" };
+      return { ...player, expectedPoints: 0, conditionalPoints: 0, priceTenths: 200 };
+    });
+    const sellingPrices = { ...input.sellingPrices, MID_04: 80 };
+    const independent = recommendIndependentTransfers({ squad, pool, baseline, sellingPrices, bankTenths: 0, freeTransfers: 2 });
+    expect(independent.groups.flatMap((group) => group.options).some((option) => option.playerIn.id === "MID_05")).toBe(false);
+    expect(independent.groups.flatMap((group) => group.options).some((option) => option.playerIn.id === "FWD_03")).toBe(false);
+    const combined = recommendTransfers({ squad, pool, baseline, sellingPrices, bankTenths: 0, freeTransfers: 2 });
+    expect(primaryPairs(combined)).toEqual(["FWD_02>FWD_03", "MID_04>MID_05"]);
+    expect(combined.primaryTransfers.find((transfer) => transfer.playerOut.id === "MID_04")?.playerOut.name).toBe("Bruno Fernandes");
+  }, 30_000);
+
+  it("uses selling price and original bank independently for affordability and club legality", () => {
+    const input = setup(2);
+    const ownedClub = input.squad[0].team;
+    const pool = input.pool.map((player) => {
+      if (player.id === "FWD_03") return { ...player, expectedPoints: 30, conditionalPoints: 30, appearanceProbability: 1, priceTenths: 60, team: "legal_club" };
+      if (player.id === "FWD_04") return { ...player, expectedPoints: 40, conditionalPoints: 40, appearanceProbability: 1, priceTenths: 30, team: ownedClub };
+      return player;
+    });
+    const poor = recommendIndependentTransfers({ ...input, pool, bankTenths: 0, freeTransfers: 5 });
+    expect(poor.groups.flatMap((group) => group.options).some((option) => option.playerIn.id === "FWD_03")).toBe(false);
+    expect(poor.groups.flatMap((group) => group.options).some((option) => option.playerIn.id === "FWD_04")).toBe(false);
+    const rich = recommendIndependentTransfers({
+      ...input,
+      pool,
+      sellingPrices: { ...input.sellingPrices, FWD_02: 60 },
+      bankTenths: 0,
+      freeTransfers: 5,
+    });
+    expect(rich.groups.flatMap((group) => group.options).some((option) => option.playerIn.id === "FWD_03")).toBe(true);
+  }, 30_000);
+
+  it("limits one free transfer to one group and applies a paid-transfer hit only at zero", () => {
+    const input = setup(2);
+    const strong = withStrongReplacements(input);
+    const one = recommendIndependentTransfers({ ...input, pool: strong, bankTenths: 30, freeTransfers: 1 });
+    expect(one.groups).toHaveLength(1);
+    expect(one.groups[0].options.length).toBeLessThanOrEqual(3);
+    expect(one.groups[0].options.every((option) => option.pointsHit === 0)).toBe(true);
+
+    const paid = recommendIndependentTransfers({ ...input, pool: strong, bankTenths: 30, freeTransfers: 0 });
+    expect(paid.groups.length).toBeLessThanOrEqual(1);
+    expect(paid.groups[0].options.every((option) => option.pointsHit === 4 && option.netImprovement > 0)).toBe(true);
+    const noPaid = recommendIndependentTransfers({ ...input, bankTenths: 0, freeTransfers: 0 });
+    expect(noPaid.recommendNoTransfer).toBe(true);
+  }, 30_000);
+
+  it("is deterministic and practical for an official-sized 561-player pool", () => {
+    const rows = projectionPool(137).slice(0, 561);
+    const rawPool = optimizerPlayersFromProjections(rows);
+    const squad = legalSquad(rows);
+    const owned = new Set(squad.map((player) => player.id));
+    const pool = rawPool.map((player) => owned.has(player.id) ? player : { ...player, expectedPoints: 15, conditionalPoints: 15, appearanceProbability: 1, priceTenths: 45 });
+    const baseline = optimizeFixedSquad(squad);
+    const sellingPrices = Object.fromEntries(squad.map((player) => [player.id, player.priceTenths]));
+    const args = { squad, pool, baseline, sellingPrices, bankTenths: 20, freeTransfers: 5 };
+    const started = performance.now();
+    const first = recommendIndependentTransfers(args);
+    const elapsed = performance.now() - started;
+    const second = recommendIndependentTransfers({ ...args, pool: [...pool].reverse() });
+    expect(pool).toHaveLength(561);
+    expect(first.shortlisted).toBe(true);
+    expect(first.exactPlanEvaluations).toBeLessThanOrEqual(15 * 3);
+    expect(elapsed).toBeLessThan(5_000);
+    expect(second.groups.map((group) => [group.playerOut.id, group.options.map((option) => option.playerIn.id)]))
+      .toEqual(first.groups.map((group) => [group.playerOut.id, group.options.map((option) => option.playerIn.id)]));
   }, 35_000);
 });

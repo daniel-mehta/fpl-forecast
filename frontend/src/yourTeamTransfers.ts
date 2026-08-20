@@ -1,5 +1,6 @@
 import {
   optimizeInheritedCombinedFixedSquad,
+  optimizeInheritedFixedSquad,
   type FixedSquadResult,
   type LineupDecision,
   type OptimizerPlayer,
@@ -21,6 +22,7 @@ export interface TransferOption {
   captainChanged: boolean;
   viceCaptainChanged: boolean;
   benchOrderChanged: boolean;
+  formationChanged: boolean;
   primary: boolean;
 }
 
@@ -47,6 +49,16 @@ export interface TransferRecommendationResult {
   exactPlanEvaluations: number;
   candidatePlanCount: number;
   searchedDepths: number[];
+  shortlisted: boolean;
+}
+
+export interface IndependentTransferRecommendationResult {
+  groups: TransferRecommendationGroup[];
+  recommendNoTransfer: boolean;
+  freeTransfersAvailable: number;
+  expectedRealizedBefore: number;
+  exactPlanEvaluations: number;
+  candidatePlanCount: number;
   shortlisted: boolean;
 }
 
@@ -77,7 +89,99 @@ export const TRANSFER_BEAM_WIDTH = 120;
 export const REPLACEMENT_OPTIONS_LIMIT = 3;
 export const SINGLE_PLAN_EXACT_LIMIT = 5;
 export const PRIMARY_COORDINATE_REFINEMENT_ROUNDS = 6;
+export const INDEPENDENT_EXACT_OPTIONS_PER_OUTGOING = 3;
 const COMPARISON_TOLERANCE = 1e-10;
+
+/**
+ * Exact one-transfer suggestions from the unchanged baseline squad. This deliberately stays
+ * separate from recommendTransfers(): independent groups never share funds, club slots or players.
+ * Each retained candidate is evaluated by the same inherited exact D2 fixed-squad optimizer used
+ * for combined plans and linked to the authoritative Python fixed-squad implementation.
+ */
+export function recommendIndependentTransfers({
+  squad,
+  pool,
+  sellingPrices,
+  bankTenths,
+  freeTransfers,
+  baseline,
+}: {
+  squad: readonly OptimizerPlayer[];
+  pool: readonly OptimizerPlayer[];
+  sellingPrices: Readonly<Record<string, number>>;
+  bankTenths: number;
+  freeTransfers: number;
+  baseline: FixedSquadResult;
+}): IndependentTransferRecommendationResult {
+  validateInputs(squad, sellingPrices, bankTenths, freeTransfers);
+  const ownedIds = new Set(squad.map((player) => player.id));
+  const groups: TransferRecommendationGroup[] = [];
+  let candidatePlanCount = 0;
+  let exactPlanEvaluations = 0;
+  let shortlisted = false;
+
+  // Diversity is established before exact refinement: every outgoing player contributes its own
+  // strongest legal proxy candidates instead of competing for one pool-wide shortlist.
+  for (const playerOut of [...squad].sort(comparePlayerIds)) {
+    const legalCandidates = [...pool]
+      .filter((playerIn) => !ownedIds.has(playerIn.id) && playerIn.position === playerOut.position)
+      .map((playerIn): CandidateTransfer => ({
+        playerOut,
+        playerIn,
+        sellingPrice: sellingPrices[playerOut.id],
+        proxyGain: playerIn.expectedPoints - playerOut.expectedPoints,
+      }))
+      .sort(compareCandidateTransfers)
+      .filter((candidate) => {
+        const state = planState(squad, [candidate], bankTenths);
+        return state.bankRemaining >= 0 && validateSquad(state.squad).length === 0;
+      });
+    candidatePlanCount += legalCandidates.length;
+    shortlisted ||= legalCandidates.length > INDEPENDENT_EXACT_OPTIONS_PER_OUTGOING;
+
+    const options = legalCandidates
+      .slice(0, INDEPENDENT_EXACT_OPTIONS_PER_OUTGOING)
+      .map((candidate) => {
+        const state = planState(squad, [candidate], bankTenths);
+        // This is the existing exact single-transfer fast path; it preserves the authoritative D2
+        // lineup, bench, captaincy and independent-appearance semantics.
+        const result = optimizeInheritedFixedSquad(
+          state.squad,
+          baseline.decision,
+          candidate.playerOut.id,
+          candidate.playerIn.id,
+        );
+        exactPlanEvaluations += 1;
+        return optionFromPlan(candidate, evaluatedPlan(state, result, baseline, freeTransfers), baseline, false);
+      })
+      .filter((option) => option.netImprovement > COMPARISON_TOLERANCE)
+      .sort(compareOptions);
+
+    if (options.length > 0) {
+      groups.push({
+        playerOut,
+        outgoingSellingPriceTenths: sellingPrices[playerOut.id],
+        options,
+      });
+    }
+  }
+
+  groups.sort((left, right) => {
+    const optionOrder = compareOptions(left.options[0], right.options[0]);
+    return optionOrder || compareStrings(left.playerOut.id, right.playerOut.id);
+  });
+  const maximumGroups = freeTransfers === 0 ? 1 : freeTransfers;
+  const retainedGroups = groups.slice(0, maximumGroups);
+  return {
+    groups: retainedGroups,
+    recommendNoTransfer: retainedGroups.length === 0,
+    freeTransfersAvailable: freeTransfers,
+    expectedRealizedBefore: baseline.breakdown.expectedRealizedTotal,
+    exactPlanEvaluations,
+    candidatePlanCount,
+    shortlisted,
+  };
+}
 
 export function recommendTransfers({
   squad,
@@ -242,6 +346,7 @@ export function applyPrimaryTransfers(
 
 export function changedRoleSummary(before: LineupDecision, after: LineupDecision): string[] {
   const changes: string[] = [];
+  if (before.formation !== after.formation) changes.push(`Formation changed to ${after.formation}`);
   if (setKey(before.lineup) !== setKey(after.lineup)) changes.push("Starting XI changed");
   if (before.captain !== after.captain) changes.push("Captain changed");
   if (before.viceCaptain !== after.viceCaptain) changes.push("Vice-captain changed");
@@ -433,6 +538,7 @@ function optionFromPlan(
     captainChanged: plan.result.decision.captain !== baseline.decision.captain,
     viceCaptainChanged: plan.result.decision.viceCaptain !== baseline.decision.viceCaptain,
     benchOrderChanged: plan.result.decision.bench.join(",") !== baseline.decision.bench.join(","),
+    formationChanged: plan.result.decision.formation !== baseline.decision.formation,
     primary,
   };
 }

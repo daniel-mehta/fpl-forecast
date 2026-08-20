@@ -18,8 +18,17 @@ function memoryStorage(): Storage {
 describe("Your Team persistence", () => {
   it("restores saved inputs for the identical frozen player identity", () => {
     const storage = memoryStorage();
-    saveYourTeam(storage, { schemaVersion: 1, forecastIdentity: identity, playerIds: ["a"], sellingPrices: { a: 50 }, bankTenths: 3, freeTransfers: 2 });
-    expect(restoreYourTeam(storage, identity)).toMatchObject({ bankTenths: 3, freeTransfers: 2 });
+    saveYourTeam(storage, { schemaVersion: 1, forecastIdentity: identity, playerIds: ["a"], sellingPrices: { a: 50 }, bankTenths: 3, freeTransfers: 2, combineRecommendations: true });
+    expect(restoreYourTeam(storage, identity)).toMatchObject({ bankTenths: 3, freeTransfers: 2, combineRecommendations: true });
+  });
+
+  it("uses independent mode when a valid saved preference is absent or invalid", () => {
+    const storage = memoryStorage();
+    saveYourTeam(storage, { schemaVersion: 1, forecastIdentity: identity, playerIds: ["a"], sellingPrices: { a: 50 }, bankTenths: 0, freeTransfers: 1 });
+    expect(restoreYourTeam(storage, identity)?.combineRecommendations).toBe(false);
+    const saved = JSON.parse(storage.getItem(YOUR_TEAM_STORAGE_KEY)!);
+    storage.setItem(YOUR_TEAM_STORAGE_KEY, JSON.stringify({ ...saved, combineRecommendations: "combined" }));
+    expect(restoreYourTeam(storage, identity)?.combineRecommendations).toBe(false);
   });
 
   it("invalidates saved data after season, gameweek, run or player identity changes", () => {

@@ -240,15 +240,16 @@ The static `Your Team` view accepts a manually entered legal 15-player squad and
 Python-authoritative fixed-squad D2 lineup, bench-order and captaincy logic in the browser. It uses
 only the frozen target-Gameweek projection, including the additive direct
 `expected_points_given_appearance` simulation output. Squad selections, entered selling prices,
-bank and free transfers are saved only in browser `localStorage` and are invalidated when the frozen
-forecast identity changes. The entered free-transfer count is the maximum number of distinct
-players recommended out: the primary choices form one legal combined plan, while up to two
-alternatives per outgoing player are evaluated with every other primary choice fixed. The search
-uses entered selling prices and the evolving bank, rolls unused free transfers when another move
-does not improve the best exact plan, and recommends a paid move only when its improvement exceeds
-the four-point hit. Every permitted transfer depth is searched before the strongest retained exact
-plan is selected, so a temporary downgrade may fund a stronger combined plan. It optimizes only the
-currently published Gameweek; projections are estimates rather than guarantees.
+bank, free transfers and transfer-mode preference are saved only in browser `localStorage` and are
+invalidated when the frozen forecast identity changes. Independent suggestions are the default:
+each outgoing-player group is a separate exact one-transfer comparison against the unchanged squad,
+using the original bank and club composition. Users may instead select a combined plan, where the
+entered free-transfer count is the maximum connected number of moves and up to two alternatives per
+outgoing player are evaluated with every other primary choice fixed. Combined search uses entered
+selling prices and the evolving bank, rolls unused free transfers, and searches every permitted
+depth so a temporary downgrade may fund a stronger later upgrade. Either mode recommends a paid
+move only when its improvement exceeds the four-point hit. Both optimize only the currently
+published Gameweek; projections are estimates rather than guarantees.
 
 `Frontend CI` validates frontend changes with lint and a production build. `Deploy frontend to
 GitHub Pages` automatically deploys qualifying frontend-only pushes to `main`, or can be selected

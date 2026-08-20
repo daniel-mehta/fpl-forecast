@@ -14,6 +14,7 @@ export interface SavedYourTeam {
   sellingPrices: Record<string, number>;
   bankTenths: number;
   freeTransfers: number;
+  combineRecommendations?: boolean;
 }
 
 export function saveYourTeam(storage: Storage, value: SavedYourTeam): void {
@@ -42,7 +43,10 @@ export function restoreYourTeam(
       storage.removeItem(YOUR_TEAM_STORAGE_KEY);
       return null;
     }
-    return saved;
+    return {
+      ...saved,
+      combineRecommendations: saved.combineRecommendations === true,
+    };
   } catch {
     storage.removeItem(YOUR_TEAM_STORAGE_KEY);
     return null;
