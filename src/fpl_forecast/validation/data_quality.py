@@ -59,10 +59,11 @@ def validate_all(
     *,
     normalized_dir=NORMALIZED_DIR,
     raw_vaastav_dir=RAW_VAASTAV_DIR,
+    seasons: Iterable[str] | None = None,
 ) -> ValidationResult:
     normalized_dir = Path(normalized_dir)
     issues: list[DataQualityIssue] = []
-    tables = _load_tables(normalized_dir)
+    tables = _load_tables(normalized_dir, seasons=seasons)
     if not tables:
         issues.append(DataQualityIssue(ERROR, "normalized", "No normalized Parquet tables found."))
         return ValidationResult(issues)
@@ -76,11 +77,21 @@ def validate_all(
     return ValidationResult(issues)
 
 
-def _load_tables(normalized_dir: Path) -> dict[Path, pd.DataFrame]:
+def _load_tables(
+    normalized_dir: Path,
+    *,
+    seasons: Iterable[str] | None = None,
+) -> dict[Path, pd.DataFrame]:
+    allowed_seasons = set(seasons) if seasons is not None else None
     return {
         path: pd.read_parquet(path)
         for path in sorted(normalized_dir.glob("**/*.parquet"))
-        if "outputs" not in path.parts and "phase2" not in path.parts
+        if "outputs" not in path.parts
+        and "phase2" not in path.parts
+        and (
+            allowed_seasons is None
+            or path.relative_to(normalized_dir).parts[0] in allowed_seasons
+        )
     }
 
 

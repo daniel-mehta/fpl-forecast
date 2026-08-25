@@ -13,10 +13,11 @@ Fantasy Premier League.
 ## Status
 The first official-data 2026-27 GW1 forecast is published through the manually triggered,
 clean-runner workflow. The reviewed implementation now reconstructs completed current-season
-results for manual GW2-and-later publication, but no real GW2 publication has yet validated that
-path operationally. Launch verification covers the public artifacts and operational lineage, not
-predictive superiority: live-season forecast performance has not yet been established and
-scheduling remains disabled. The promoted preseason
+results for manual GW2-and-later publication. An isolated local rehearsal against actual GW2 data
+passed preparation, forecast, publication validation, sanitization, and the production frontend
+build; no GW2 forecast has been publicly published or deployed. Launch verification covers the
+public artifacts and operational lineage, not predictive superiority: live-season forecast
+performance has not yet been established and scheduling remains disabled. The promoted preseason
 implementation is commit `365f0009a4e12397555c71cc950c7b4ef80c3ca4`.
 
 The currently deployed dashboard contains the first verified official-data GW1 publication. The
@@ -257,11 +258,13 @@ manually in Actions. It retrieves the exact frozen, sanitized official forecast 
 that bundle cannot be retrieved and validated; it never generates a forecast, runs Python, or uses
 sample data. Backend or forecasting changes still require `Publish official FPL forecast`, which
 reconstructs the pinned historical inputs, retrieves fresh official `bootstrap-static/`,
-`fixtures/`, and required prior `event/{gameweek}/live/` inputs, runs the verified
+`fixtures/`, required prior `event/{gameweek}/live/` inputs, and fixture-specific
+`element-summary/{player}/` evidence only when a historical club cannot otherwise be resolved, runs the verified
 forecast chain, freezes the sanitized public bundle, and then deploys it. Ordinary UI work therefore
-does not require backend forecast generation. For GW2 and later, every prior official event must be
-finished and data-checked, every assigned fixture must be finished and provisional, and every raw
-source retrieval must precede the target deadline.
+does not require backend forecast generation. For GW2 and later, each included historical fixture
+must be finished and provisional, and every raw source retrieval must precede the target deadline.
+An unfinished or postponed fixture is deferred rather than blocking a later forecast solely because
+its original event number is earlier.
 
 Local Python dashboard support from Phase 8 still exists:
 
@@ -394,7 +397,8 @@ research evidence bundle and redistribution review are separate pending work.
 This repository uses or supports ingestion from:
 
 - Official Fantasy Premier League API endpoints used by the ingestion code:
-  `bootstrap-static/`, `fixtures/`, and `event/{gameweek}/live/`.
+  `bootstrap-static/`, `fixtures/`, `event/{gameweek}/live/`, and the bounded
+  `element-summary/{player}/` historical-club fallback.
 - Vaastav's Fantasy Premier League historical dataset repository for historical FPL CSV files.
 
 Raw and normalized third-party data are intentionally excluded from Git. See [DATA_NOTICE.md](DATA_NOTICE.md)

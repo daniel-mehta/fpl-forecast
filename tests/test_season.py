@@ -4,6 +4,7 @@ import pytest
 
 from fpl_forecast.ingest.season import (
     SeasonIdentityError,
+    infer_bootstrap_season,
     infer_and_validate_current_season,
     parse_season_label,
 )
@@ -44,6 +45,13 @@ def test_infer_season_rejects_missing_dates():
             bootstrap_payload=bootstrap,
             fixtures_payload=_standard_fixtures(),
         )
+
+
+def test_bootstrap_season_is_inferred_without_trusting_storage_directory():
+    identity = infer_bootstrap_season(_standard_bootstrap())
+
+    assert identity.inferred_season == "2025-26"
+    assert identity.event_count == 38
 
 
 def _standard_bootstrap() -> dict:

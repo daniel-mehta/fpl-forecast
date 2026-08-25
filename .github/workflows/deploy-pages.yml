@@ -80,7 +80,7 @@ jobs:
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
 
       - name: Run focused publication tests
-        run: uv run pytest -q tests/test_phase9b2_publication.py tests/test_season.py tests/test_phase8_operations.py -m "not slow"
+        run: uv run pytest -q tests/test_phase9b2_publication.py tests/test_phase9b3_current_season.py tests/test_temporal_club_resolution.py tests/test_season.py tests/test_phase8_operations.py -m "not slow"
 
       - name: Reconstruct historical and official inputs
         env:

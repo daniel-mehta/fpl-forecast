@@ -698,18 +698,46 @@ def _official_target_players(
         if optional_column not in frame.columns:
             frame[optional_column] = pd.NA
     current_seen: set[str] = set()
+    current_season_team_by_player: dict[str, str] = {}
     if completed_player_fixtures is not None and not completed_player_fixtures.empty:
-        current_seen = set(
-            completed_player_fixtures.loc[
-                completed_player_fixtures["entity_type"].eq("player"), "player_uid"
-            ].dropna().astype(str)
-        )
+        completed_players = completed_player_fixtures.loc[
+            completed_player_fixtures["entity_type"].eq("player")
+        ].copy()
+        current_seen = set(completed_players["player_uid"].dropna().astype(str))
+        if "player_team_uid" in completed_players.columns:
+            sort_columns = [
+                column
+                for column in ("source_available_time", "kickoff_time", "fixture_id")
+                if column in completed_players.columns
+            ]
+            ordered_current = (
+                completed_players.sort_values(sort_columns)
+                if sort_columns
+                else completed_players
+            )
+            latest_current = (
+                ordered_current
+                .groupby("player_uid", as_index=False)
+                .tail(1)
+            )
+            current_season_team_by_player = latest_current.set_index("player_uid")[
+                "player_team_uid"
+            ].dropna().astype(str).to_dict()
     frame["current_season_history"] = frame["player_uid"].isin(current_seen)
+    frame["latest_current_season_historical_team_uid"] = frame["player_uid"].map(
+        current_season_team_by_player
+    )
     frame["cold_start_no_history"] = (
         frame["historical_player_team_uid"].isna() & ~frame["current_season_history"]
     )
     frame["fallback_flag"] = frame["cold_start_no_history"]
-    frame["transferred_player"] = frame["historical_player_team_uid"].notna() & frame["historical_player_team_uid"].ne(frame["player_team_uid"])
+    prior_season_transfer = frame["historical_player_team_uid"].notna() & frame[
+        "historical_player_team_uid"
+    ].ne(frame["player_team_uid"])
+    in_season_transfer = frame["latest_current_season_historical_team_uid"].notna() & frame[
+        "latest_current_season_historical_team_uid"
+    ].ne(frame["player_team_uid"])
+    frame["transferred_player"] = prior_season_transfer | in_season_transfer
     frame["position_change"] = frame["historical_fpl_position"].notna() & frame["historical_fpl_position"].ne(frame["fpl_position"])
     frame["lineage_note"] = "returning_player"
     frame.loc[frame["cold_start_no_history"], "lineage_note"] = "new_player_cold_start"
@@ -733,6 +761,7 @@ def _official_target_players(
             "player_uid",
             "player_team_uid",
             "historical_player_team_uid",
+            "latest_current_season_historical_team_uid",
             "fpl_position",
             "historical_fpl_position",
             "cold_start_no_history",
@@ -866,6 +895,8 @@ def _official_snapshot_metadata(season_dir: Path) -> dict[str, dict[str, Any]]:
                     Path(str(item.get("raw_snapshot_path") or "")).parts[-4:]
                 ),
             }
+            if item.get("element_id") is not None:
+                metadata[endpoint]["element_id"] = int(item["element_id"])
     return metadata
 
 
@@ -897,6 +928,13 @@ def _official_lineage(
         if reconstruction_path.exists()
         else {}
     )
+    club_resolution_counts = pd.Series(
+        [
+            item.get("resolution_method")
+            for item in reconstruction.get("historical_club_resolutions", [])
+        ],
+        dtype="string",
+    ).value_counts().to_dict()
     return {
         "official_deadline": official_context["deadline"].isoformat(),
         "official_snapshots": official_context["snapshot_metadata"],
@@ -919,7 +957,13 @@ def _official_lineage(
         "decision_candidate_count": int(len(decision_candidates)),
         "reconstructed_current_season_events": int(len(reconstruction.get("events") or [])),
         "reconstructed_blank_events": reconstruction.get("blank_events") or [],
+        "deferred_historical_fixture_ids": reconstruction.get("deferred_fixture_ids") or [],
+        "historical_club_resolution_counts": club_resolution_counts,
+        "element_summary_player_ids": reconstruction.get("element_summary_player_ids") or [],
         "current_season_temporal_policy": reconstruction.get("temporal_policy"),
+        "current_season_fixture_eligibility_policy": reconstruction.get(
+            "fixture_eligibility_policy"
+        ),
         "current_season_source_available_policy": reconstruction.get("source_available_policy"),
     }
 
@@ -1445,7 +1489,8 @@ def _completed_minutes_training_frame(
     output["stable_fixture_uid"] = output.get("stable_fixture_uid", output["season"].astype(str) + ":fixture_" + output["fixture_id"].astype(str))
     output["fixture_key"] = output.get("fixture_key", output["stable_fixture_uid"])
     output["player_name"] = output.get("player_name", output["player_uid"])
-    output["information_cutoff"] = pd.to_datetime(output.get("information_cutoff", output["kickoff_time"]), utc=True)
+    cutoff_column = "information_cutoff" if "information_cutoff" in output else "kickoff_time"
+    output["information_cutoff"] = pd.to_datetime(output[cutoff_column], utc=True)
     output["source_available_time"] = pd.to_datetime(output["source_available_time"], utc=True)
     output["actual_minutes"] = pd.to_numeric(output["minutes"], errors="coerce").fillna(0).astype(int)
     output["starts_exact_available"] = output["starts"].notna()
@@ -1495,8 +1540,13 @@ def _completed_minutes_training_frame(
         index=output.index,
         dtype="datetime64[ns, UTC]",
     )
-    output["transferred_player"] = output.get("lineage_note", "").eq("transferred_player")
-    output["position_change"] = output.get("lineage_note", "").eq("position_change")
+    lineage_note = (
+        output["lineage_note"]
+        if "lineage_note" in output
+        else pd.Series("", index=output.index, dtype="string")
+    )
+    output["transferred_player"] = lineage_note.eq("transferred_player")
+    output["position_change"] = lineage_note.eq("position_change")
     output = _populate_completed_minutes_features(output, historical=historical)
     output["pre_deadline_history_active"] = output["prior_seen_before"].astype(bool)
     output["cold_start_no_history"] = ~output["prior_seen_before"].astype(bool)
@@ -1583,7 +1633,8 @@ def _completed_xpoints_training_frame(frame: pd.DataFrame) -> pd.DataFrame:
 
 def _completed_team_training_frame(frame: pd.DataFrame) -> pd.DataFrame:
     output = frame.copy()
-    output["information_cutoff"] = pd.to_datetime(output.get("information_cutoff", output["kickoff_time"]), utc=True)
+    cutoff_column = "information_cutoff" if "information_cutoff" in output else "kickoff_time"
+    output["information_cutoff"] = pd.to_datetime(output[cutoff_column], utc=True)
     output["source_available_time"] = pd.to_datetime(output["source_available_time"], utc=True)
     output["finished"] = True
     output["result_valid"] = True

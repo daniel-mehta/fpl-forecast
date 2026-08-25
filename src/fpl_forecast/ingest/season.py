@@ -10,6 +10,14 @@ class SeasonIdentityError(ValueError):
 
 
 @dataclass(frozen=True)
+class BootstrapSeasonIdentity:
+    inferred_season: str
+    first_event_deadline: str
+    last_event_deadline: str
+    event_count: int
+
+
+@dataclass(frozen=True)
 class SeasonIdentity:
     requested_season: str
     inferred_season: str
@@ -73,24 +81,19 @@ def infer_and_validate_current_season(
     requested_start, requested_end = parse_season_label(requested_season)
     events = bootstrap_payload.get("events")
     teams = bootstrap_payload.get("teams")
-    if not isinstance(events, list) or not events:
-        raise SeasonIdentityError("Cannot infer season: bootstrap events are missing or empty.")
     if not isinstance(teams, list):
         raise SeasonIdentityError("Cannot infer season: bootstrap teams are missing.")
     if not isinstance(fixtures_payload, list) or not fixtures_payload:
         raise SeasonIdentityError("Cannot infer season: fixtures are missing or empty.")
 
-    deadline_times = _parse_required_datetimes(
-        [event.get("deadline_time") for event in events if isinstance(event, dict)],
-        field_name="events.deadline_time",
-    )
+    bootstrap_identity = infer_bootstrap_season(bootstrap_payload)
     kickoff_times = _parse_required_datetimes(
         [fixture.get("kickoff_time") for fixture in fixtures_payload if isinstance(fixture, dict)],
         field_name="fixtures.kickoff_time",
     )
 
-    first_deadline = min(deadline_times)
-    last_deadline = max(deadline_times)
+    first_deadline = _parse_datetime(bootstrap_identity.first_event_deadline)
+    last_deadline = _parse_datetime(bootstrap_identity.last_event_deadline)
     first_kickoff = min(kickoff_times)
     last_kickoff = max(kickoff_times)
     inferred_start = first_kickoff.year if first_kickoff.month >= 6 else first_kickoff.year - 1
@@ -137,6 +140,39 @@ def infer_and_validate_current_season(
     )
 
 
+def infer_bootstrap_season(bootstrap_payload: dict[str, Any]) -> BootstrapSeasonIdentity:
+    """Infer the season represented by one bootstrap-static payload.
+
+    FPL element IDs are allocated within a season and can be reused for a
+    different player in a later season. Archive consumers therefore need a
+    payload-level season check even when a snapshot was stored beneath a
+    caller-supplied season directory.
+    """
+
+    events = bootstrap_payload.get("events")
+    if not isinstance(events, list) or not events:
+        raise SeasonIdentityError("Cannot infer season: bootstrap events are missing or empty.")
+    deadline_times = _parse_required_datetimes(
+        [event.get("deadline_time") for event in events if isinstance(event, dict)],
+        field_name="events.deadline_time",
+    )
+    first_deadline = min(deadline_times)
+    last_deadline = max(deadline_times)
+    inferred_start = first_deadline.year if first_deadline.month >= 6 else first_deadline.year - 1
+    inferred_end = inferred_start + 1
+    inferred_season = f"{inferred_start}-{inferred_end % 100:02d}"
+    if any(value.year not in {inferred_start, inferred_end} for value in deadline_times):
+        raise SeasonIdentityError(
+            "Cannot infer season: bootstrap event deadlines span more than one season window."
+        )
+    return BootstrapSeasonIdentity(
+        inferred_season=inferred_season,
+        first_event_deadline=_format_datetime(first_deadline),
+        last_event_deadline=_format_datetime(last_deadline),
+        event_count=len(events),
+    )
+
+
 def _parse_required_datetimes(values: list[Any], *, field_name: str) -> list[datetime]:
     parsed: list[datetime] = []
     for value in values:
@@ -151,6 +187,10 @@ def _parse_required_datetimes(values: list[Any], *, field_name: str) -> list[dat
     if not parsed:
         raise SeasonIdentityError(f"Cannot infer season: no parseable {field_name} values.")
     return parsed
+
+
+def _parse_datetime(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
 
 
 def _format_datetime(value: datetime) -> str:

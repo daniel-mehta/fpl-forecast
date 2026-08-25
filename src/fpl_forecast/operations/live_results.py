@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 import numpy as np
@@ -64,10 +64,13 @@ def normalize_event_live(
     raw_snapshot_path: str,
     bootstrap_payload: dict[str, Any] | None = None,
     fixtures_payload: Iterable[dict[str, Any]] | None = None,
+    eligible_fixture_ids: set[int] | None = None,
+    resolved_fixture_blocks: Mapping[int, Iterable[dict[str, Any]]] | None = None,
+    player_identity_evidence: Mapping[int, Any] | None = None,
+    historical_club_assignments: Mapping[tuple[int, int], Any] | None = None,
 ) -> pd.DataFrame:
     players = _player_lookup(bootstrap_payload)
     fixtures = _fixture_lookup(fixtures_payload)
-    team_fixtures = _team_fixture_lookup(fixtures.values(), gameweek=gameweek)
     elements = payload.get("elements")
     if not isinstance(elements, list):
         raise ValueError("Official event-live payload must contain an elements list.")
@@ -79,13 +82,24 @@ def normalize_event_live(
     rows: list[dict[str, Any]] = []
     for element in elements:
         player_id = int(element.get("id"))
-        if bootstrap_payload is not None and player_id not in players:
-            raise ValueError(f"Official event-live player {player_id} is absent from bootstrap-static.")
-        player = players.get(player_id, {})
+        identity_evidence = (player_identity_evidence or {}).get(player_id)
+        if bootstrap_payload is not None and player_id not in players and identity_evidence is None:
+            raise ValueError(
+                f"Official event-live player {player_id} is absent from bootstrap-static and lacks "
+                "archived stable identity evidence."
+            )
+        player = {**players.get(player_id, {}), **_as_mapping(identity_evidence)}
         event_stats = element.get("stats") if isinstance(element.get("stats"), dict) else {}
-        explain = element.get("explain") or []
-        if not explain:
-            explain = _empty_explain_blocks(player, team_fixtures)
+        if resolved_fixture_blocks is not None:
+            explain = list(resolved_fixture_blocks.get(player_id, ()))
+        else:
+            explain = list(element.get("explain") or [])
+        if eligible_fixture_ids is not None:
+            explain = [
+                block
+                for block in explain
+                if block.get("fixture") is not None and int(block["fixture"]) in eligible_fixture_ids
+            ]
         for fixture_block in explain:
             fixture_id = fixture_block.get("fixture")
             if fixture_id is None or int(fixture_id) not in fixtures:
@@ -98,14 +112,19 @@ def normalize_event_live(
                     f"Official event-live fixture {fixture_id} belongs to gameweek "
                     f"{fixture.get('event')}, not {gameweek}."
                 )
-            team_id = player.get("team_id")
-            if team_id is None or int(team_id) not in {
+            assignment = (historical_club_assignments or {}).get((player_id, int(fixture_id)))
+            historical_team_id = _evidence_value(assignment, "historical_team_id")
+            if historical_team_id is None:
+                historical_team_id = player.get("team_id")
+            fixture_sides = {
                 int(fixture.get("team_h") or -1),
                 int(fixture.get("team_a") or -1),
-            }:
+            }
+            if historical_team_id is None or int(historical_team_id) not in fixture_sides:
                 raise ValueError(
-                    f"Official player {player_id} cannot be reconciled to fixture {fixture_id} "
-                    "from the current bootstrap snapshot."
+                    "Fixture-specific historical club evidence is required: "
+                    f"player={player_id}, fixture={fixture_id}, candidate_clubs={sorted(fixture_sides)}, "
+                    f"current_club={player.get('team_id')}."
                 )
             rows.append(
                 _normalised_fixture_row(
@@ -118,6 +137,9 @@ def normalize_event_live(
                     event_stats=event_stats,
                     retrieved_at=retrieved_at,
                     raw_snapshot_path=raw_snapshot_path,
+                    fixture_count=len(explain),
+                    historical_team_id=int(historical_team_id),
+                    club_assignment=assignment,
                 )
             )
     frame = pd.DataFrame(rows)
@@ -216,24 +238,57 @@ def _normalised_fixture_row(
     event_stats: dict[str, Any],
     retrieved_at: str,
     raw_snapshot_path: str,
+    fixture_count: int,
+    historical_team_id: int,
+    club_assignment: Any | None,
 ) -> dict[str, Any]:
     player_id = int(element["id"])
     fixture_id = fixture_block.get("fixture")
-    fixture_count = len(element.get("explain") or [])
     stats = _stats(fixture_block.get("stats"))
     event_totals_assignable = fixture_count <= 1
+    current_team_id = _evidence_value(club_assignment, "current_team_id")
+    if current_team_id is None:
+        current_team_id = player.get("current_team_id", player.get("team_id"))
     row: dict[str, Any] = {
         "season": season,
         "gameweek": gameweek,
         "fixture_id": fixture_id,
         "player_id": player_id,
         "player_uid": player.get("player_uid", f"official_player_id_{player_id}"),
+        "player_code": player.get("player_code"),
         "player_name": player.get("player_name"),
         "entity_type": player.get("entity_type", "player"),
         "fpl_position": player.get("fpl_position"),
-        "team_uid": player.get("team_uid"),
-        "opponent_uid": _opponent_uid(fixture, player.get("team_id")),
-        "was_home": _was_home(fixture, player.get("team_id")),
+        "historical_team_id": historical_team_id,
+        "current_team_id": current_team_id,
+        "team_uid": f"official_team_{historical_team_id}",
+        "opponent_uid": _opponent_uid(fixture, historical_team_id),
+        "was_home": _was_home(fixture, historical_team_id),
+        "historical_club_resolution_method": _evidence_value(
+            club_assignment,
+            "resolution_method",
+            "current_bootstrap_fixture_compatible",
+        ),
+        "historical_club_evidence_endpoint": _evidence_value(
+            club_assignment,
+            "evidence_endpoint",
+            "bootstrap_static",
+        ),
+        "historical_club_evidence_raw_snapshot_path": _evidence_value(
+            club_assignment,
+            "evidence_raw_snapshot_path",
+            player.get("identity_raw_snapshot_path", ""),
+        ),
+        "historical_club_evidence_sha256": _evidence_value(
+            club_assignment,
+            "evidence_sha256",
+            player.get("identity_sha256", ""),
+        ),
+        "historical_club_evidence_retrieved_at": _evidence_value(
+            club_assignment,
+            "evidence_retrieved_at",
+            player.get("identity_retrieved_at", retrieved_at),
+        ),
         "kickoff_time": fixture.get("kickoff_time") if fixture else pd.NA,
         "fixture_completed": bool(fixture and fixture.get("finished") and fixture.get("finished_provisional")),
         "exact_start": pd.NA,
@@ -395,6 +450,7 @@ def _player_lookup(bootstrap_payload: dict[str, Any] | None) -> dict[int, dict[s
         player_code = element.get("code")
         lookup[player_id] = {
             "player_uid": f"player_code_{player_code}" if player_code else f"official_player_id_{player_id}",
+            "player_code": player_code,
             "player_name": element.get("web_name") or element.get("second_name") or element.get("first_name"),
             "entity_type": "assistant_manager" if element_type == 5 else "player",
             "fpl_position": POSITION_BY_ELEMENT_TYPE.get(element_type),
@@ -412,24 +468,6 @@ def _fixture_lookup(fixtures_payload: Iterable[dict[str, Any]] | None) -> dict[i
     if len(ids) != len(fixtures) or len(set(ids)) != len(ids):
         raise ValueError("Official fixtures contain missing or duplicate fixture IDs.")
     return {int(fixture["id"]): fixture for fixture in fixtures}
-
-
-def _team_fixture_lookup(fixtures: Iterable[dict[str, Any]], *, gameweek: int) -> dict[int, list[dict[str, Any]]]:
-    lookup: dict[int, list[dict[str, Any]]] = {}
-    for fixture in fixtures:
-        if int(fixture.get("event") or 0) != int(gameweek):
-            continue
-        for key in ("team_h", "team_a"):
-            if fixture.get(key) is not None:
-                lookup.setdefault(int(fixture[key]), []).append(fixture)
-    return lookup
-
-
-def _empty_explain_blocks(player: dict[str, Any], team_fixtures: dict[int, list[dict[str, Any]]]) -> list[dict[str, Any]]:
-    team_id = player.get("team_id")
-    if team_id is None:
-        return []
-    return [{"fixture": fixture["id"], "stats": []} for fixture in team_fixtures.get(int(team_id), [])]
 
 
 def _opponent_uid(fixture: dict[str, Any] | None, player_team_id: int | None) -> str | None:
@@ -481,12 +519,20 @@ def _output_columns() -> list[str]:
         "fixture_id",
         "player_id",
         "player_uid",
+        "player_code",
         "player_name",
         "entity_type",
         "fpl_position",
+        "historical_team_id",
+        "current_team_id",
         "team_uid",
         "opponent_uid",
         "was_home",
+        "historical_club_resolution_method",
+        "historical_club_evidence_endpoint",
+        "historical_club_evidence_raw_snapshot_path",
+        "historical_club_evidence_sha256",
+        "historical_club_evidence_retrieved_at",
         "kickoff_time",
         "fixture_completed",
         "exact_start",
@@ -509,3 +555,22 @@ def _output_columns() -> list[str]:
         *[f"points_{column}" for column in POINT_COMPONENTS],
         *[f"points_modification_{column}" for column in POINT_COMPONENTS],
     ]
+
+
+def _as_mapping(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, Mapping):
+        return dict(value)
+    fields = getattr(value, "__dataclass_fields__", None)
+    if fields:
+        return {name: getattr(value, name) for name in fields}
+    return {}
+
+
+def _evidence_value(value: Any, field: str, default: Any = None) -> Any:
+    if value is None:
+        return default
+    if isinstance(value, Mapping):
+        return value.get(field, default)
+    return getattr(value, field, default)

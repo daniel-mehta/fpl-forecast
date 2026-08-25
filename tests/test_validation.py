@@ -186,6 +186,32 @@ def test_phase1_validation_ignores_phase2_outputs(tmp_path):
     assert result.ok
 
 
+def test_historical_publication_validation_can_scope_out_prior_current_outputs(tmp_path):
+    normalized_dir = tmp_path / "normalized"
+    historical_dir = normalized_dir / "2024-25"
+    historical_dir.mkdir(parents=True)
+    historical_row = _history_row(player_id=11, fixture_id=101, minutes=90)
+    historical_row.update({"opponent_team": 2, "was_home": True})
+    pd.DataFrame([historical_row]).to_parquet(
+        historical_dir / "historical_player_fixtures.parquet",
+        index=False,
+    )
+    current_dir = normalized_dir / "2026-27"
+    current_dir.mkdir()
+    pd.DataFrame([{"player_uid": "player_code_11"}]).to_parquet(
+        current_dir / "current_player_identities.parquet",
+        index=False,
+    )
+
+    result = validate_all(
+        normalized_dir=normalized_dir,
+        raw_vaastav_dir=tmp_path / "raw" / "vaastav",
+        seasons=["2024-25"],
+    )
+
+    assert result.ok
+
+
 def _history_row(*, player_id: int, fixture_id: int, minutes: int) -> dict[str, object]:
     return {
         "player_id": player_id,

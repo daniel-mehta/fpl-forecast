@@ -3,8 +3,11 @@
 ## Outcome
 
 The manual official-publication path can prepare GW2 and later forecasts from a clean runner. This
-is implementation and synthetic rehearsal evidence, not proof that a real GW2 publication has
-succeeded. The public site remains static and scheduling is not implemented.
+is supported by synthetic regressions and an isolated local rehearsal against actual GW2 data that
+passed preparation, forecasting, publication validation, sanitization, and the production frontend
+build. It is not proof of a public GW2 publication: no workflow, frozen-branch update, deployment,
+or public artifact change was triggered. The public site remains static and scheduling is not
+implemented.
 
 ## Pre-change GW1 path
 
@@ -29,10 +32,10 @@ For a target gameweek `T`, preparation now:
 1. archives fresh `https://fantasy.premierleague.com/api/bootstrap-static/` and
    `https://fantasy.premierleague.com/api/fixtures/` payloads;
 2. resolves and validates `T` from official events and fixtures;
-3. archives `https://fantasy.premierleague.com/api/event/{gameweek}/live/` for every official event
-   strictly earlier than `T`;
-4. validates event finality and data checks, fixture finality and provisional status, event
-   assignment, teams, players, duplicate keys, and awarded-point reconciliation;
+3. archives `https://fantasy.premierleague.com/api/event/{gameweek}/live/` for earlier events that
+   contain an eligible finalized fixture, plus completed blank events;
+4. validates fixture finality and provisional status, actual kickoff, event assignment, temporal
+   player clubs, duplicate keys, and awarded-point reconciliation;
 5. normalizes current results at `(season, player_id, fixture_id)` without collapsing double
    gameweeks;
 6. builds stable-team fixture results and player results using the operational identity bridge;
@@ -42,15 +45,20 @@ For a target gameweek `T`, preparation now:
 Each raw snapshot has a timestamped immutable filename and metadata sidecar containing its endpoint,
 retrieval time, byte size, SHA-256, source, target season, and source version. Fresh event-live
 metadata also records the requested and resolved target, run ID, Git commit, clean-source status,
-and source mode. The reconstruction manifest records the same run context for every source,
-included event, normalized row count, blank event, and raw path. Generated official payloads and
-normalized tables remain ignored and are uploaded only as non-public workflow audit material.
+and source mode. If a latest player club is not compatible with a historical fixture and archived
+bootstrap evidence cannot resolve the fixture side, one cache-first
+`element-summary/{player}/` request supplies fixture ID, home/away, and opponent evidence. Its
+element ID, retrieval time, checksum, raw path, and resolution decision are recorded in the same
+reconstruction manifest and forecast lineage. A sufficient cutoff-eligible cached summary is reused;
+a stale summary missing the required fixture is refreshed at most once when network retrieval is
+enabled. Generated official payloads and normalized tables remain ignored and are uploaded only as
+non-public workflow audit material.
 
 ## Time and leakage contract
 
 The target deadline is the `information_cutoff`. An included current-season row receives the latest
-retrieval timestamp among the bootstrap, fixtures, and its event-live payload as
-`source_available_time`. The required relation is strict:
+retrieval timestamp among the bootstrap, fixtures, its event-live payload, and any fixture-specific
+club evidence as `source_available_time`. The required relation is strict:
 
 ```text
 source_available_time < information_cutoff
@@ -70,10 +78,17 @@ requested, and raw official `xP` remains outside the feature contract.
 - A completed prior globally blank event is recorded with zero result rows.
 - A globally blank target fails with a precise unsupported status because the current publication
   optimizer cannot publish an all-zero event.
-- A prior fixture still assigned to an earlier event blocks publication until it is finished and
-  provisional. Official reassignment to another event is respected on the next fresh preparation.
-- Player codes retain the existing cross-season identity contract. Unknown, duplicate, or
-  transferred in-season identities that cannot be reconciled to a fixture fail closed.
+- An unfinished or postponed prior fixture is deferred and does not block a later target merely
+  because its original event number is earlier. It remains excluded until it is finished,
+  provisional, actually kicked off before the target cutoff, and its source evidence is available
+  before that cutoff. Official event reassignment is respected on the next fresh preparation.
+- Player codes retain the existing cross-season identity contract. Historical club membership is
+  resolved independently at player-fixture grain; the latest bootstrap club remains the current
+  forecast and squad-limit club. Contradictory or insufficient fixture evidence fails with the
+  player, fixture, candidate clubs, and evidence considered.
+- Zero-minute fixture records are retained, including for transferred players. A player absent from
+  the latest bootstrap can retain archived historical observations but cannot enter the current
+  selectable pool.
 - New players retain the existing cold-start fallback until historical or accepted current-season
   history exists. Promoted teams retain the existing neutral newly-observed-team fallback.
 - Assistant managers remain archived in raw event-live evidence but are excluded from player-model
@@ -81,9 +96,9 @@ requested, and raw official `xP` remains outside the feature contract.
 
 ## Publication and failure behavior
 
-Current snapshot hashes, event-live hashes, reconstructed event and row counts, cutoff policy,
-clean source state, target identity, model lineage, optimizer legality, frontend schema, freshness,
-and sanitization are publication gates. The frozen data branch is updated only after
+Current snapshot, event-live, and conditional element-summary hashes, reconstructed event and row
+counts, cutoff policy, clean source state, target identity, model lineage, optimizer legality,
+frontend schema, freshness, and sanitization are publication gates. The frozen data branch is updated only after
 synchronization, revalidation, lint, and the production frontend build succeed. An always-run
 private audit upload retains reconstruction and failure evidence. No failed preparation, model,
 optimizer, validation, or build step deploys Pages or replaces the latest successful operational

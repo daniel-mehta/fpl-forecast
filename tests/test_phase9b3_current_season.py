@@ -66,7 +66,9 @@ def test_reconstruction_rejects_missing_event_live(monkeypatch, tmp_path) -> Non
         reconstruct_completed_current_season(**case)
 
 
-def test_reconstruction_rejects_prior_event_not_data_checked(monkeypatch, tmp_path) -> None:
+def test_reconstruction_uses_finalized_fixtures_when_prior_event_not_data_checked(
+    monkeypatch, tmp_path
+) -> None:
     case = _official_case(tmp_path, target_gameweek=2)
     _patch_team_identities(monkeypatch)
     events_path = case["normalized_dir"] / "2026-27" / "current_events.parquet"
@@ -74,11 +76,15 @@ def test_reconstruction_rejects_prior_event_not_data_checked(monkeypatch, tmp_pa
     events.loc[events["gameweek"].eq(1), "data_checked"] = False
     events.to_parquet(events_path, index=False)
 
-    with pytest.raises(ValueError, match="not finished and data-checked"):
-        reconstruct_completed_current_season(**case)
+    result = reconstruct_completed_current_season(**case)
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    assert result.player_rows == 2
+    assert manifest["events"][0]["event_data_checked"] is False
+    assert manifest["events"][0]["included_fixture_count"] == 1
 
 
-def test_reconstruction_rejects_prior_fixture_not_provisional(monkeypatch, tmp_path) -> None:
+def test_reconstruction_defers_prior_fixture_not_provisional(monkeypatch, tmp_path) -> None:
     case = _official_case(tmp_path, target_gameweek=2)
     _patch_team_identities(monkeypatch)
     fixtures_path = case["normalized_dir"] / "2026-27" / "current_fixtures.parquet"
@@ -86,8 +92,13 @@ def test_reconstruction_rejects_prior_fixture_not_provisional(monkeypatch, tmp_p
     fixtures.loc[fixtures["gameweek"].eq(1), "finished_provisional"] = False
     fixtures.to_parquet(fixtures_path, index=False)
 
-    with pytest.raises(ValueError, match="not fully finalized"):
-        reconstruct_completed_current_season(**case)
+    result = reconstruct_completed_current_season(**case)
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    assert result.player_rows == 0
+    assert result.team_rows == 0
+    assert manifest["deferred_fixture_ids"] == [11]
+    assert manifest["events"][0]["event_live_requested"] is False
 
 
 def test_event_live_rejects_fixture_assigned_to_another_gameweek(tmp_path) -> None:
@@ -196,10 +207,18 @@ def test_identical_official_inputs_reconstruct_deterministically(monkeypatch, tm
     first = reconstruct_completed_current_season(**first_case)
     second = reconstruct_completed_current_season(**second_case)
     first_players = pd.read_parquet(first.player_history_path).drop(
-        columns=["raw_snapshot_path", "fixtures_raw_snapshot_path"]
+        columns=[
+            "raw_snapshot_path",
+            "fixtures_raw_snapshot_path",
+            "historical_club_evidence_raw_snapshot_path",
+        ]
     )
     second_players = pd.read_parquet(second.player_history_path).drop(
-        columns=["raw_snapshot_path", "fixtures_raw_snapshot_path"]
+        columns=[
+            "raw_snapshot_path",
+            "fixtures_raw_snapshot_path",
+            "historical_club_evidence_raw_snapshot_path",
+        ]
     )
     first_teams = pd.read_parquet(first.team_history_path).drop(columns=["raw_snapshot_path"])
     second_teams = pd.read_parquet(second.team_history_path).drop(columns=["raw_snapshot_path"])

@@ -139,6 +139,7 @@ def prepare_publication_data(
     data_validation = validate_all(
         normalized_dir=normalized_dir,
         raw_vaastav_dir=raw_vaastav_dir,
+        seasons=historical_seasons,
     )
     if data_validation.errors:
         messages = "; ".join(issue.message for issue in data_validation.errors)
@@ -347,22 +348,6 @@ def resolve_target_gameweek(
         raise PublicationError(f"Gameweek {gameweek} contains a started or finished target fixture.")
 
     prior = frame.loc[frame["gameweek"].lt(gameweek)]
-    incomplete_prior = prior.loc[
-        ~prior["finished"].fillna(False).astype(bool)
-        | ~prior["data_checked"].fillna(False).astype(bool)
-    ]
-    if not incomplete_prior.empty:
-        values = ", ".join(str(int(value)) for value in incomplete_prior["gameweek"].tolist())
-        raise PublicationError(f"Prior gameweeks are not finalized and data-checked: {values}.")
-    prior_fixtures = fixtures.loc[
-        pd.to_numeric(fixtures["gameweek"], errors="coerce").lt(gameweek)
-    ]
-    incomplete_fixtures = prior_fixtures.loc[
-        ~prior_fixtures["finished"].fillna(False).astype(bool)
-        | ~prior_fixtures["finished_provisional"].fillna(False).astype(bool)
-    ]
-    if not incomplete_fixtures.empty:
-        raise PublicationError("At least one prior-gameweek fixture is not fully finalized.")
 
     return TargetGameweekResolution(
         season=season,

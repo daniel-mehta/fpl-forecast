@@ -265,18 +265,20 @@ def test_target_gameweek_rejects_completed_or_past_event() -> None:
         )
 
 
-def test_target_gameweek_rejects_incomplete_prior_results() -> None:
+def test_target_gameweek_allows_incomplete_prior_event_for_fixture_level_reconstruction() -> None:
     events = _events()
     events.loc[events["gameweek"].eq(1), ["finished", "data_checked"]] = [True, False]
 
-    with pytest.raises(PublicationError, match="not finalized"):
-        resolve_target_gameweek(
-            season="2026-27",
-            events=events,
-            fixtures=_fixtures(),
-            requested_gameweek=2,
-            now=NOW,
-        )
+    resolution = resolve_target_gameweek(
+        season="2026-27",
+        events=events,
+        fixtures=_fixtures(),
+        requested_gameweek=2,
+        now=NOW,
+    )
+
+    assert resolution.gameweek == 2
+    assert resolution.prior_events_verified == 1
 
 
 def test_publication_candidate_accepts_legal_official_contract(tmp_path) -> None:

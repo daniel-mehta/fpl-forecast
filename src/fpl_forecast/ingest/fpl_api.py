@@ -229,6 +229,7 @@ class FPLApiClient:
         player_id: int,
         refresh: bool = False,
         offline: bool = False,
+        extra_metadata: dict[str, Any] | None = None,
     ) -> SnapshotRecord:
         return self.fetch_endpoint(
             season=season,
@@ -236,6 +237,7 @@ class FPLApiClient:
             url=self.element_summary_url(player_id),
             refresh=refresh,
             offline=offline,
+            extra_metadata=extra_metadata,
         )
 
     def fetch_event_live(

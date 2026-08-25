@@ -33,8 +33,10 @@ expires. Confirm:
 - requested and inferred seasons match;
 - target gameweek and deadline match official metadata;
 - source mode is `official_current_season`;
-- bootstrap, fixture, and required event-live retrieval times and SHA-256 hashes are recorded;
-- each current-season row traces to archived event-live, fixture, and bootstrap snapshots;
+- bootstrap, fixture, required event-live, and any element-summary fallback retrieval times and
+  SHA-256 hashes are recorded;
+- each current-season row traces to archived event-live, fixture, bootstrap, and any required
+  fixture-specific club evidence;
 - every included source has `source_available_time < information_cutoff`;
 - the pinned historical source revision is recorded;
 - all publication gates passed;
@@ -96,17 +98,21 @@ player-specific exceptions.
 
 ### A Prior Event Is Incomplete
 
-Wait for the official event to be finished and data-checked and for every fixture still assigned to
-that event to be both `finished` and `finished_provisional`. Do not discard an unfinished or
-postponed fixture to unlock publication. If the official service later reassigns the fixture to
-another event, use the new complete official metadata in a fresh run.
+Inspect fixture-level eligibility in `current_season_reconstruction.json`. Finalized fixtures may be
+included even while the event-wide `data_checked` flag is false. An unfinished or postponed fixture
+must remain deferred and absent from training rows, but it does not block a later target solely due
+to its earlier event number. Once it is played, both finality flags are true, its actual kickoff is
+before a later target cutoff, and its official source evidence is available before that cutoff, a
+fresh preparation includes it. Never fabricate, discard, or backdate the missing observation.
 
 ### Event-Live Reconstruction Fails
 
 Inspect the archived payload and reconstruction manifest. Missing event-live data, fixture/event
 conflicts, duplicate player-fixture keys, unresolved player/team identities, aggregate-versus-explain
 point mismatches, and sources retrieved at or after the target deadline all block publication. Do
-not infer ambiguous raw statistics from awarded points or backdate availability.
+not infer ambiguous raw statistics from awarded points or backdate availability. For a temporal
+club mismatch, inspect the recorded historical fixture sides, current club, archived bootstrap
+candidates, and cache-first element-summary evidence; do not add player-specific exceptions.
 
 ### Frontend Sanitization Fails
 
@@ -146,5 +152,6 @@ strictly earlier than the target. Normal and double gameweeks are reconstructed 
 grain. Teams without a target fixture receive explicit zero-fixture projections. A completed prior
 blank event is recorded with zero rows; a globally blank target is rejected because the current
 optimizer publication contract does not support an all-zero event. Incomplete or postponed prior
-fixtures block the run while the last successful forecast remains unchanged. Scheduling remains
-disabled until a real manual GW2 publication has been reviewed successfully.
+fixtures remain excluded until their observations are actually available, but they do not block a
+later valid target solely because they retain an earlier event number. Scheduling remains disabled
+until a real manual GW2 publication has been reviewed successfully.
