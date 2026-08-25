@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -325,6 +326,40 @@ def test_official_publication_requires_authoritative_clean_run_class(
     assert captured["authoritative_publication"] is True
     assert captured["mock_launch"] is False
     assert captured["run_id"] == "official_clean_run"
+    assert captured["information_cutoff"] == pd.Timestamp("2026-08-15T11:00:00Z")
+
+
+@pytest.mark.parametrize("deadline", [None, "not-a-date"])
+def test_official_publication_rejects_missing_or_invalid_prepared_deadline(
+    monkeypatch,
+    tmp_path,
+    deadline,
+) -> None:
+    _, preparation = _publication_candidate(tmp_path)
+    preparation = replace(
+        preparation,
+        target=replace(preparation.target, deadline_time=deadline),
+    )
+    called = False
+
+    def fake_refresh(**kwargs):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(
+        "fpl_forecast.operations.publication_pipeline.refresh_operational",
+        fake_refresh,
+    )
+
+    with pytest.raises(PublicationError, match="deadline is missing or malformed"):
+        run_official_publication_forecast(
+            preparation=preparation,
+            run_id="official_invalid_deadline",
+            raw_fpl_dir=tmp_path / "raw",
+            normalized_dir=tmp_path / "normalized",
+        )
+
+    assert called is False
 
 
 def test_publication_candidate_rejects_mock_source(tmp_path) -> None:

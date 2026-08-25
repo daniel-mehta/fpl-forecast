@@ -21,7 +21,10 @@ from fpl_forecast.operations.config import (
 from fpl_forecast.operations.launch import LaunchCheck, check_season_launch
 from fpl_forecast.operations.locking import RefreshLock, RefreshLockError
 from fpl_forecast.operations.live_results import validate_event_live_for_forecast
-from fpl_forecast.operations.model_chain import run_operational_model_chain
+from fpl_forecast.operations.model_chain import (
+    resolve_official_gameweek_deadline,
+    run_operational_model_chain,
+)
 from fpl_forecast.operations.publication import latest_successful, publish_failure, publish_success
 from fpl_forecast.operations.state import OperationalStateName, OperationalStatus, now_utc, write_status
 
@@ -51,6 +54,7 @@ def refresh_operational(
     raw_fpl_dir: Path = RAW_FPL_API_DIR,
     operational_root: Path | None = None,
     authoritative_publication: bool = False,
+    information_cutoff: str | pd.Timestamp | None = None,
 ) -> RefreshResult:
     source_state = _source_state()
     if authoritative_publication:
@@ -123,6 +127,7 @@ def refresh_operational(
                     completed_team_fixtures=completed_team_fixtures,
                     normalized_dir=normalized_dir,
                     source_mode="mock" if mock_launch else "official_current_season",
+                    information_cutoff=information_cutoff,
                 )
                 stages.append("frontend_artifacts_built")
                 _validate_frontend_artifacts(frontend)
@@ -277,10 +282,17 @@ def _build_frontend_artifacts(
     completed_team_fixtures: pd.DataFrame | None = None,
     normalized_dir: Path | str = NORMALIZED_DIR,
     source_mode: str = "mock",
+    information_cutoff: str | pd.Timestamp | None = None,
 ) -> dict[str, Path]:
     selected_model = config.default_models["xpoints"]
+    cutoff = _resolve_information_cutoff(
+        season=season,
+        target_gameweek=target_gameweek,
+        source_mode=source_mode,
+        normalized_dir=normalized_dir,
+        information_cutoff=information_cutoff,
+    )
     if completed_player_fixtures is not None and "official_event_total_points" in completed_player_fixtures.columns:
-        cutoff = _default_information_cutoff(season, target_gameweek=target_gameweek)
         issues = validate_event_live_for_forecast(completed_player_fixtures, information_cutoff=cutoff)
         if issues:
             raise ValueError(f"Completed-result publication safety gate failed: {', '.join(issues)}")
@@ -293,6 +305,7 @@ def _build_frontend_artifacts(
         completed_team_fixtures=completed_team_fixtures,
         normalized_dir=normalized_dir,
         source_mode=source_mode,
+        as_of=cutoff,
     )
 
     projections = result.decision_candidates.loc[result.decision_candidates["model_name"].eq(selected_model)].copy()
@@ -632,3 +645,33 @@ def _default_information_cutoff(season: str, *, target_gameweek: int) -> pd.Time
         return pd.Timestamp(f"{season[:4]}-08-01T10:00:00Z")
     day = 15 + (target_gameweek - 1) * 7 - 1
     return pd.Timestamp(f"{season[:4]}-08-{day:02d}T10:00:00Z")
+
+
+def _resolve_information_cutoff(
+    *,
+    season: str,
+    target_gameweek: int,
+    source_mode: str,
+    normalized_dir: Path | str,
+    information_cutoff: str | pd.Timestamp | None,
+) -> pd.Timestamp:
+    if source_mode == "mock":
+        return _default_information_cutoff(season, target_gameweek=target_gameweek)
+    if source_mode != "official_current_season":
+        raise ValueError(f"Unknown operational source mode: {source_mode}")
+    official_deadline = resolve_official_gameweek_deadline(
+        season,
+        normalized_dir=normalized_dir,
+        target_gameweek=target_gameweek,
+    )
+    if information_cutoff is None:
+        return official_deadline
+    supplied = pd.to_datetime(information_cutoff, utc=True, errors="coerce")
+    if not isinstance(supplied, pd.Timestamp) or pd.isna(supplied):
+        raise ValueError("Authoritative official deadline is missing or malformed.")
+    if supplied != official_deadline:
+        raise ValueError(
+            f"Official current gameweek {target_gameweek} deadline does not match the "
+            "publication preparation deadline."
+        )
+    return supplied

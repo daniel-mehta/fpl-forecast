@@ -25,6 +25,7 @@ from fpl_forecast.operations.model_chain import run_operational_model_chain
 from fpl_forecast.operations.orchestrator import (
     _input_fingerprint,
     _mock_launch_check,
+    _resolve_information_cutoff,
     refresh_operational,
 )
 from fpl_forecast.operations.state import OperationalStateName
@@ -204,6 +205,98 @@ def test_event_live_source_after_cutoff_and_duplicate_keys_fail_safety_gate() ->
 
     assert "duplicate player-fixture keys" in issues
     assert "source availability is after the forecast cutoff" in issues
+
+
+def test_gw2_completed_result_gate_uses_nonstandard_official_deadline(tmp_path) -> None:
+    season_dir = tmp_path / "2026-27"
+    season_dir.mkdir()
+    pd.DataFrame(
+        [
+            {
+                "gameweek": 2,
+                "deadline_time": "2026-08-28T17:30:00Z",
+            }
+        ]
+    ).to_parquet(season_dir / "current_events.parquet", index=False)
+    frame = _normalize_test_live(
+        _event_live_payload(
+            [_element(7, total=2, explain=[_fixture_explain(11, [("minutes", 90, 2)])])]
+        ),
+        retrieved_at="2026-08-25T13:31:30.932243Z",
+    )
+
+    cutoff = _resolve_information_cutoff(
+        season="2026-27",
+        target_gameweek=2,
+        source_mode="official_current_season",
+        normalized_dir=tmp_path,
+        information_cutoff="2026-08-28T17:30:00Z",
+    )
+    issues = validate_event_live_for_forecast(frame, information_cutoff=cutoff)
+
+    assert cutoff == pd.Timestamp("2026-08-28T17:30:00Z")
+    assert issues == []
+
+
+@pytest.mark.parametrize(
+    "retrieved_at",
+    ["2026-08-28T17:30:00Z", "2026-08-28T17:30:00.000001Z"],
+)
+def test_gw2_completed_result_gate_rejects_at_or_after_official_deadline(
+    retrieved_at,
+) -> None:
+    frame = _normalize_test_live(
+        _event_live_payload(
+            [_element(7, total=2, explain=[_fixture_explain(11, [("minutes", 90, 2)])])]
+        ),
+        retrieved_at=retrieved_at,
+    )
+
+    issues = validate_event_live_for_forecast(
+        frame,
+        information_cutoff="2026-08-28T17:30:00Z",
+    )
+
+    assert "source availability is after the forecast cutoff" in issues
+
+
+@pytest.mark.parametrize("deadline", [None, "not-a-date"])
+def test_official_cutoff_resolution_fails_closed_on_missing_or_invalid_deadline(
+    tmp_path,
+    deadline,
+) -> None:
+    season_dir = tmp_path / "2026-27"
+    season_dir.mkdir()
+    pd.DataFrame([{"gameweek": 2, "deadline_time": deadline}]).to_parquet(
+        season_dir / "current_events.parquet",
+        index=False,
+    )
+
+    with pytest.raises(ValueError, match="missing or malformed"):
+        _resolve_information_cutoff(
+            season="2026-27",
+            target_gameweek=2,
+            source_mode="official_current_season",
+            normalized_dir=tmp_path,
+            information_cutoff=None,
+        )
+
+
+def test_official_cutoff_resolution_rejects_preparation_metadata_disagreement(tmp_path) -> None:
+    season_dir = tmp_path / "2026-27"
+    season_dir.mkdir()
+    pd.DataFrame(
+        [{"gameweek": 2, "deadline_time": "2026-08-28T17:30:00Z"}]
+    ).to_parquet(season_dir / "current_events.parquet", index=False)
+
+    with pytest.raises(ValueError, match="does not match the publication preparation deadline"):
+        _resolve_information_cutoff(
+            season="2026-27",
+            target_gameweek=2,
+            source_mode="official_current_season",
+            normalized_dir=tmp_path,
+            information_cutoff="2026-08-29T09:15:00Z",
+        )
 
 
 def test_event_live_preserves_assistant_managers_but_excludes_them_from_player_audit() -> None:

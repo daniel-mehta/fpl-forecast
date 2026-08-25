@@ -58,7 +58,16 @@ def run_operational_model_chain(
         raise ValueError(f"Unknown operational source mode: {source_mode}")
     if source_mode == "official_current_season":
         official_context = _official_current_context(season, normalized_dir=normalized_dir, target_gameweek=target_gameweek)
-        as_of = as_of or official_context["deadline"]
+        official_deadline = official_context["deadline"]
+        if as_of is None:
+            as_of = official_deadline
+        else:
+            as_of = _utc_timestamp(as_of, field_name="information cutoff")
+            if as_of != official_deadline:
+                raise ValueError(
+                    f"Official current gameweek {target_gameweek} deadline does not match "
+                    "the supplied authoritative information cutoff."
+                )
     else:
         official_context = {}
         as_of = as_of or _default_information_cutoff(season, target_gameweek=target_gameweek)
@@ -448,11 +457,16 @@ def _official_current_context(
     fixtures = pd.read_parquet(fixtures_path)
     teams = pd.read_parquet(teams_path)
     event = events.loc[pd.to_numeric(events["gameweek"], errors="coerce").eq(target_gameweek)]
-    if event.empty:
-        raise ValueError(f"Official current events do not contain gameweek {target_gameweek}.")
-    deadline = pd.to_datetime(event.iloc[0]["deadline_time"], utc=True, errors="coerce")
-    if pd.isna(deadline):
-        raise ValueError(f"Official current gameweek {target_gameweek} has no valid deadline.")
+    if len(event) != 1:
+        raise ValueError(
+            f"Official current events must contain exactly one gameweek {target_gameweek} row."
+        )
+    deadline = resolve_official_gameweek_deadline(
+        season,
+        normalized_dir=normalized_dir,
+        target_gameweek=target_gameweek,
+        events=events,
+    )
     target = fixtures.loc[pd.to_numeric(fixtures["gameweek"], errors="coerce").eq(target_gameweek)].copy()
     if target.empty:
         raise ValueError(f"Official current fixtures do not contain gameweek {target_gameweek}.")
@@ -468,6 +482,44 @@ def _official_current_context(
         "team_identity": team_identity,
         "snapshot_metadata": _official_snapshot_metadata(season_dir),
     }
+
+
+def resolve_official_gameweek_deadline(
+    season: str,
+    *,
+    normalized_dir: Path | str,
+    target_gameweek: int,
+    events: pd.DataFrame | None = None,
+) -> pd.Timestamp:
+    if target_gameweek <= 0:
+        raise ValueError("Official target gameweek must be a positive integer.")
+    if events is None:
+        events_path = Path(normalized_dir) / season / "current_events.parquet"
+        if not events_path.exists():
+            raise FileNotFoundError(f"Missing official normalized current events: {events_path}")
+        events = pd.read_parquet(events_path)
+    required = {"gameweek", "deadline_time"}
+    if missing := required.difference(events.columns):
+        raise ValueError(
+            f"Official current events are missing fields: {', '.join(sorted(missing))}."
+        )
+    gameweeks = pd.to_numeric(events["gameweek"], errors="coerce")
+    event = events.loc[gameweeks.eq(target_gameweek)]
+    if len(event) != 1:
+        raise ValueError(
+            f"Official current events must contain exactly one gameweek {target_gameweek} row."
+        )
+    return _utc_timestamp(
+        event.iloc[0]["deadline_time"],
+        field_name=f"official current gameweek {target_gameweek} deadline",
+    )
+
+
+def _utc_timestamp(value: Any, *, field_name: str) -> pd.Timestamp:
+    timestamp = pd.to_datetime(value, utc=True, errors="coerce")
+    if not isinstance(timestamp, pd.Timestamp) or pd.isna(timestamp):
+        raise ValueError(f"{field_name.capitalize()} is missing or malformed.")
+    return timestamp
 
 
 def _current_team_identity(teams: pd.DataFrame, *, normalized_dir: Path | str, season: str) -> pd.DataFrame:

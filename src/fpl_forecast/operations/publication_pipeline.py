@@ -247,6 +247,13 @@ def run_official_publication_forecast(
         raise PublicationError(
             f"Preparation run ID {preparation.run_id!r} does not match forecast run ID {run_id!r}."
         )
+    authoritative_deadline = pd.to_datetime(
+        preparation.target.deadline_time,
+        utc=True,
+        errors="coerce",
+    )
+    if not isinstance(authoritative_deadline, pd.Timestamp) or pd.isna(authoritative_deadline):
+        raise PublicationError("Prepared official target deadline is missing or malformed.")
     completed_players = _read_optional_parquet(preparation.player_history_path)
     completed_teams = _read_optional_parquet(preparation.team_history_path)
     if len(completed_players) != preparation.current_season_player_rows:
@@ -265,6 +272,7 @@ def run_official_publication_forecast(
         authoritative_publication=True,
         completed_player_fixtures=completed_players,
         completed_team_fixtures=completed_teams,
+        information_cutoff=authoritative_deadline,
     )
     if result.status.state.value != "SUCCEEDED" or result.run_dir is None:
         raise PublicationError(
