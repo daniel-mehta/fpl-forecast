@@ -2,8 +2,6 @@ name: Full Python suite
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "17 6 * * *"
 
 permissions:
   contents: read
