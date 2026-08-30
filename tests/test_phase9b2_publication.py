@@ -564,10 +564,12 @@ def test_ci_workflows_separate_fast_full_and_frontend_jobs() -> None:
     full = Path(".github/workflows/full-python.yml").read_text(encoding="utf-8")
     frontend = Path(".github/workflows/frontend-ci.yml").read_text(encoding="utf-8")
 
+    assert "push:" in fast and "pull_request:" in fast
     assert 'pytest -q -m "not slow"' in fast
     assert "npm " not in fast
-    assert "workflow_dispatch:" in full and "schedule:" in full
-    assert "pytest -q" in full and '-m "not slow"' not in full
+    assert "workflow_dispatch:" in full
+    assert "schedule:" not in full
+    assert "uv run pytest -q" in full and '-m "not slow"' not in full
     assert "npm run lint" in frontend and "npm run build" in frontend
     assert "pytest" not in frontend
     assert "deploy-pages" not in frontend

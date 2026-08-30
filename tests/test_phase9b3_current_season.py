@@ -46,11 +46,21 @@ def test_gw3_reconstructs_two_completed_events_without_target_leakage(monkeypatc
     assert f"{EVENT_LIVE}_3" not in result.source_hashes
 
 
-def test_reconstruction_rejects_event_live_retrieved_at_target_cutoff(monkeypatch, tmp_path) -> None:
+@pytest.mark.parametrize(
+    "event_retrieved_at",
+    [
+        datetime(2026, 8, 29, 11, tzinfo=UTC),
+        datetime(2026, 8, 29, 11, 0, 1, tzinfo=UTC),
+    ],
+    ids=["at-cutoff", "after-cutoff"],
+)
+def test_reconstruction_rejects_event_live_retrieved_at_or_after_target_cutoff(
+    monkeypatch, tmp_path, event_retrieved_at: datetime
+) -> None:
     case = _official_case(
         tmp_path,
         target_gameweek=2,
-        event_retrieved_at=datetime(2026, 8, 29, 11, tzinfo=UTC),
+        event_retrieved_at=event_retrieved_at,
     )
     _patch_team_identities(monkeypatch)
 

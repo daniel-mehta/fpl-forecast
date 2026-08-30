@@ -31,6 +31,16 @@ from fpl_forecast.operations.temporal_clubs import (
 
 SEASON = "2026-27"
 CUTOFF = "2026-08-29T11:00:00Z"
+NETWORK_SNAPSHOT_RETRIEVED_AT = datetime(2026, 8, 28, 12, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def _deterministic_network_snapshot_clock(monkeypatch) -> None:
+    """Keep network-backed historical fixtures independent of the wall clock."""
+    monkeypatch.setattr(
+        "fpl_forecast.ingest.snapshots.utc_now",
+        lambda: NETWORK_SNAPSHOT_RETRIEVED_AT,
+    )
 
 
 def test_transfer_zero_minutes_uses_fixture_club_and_preserves_current_club(
@@ -149,13 +159,35 @@ def test_element_summary_snapshot_has_checksum_retrieval_and_publication_lineage
     assert metadata["evidence_purpose"] == "historical_fixture_club_resolution"
     assert metadata["publication_run_id"] == "temporal_case"
     assert len(metadata["sha256"]) == 64
-    assert metadata["retrieved_at"]
+    assert metadata["retrieved_at"] == "2026-08-28T12:00:00Z"
+    assert pd.Timestamp(metadata["retrieved_at"]) < pd.Timestamp(CUTOFF)
     assert manifest["source_hashes"][endpoint] == metadata["sha256"]
     assert manifest["official_snapshots"][endpoint]["element_id"] == 7
     assert manifest["official_snapshots"][endpoint]["raw_snapshot_path"]
     forecast_snapshots = _official_snapshot_metadata(case["normalized"] / SEASON)
     assert forecast_snapshots[endpoint]["element_id"] == 7
     assert forecast_snapshots[endpoint]["sha256"] == metadata["sha256"]
+
+
+def test_network_backed_historical_snapshots_use_a_fixed_pre_cutoff_time(
+    monkeypatch, tmp_path
+) -> None:
+    case = _case(tmp_path, transferred=True)
+    _patch_team_identities(monkeypatch)
+
+    reconstruct_completed_current_season(
+        **case["kwargs"], client=_network_client(case, []), refresh=True
+    )
+
+    for endpoint in (f"{EVENT_LIVE}_1", f"{ELEMENT_SUMMARY}_7"):
+        snapshot = sorted(
+            path
+            for path in (case["raw"] / SEASON / endpoint).glob("*.json")
+            if not path.name.endswith(".metadata.json")
+        )[-1]
+        metadata = read_metadata(snapshot)
+        assert metadata["retrieved_at"] == "2026-08-28T12:00:00Z"
+        assert pd.Timestamp(metadata["retrieved_at"]) < pd.Timestamp(CUTOFF)
 
 
 def test_removed_player_uses_archived_identity_but_is_not_currently_selectable(

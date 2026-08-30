@@ -5,8 +5,8 @@ bypass validation gates or support scheduled forecast publication.
 
 ## Publish An Official Forecast
 
-1. Confirm `main` is clean, pushed, and passing the normal Python, frontend, and full Python
-   workflows.
+1. Confirm `main` is clean, pushed, and passing the normal Python and frontend workflows. Manually
+   run the full Python workflow before this important backend publication.
 2. Open **Actions > Publish official FPL forecast**.
 3. Select **Run workflow** on the reviewed `main` commit.
 4. Set `season` to the official season, currently `2026-27`.

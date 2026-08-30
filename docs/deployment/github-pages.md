@@ -63,5 +63,6 @@ validation complete, before building and deploying the matching dashboard.
 Forecasting, simulator, optimizer, or public-forecast changes must use **Publish official FPL
 forecast**; frontend-only deployment is intentionally not a publication mechanism.
 
-The full Python test suite is separate from publication. It can be started manually and runs
-nightly. Ordinary push and pull-request CI runs Ruff and `pytest -m "not slow"`.
+The full Python test suite is separate from publication and is started manually. Run it before
+important backend publications, releases, or major backend changes. Ordinary push and pull-request
+CI runs Ruff and `pytest -m "not slow"`.

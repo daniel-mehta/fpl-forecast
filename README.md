@@ -290,8 +290,8 @@ uv run ruff check .
 uv run pytest -q -m "not slow"
 ```
 
-The complete suite runs separately through the manually triggered and nightly `Full Python suite`
-workflow.
+The complete suite runs separately through the manually triggered `Full Python suite` workflow.
+Run it before important backend publications, releases, or major backend changes.
 
 Run the static frontend locally:
 
