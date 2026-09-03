@@ -57,6 +57,7 @@ export function YourTeamPage({ data }: YourTeamPageProps) {
   const [bankTenths, setBankTenths] = useState(0);
   const [bankInput, setBankInput] = useState("0.0");
   const [freeTransfers, setFreeTransfers] = useState(1);
+  const [freeTransfersInput, setFreeTransfersInput] = useState("1");
   const [combineRecommendations, setCombineRecommendations] = useState(false);
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
@@ -74,6 +75,7 @@ export function YourTeamPage({ data }: YourTeamPageProps) {
       setBankTenths(saved.bankTenths);
       setBankInput(formatBankInput(saved.bankTenths));
       setFreeTransfers(saved.freeTransfers);
+      setFreeTransfersInput(formatFreeTransfersInput(saved.freeTransfers));
       setCombineRecommendations(saved.combineRecommendations === true);
     }
   }, [contract.valid, identity]);
@@ -109,6 +111,7 @@ export function YourTeamPage({ data }: YourTeamPageProps) {
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const squadErrors = validateSquad(selected);
   const bankInputError = validateBankInput(bankInput);
+  const freeTransfersInputError = validateFreeTransfersInput(freeTransfersInput);
   const roleById = calculation ? optimizedRoles(calculation.baseline) : new Map<string, string>();
   const searchResults = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -155,6 +158,7 @@ export function YourTeamPage({ data }: YourTeamPageProps) {
     const inputErrors = [
       ...squadErrors,
       ...(bankInputError ? [bankInputError] : []),
+      ...(freeTransfersInputError ? [freeTransfersInputError] : []),
       ...validateMoneyAndTransfers(selected, sellingPrices, bankTenths, freeTransfers),
     ];
     if (inputErrors.length) {
@@ -207,6 +211,7 @@ export function YourTeamPage({ data }: YourTeamPageProps) {
     setBankTenths(0);
     setBankInput("0.0");
     setFreeTransfers(1);
+    setFreeTransfersInput("1");
     setCombineRecommendations(false);
     setSearch("");
     setCalculation(null);
@@ -286,13 +291,20 @@ export function YourTeamPage({ data }: YourTeamPageProps) {
             <span className="control-label"><label htmlFor="your-team-free-transfers">Free transfers</label> <InfoTooltip label="Free transfers">{combineRecommendations ? HELP.freeTransfersCombined : HELP.freeTransfersIndependent}</InfoTooltip></span>
             <input
               id="your-team-free-transfers"
-              type="number"
-              min="0"
-              max="5"
-              step="1"
-              value={freeTransfers}
-              onChange={(event) => { setFreeTransfers(Number(event.target.value)); invalidateCalculation(); }}
+              type="text"
+              inputMode="numeric"
+              value={freeTransfersInput}
+              aria-invalid={freeTransfersInputError ? "true" : undefined}
+              aria-describedby={freeTransfersInputError ? "your-team-free-transfers-error" : undefined}
+              onChange={(event) => {
+                const value = event.target.value;
+                setFreeTransfersInput(value);
+                const parsed = parseFreeTransfersInput(value);
+                if (parsed !== null) setFreeTransfers(parsed);
+                invalidateCalculation();
+              }}
             />
+            {freeTransfersInputError && <span className="field-error" id="your-team-free-transfers-error" role="alert">{freeTransfersInputError}</span>}
           </div>
         </div>
         <div className="transfer-mode-control">
@@ -713,6 +725,21 @@ function parseBankInput(value: string): number | null {
 function validateBankInput(value: string): string | null {
   if (value === "") return "Enter a non-negative bank amount in £0.1m increments.";
   return parseBankInput(value) === null ? "Bank must be a non-negative amount in £0.1m increments." : null;
+}
+
+function formatFreeTransfersInput(freeTransfers: number): string {
+  return String(freeTransfers);
+}
+
+function parseFreeTransfersInput(value: string): number | null {
+  if (!/^\d+$/.test(value)) return null;
+  const freeTransfers = Number(value);
+  return Number.isSafeInteger(freeTransfers) && freeTransfers >= 0 && freeTransfers <= 5 ? freeTransfers : null;
+}
+
+function validateFreeTransfersInput(value: string): string | null {
+  if (value === "") return "Enter a whole number of free transfers from 0 to 5.";
+  return parseFreeTransfersInput(value) === null ? "Free transfers must be a whole number from 0 to 5." : null;
 }
 
 function validateContract(data: FrontendData): { valid: boolean; error: string; players: OptimizerPlayer[]; identity: ForecastIdentity | null } {

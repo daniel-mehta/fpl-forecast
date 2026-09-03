@@ -150,12 +150,12 @@ describe("Your Team page", () => {
     Object.defineProperty(window, "localStorage", { configurable: true, value: storage });
     const user = userEvent.setup();
     const first = render(<YourTeamPage data={data()} />);
-    await user.clear(screen.getByRole("spinbutton", { name: "Free transfers" }));
-    await user.type(screen.getByRole("spinbutton", { name: "Free transfers" }), "5");
+    await user.clear(screen.getByLabelText("Free transfers"));
+    await user.type(screen.getByLabelText("Free transfers"), "5");
     await waitFor(() => expect(storage.length).toBe(1));
     first.unmount();
     render(<YourTeamPage data={data()} />);
-    await waitFor(() => expect(screen.getByRole("spinbutton", { name: "Free transfers" })).toHaveValue(5));
+    await waitFor(() => expect(screen.getByLabelText("Free transfers")).toHaveValue("5"));
     if (original) Object.defineProperty(window, "localStorage", original);
   });
 
@@ -180,13 +180,13 @@ describe("Your Team page", () => {
     const user = userEvent.setup();
     render(<YourTeamPage data={data()} />);
     await user.click(screen.getByRole("checkbox", { name: "Combine recommendations into one plan" }));
-    await user.clear(screen.getByRole("spinbutton", { name: "Free transfers" }));
-    await user.type(screen.getByRole("spinbutton", { name: "Free transfers" }), "5");
+    await user.clear(screen.getByLabelText("Free transfers"));
+    await user.type(screen.getByLabelText("Free transfers"), "5");
     await waitFor(() => expect(storage.length).toBe(1));
     await user.click(screen.getByRole("button", { name: "Reset Your Team" }));
     expect(storage.getItem(YOUR_TEAM_STORAGE_KEY)).toBeNull();
     expect(screen.getByRole("checkbox", { name: "Combine recommendations into one plan" })).not.toBeChecked();
-    expect(screen.getByRole("spinbutton", { name: "Free transfers" })).toHaveValue(1);
+    expect(screen.getByLabelText("Free transfers")).toHaveValue("1");
     expect(screen.getByRole("alert")).toHaveTextContent("cleared from this browser");
     if (original) Object.defineProperty(window, "localStorage", original);
   });
@@ -231,6 +231,20 @@ describe("Your Team page", () => {
     expect(bank).toHaveValue(value);
     expect(bank).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByRole("alert")).toHaveTextContent(/bank amount|Bank must/i);
+    await user.click(screen.getByRole("button", { name: "Optimize lineup and transfers" }));
+    expect(screen.queryByRole("heading", { name: "Optimized lineup" })).not.toBeInTheDocument();
+  });
+
+  it.each(["", "-1", "not a number", "1.5", "6"])("keeps an invalid free-transfer draft visible and blocks calculation: %s", async (value) => {
+    const user = userEvent.setup();
+    render(<YourTeamPage data={data()} />);
+    const freeTransfers = screen.getByLabelText("Free transfers");
+    await user.clear(freeTransfers);
+    if (value) await user.type(freeTransfers, value);
+
+    expect(freeTransfers).toHaveValue(value);
+    expect(freeTransfers).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("alert")).toHaveTextContent(/free transfers/i);
     await user.click(screen.getByRole("button", { name: "Optimize lineup and transfers" }));
     expect(screen.queryByRole("heading", { name: "Optimized lineup" })).not.toBeInTheDocument();
   });
@@ -286,6 +300,12 @@ describe("Your Team page", () => {
     await waitFor(() => expect(screen.getByText(/15\/15 selected/)).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Optimize lineup and transfers" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "Optimized lineup" })).toBeInTheDocument(), { timeout: 10_000 });
+    const freeTransfers = screen.getByLabelText("Free transfers");
+    await user.clear(freeTransfers);
+    await user.type(freeTransfers, "5");
+    expect(screen.queryByRole("heading", { name: "Optimized lineup" })).not.toBeInTheDocument();
+    expect(freeTransfers).toHaveValue("5");
+    await waitFor(() => expect(JSON.parse(storage.getItem(YOUR_TEAM_STORAGE_KEY) ?? "{}").freeTransfers).toBe(5));
     const bank = screen.getByLabelText("Money in the bank (£m)");
     await user.clear(bank);
     await user.type(bank, "1.5");
