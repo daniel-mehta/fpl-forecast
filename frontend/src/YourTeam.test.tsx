@@ -204,6 +204,37 @@ describe("Your Team page", () => {
     expect(trigger).toHaveAttribute("aria-describedby");
   });
 
+  it("allows a bank amount to be replaced naturally and persists it in tenths", async () => {
+    const storage = memoryStorage();
+    const original = Object.getOwnPropertyDescriptor(window, "localStorage");
+    Object.defineProperty(window, "localStorage", { configurable: true, value: storage });
+    const user = userEvent.setup();
+    render(<YourTeamPage data={data()} />);
+    const bank = screen.getByLabelText("Money in the bank (£m)");
+
+    await user.clear(bank);
+    await user.type(bank, "1.5");
+
+    expect(bank).toHaveValue("1.5");
+    expect(bank).not.toHaveAttribute("aria-invalid");
+    await waitFor(() => expect(JSON.parse(storage.getItem(YOUR_TEAM_STORAGE_KEY) ?? "{}").bankTenths).toBe(15));
+    if (original) Object.defineProperty(window, "localStorage", original);
+  });
+
+  it.each(["", "-1", "not money", "1.55"])("keeps an invalid bank draft visible and blocks calculation: %s", async (value) => {
+    const user = userEvent.setup();
+    render(<YourTeamPage data={data()} />);
+    const bank = screen.getByLabelText("Money in the bank (£m)");
+    await user.clear(bank);
+    if (value) await user.type(bank, value);
+
+    expect(bank).toHaveValue(value);
+    expect(bank).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("alert")).toHaveTextContent(/bank amount|Bank must/i);
+    await user.click(screen.getByRole("button", { name: "Optimize lineup and transfers" }));
+    expect(screen.queryByRole("heading", { name: "Optimized lineup" })).not.toBeInTheDocument();
+  });
+
   it("paints a calculating state before running exact optimization", async () => {
     const storage = memoryStorage();
     const rows = projectionPool(1);
@@ -255,6 +286,12 @@ describe("Your Team page", () => {
     await waitFor(() => expect(screen.getByText(/15\/15 selected/)).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Optimize lineup and transfers" }));
     await waitFor(() => expect(screen.getByRole("heading", { name: "Optimized lineup" })).toBeInTheDocument(), { timeout: 10_000 });
+    const bank = screen.getByLabelText("Money in the bank (£m)");
+    await user.clear(bank);
+    await user.type(bank, "1.5");
+    expect(screen.queryByRole("heading", { name: "Optimized lineup" })).not.toBeInTheDocument();
+    expect(bank).toHaveValue("1.5");
+    await waitFor(() => expect(JSON.parse(storage.getItem(YOUR_TEAM_STORAGE_KEY) ?? "{}").bankTenths).toBe(15));
     await user.click(screen.getByRole("checkbox", { name: "Combine recommendations into one plan" }));
     expect(screen.queryByRole("heading", { name: "Optimized lineup" })).not.toBeInTheDocument();
     expect(screen.getByText(/15\/15 selected/)).toBeInTheDocument();

@@ -55,6 +55,7 @@ export function YourTeamPage({ data }: YourTeamPageProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [sellingPrices, setSellingPrices] = useState<Record<string, number>>({});
   const [bankTenths, setBankTenths] = useState(0);
+  const [bankInput, setBankInput] = useState("0.0");
   const [freeTransfers, setFreeTransfers] = useState(1);
   const [combineRecommendations, setCombineRecommendations] = useState(false);
   const [search, setSearch] = useState("");
@@ -71,6 +72,7 @@ export function YourTeamPage({ data }: YourTeamPageProps) {
       setSelectedIds(saved.playerIds);
       setSellingPrices(saved.sellingPrices);
       setBankTenths(saved.bankTenths);
+      setBankInput(formatBankInput(saved.bankTenths));
       setFreeTransfers(saved.freeTransfers);
       setCombineRecommendations(saved.combineRecommendations === true);
     }
@@ -106,6 +108,7 @@ export function YourTeamPage({ data }: YourTeamPageProps) {
     .filter((player): player is OptimizerPlayer => Boolean(player));
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const squadErrors = validateSquad(selected);
+  const bankInputError = validateBankInput(bankInput);
   const roleById = calculation ? optimizedRoles(calculation.baseline) : new Map<string, string>();
   const searchResults = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -151,6 +154,7 @@ export function YourTeamPage({ data }: YourTeamPageProps) {
   async function calculate() {
     const inputErrors = [
       ...squadErrors,
+      ...(bankInputError ? [bankInputError] : []),
       ...validateMoneyAndTransfers(selected, sellingPrices, bankTenths, freeTransfers),
     ];
     if (inputErrors.length) {
@@ -201,6 +205,7 @@ export function YourTeamPage({ data }: YourTeamPageProps) {
     setSelectedIds([]);
     setSellingPrices({});
     setBankTenths(0);
+    setBankInput("0.0");
     setFreeTransfers(1);
     setCombineRecommendations(false);
     setSearch("");
@@ -262,12 +267,20 @@ export function YourTeamPage({ data }: YourTeamPageProps) {
             <span className="control-label"><label htmlFor="your-team-bank">Money in the bank (£m)</label> <InfoTooltip label="Money in the bank (£m)">{HELP.bank}</InfoTooltip></span>
             <input
               id="your-team-bank"
-              type="number"
-              min="0"
-              step="0.1"
-              value={(bankTenths / 10).toFixed(1)}
-              onChange={(event) => { setBankTenths(Math.round(Number(event.target.value) * 10)); invalidateCalculation(); }}
+              type="text"
+              inputMode="decimal"
+              value={bankInput}
+              aria-invalid={bankInputError ? "true" : undefined}
+              aria-describedby={bankInputError ? "your-team-bank-error" : undefined}
+              onChange={(event) => {
+                const value = event.target.value;
+                setBankInput(value);
+                const parsed = parseBankInput(value);
+                if (parsed !== null) setBankTenths(parsed);
+                invalidateCalculation();
+              }}
             />
+            {bankInputError && <span className="field-error" id="your-team-bank-error" role="alert">{bankInputError}</span>}
           </div>
           <div className="team-entry-field">
             <span className="control-label"><label htmlFor="your-team-free-transfers">Free transfers</label> <InfoTooltip label="Free transfers">{combineRecommendations ? HELP.freeTransfersCombined : HELP.freeTransfersIndependent}</InfoTooltip></span>
@@ -685,6 +698,21 @@ function validateMoneyAndTransfers(
   if (!Number.isInteger(freeTransfers) || freeTransfers < 0 || freeTransfers > 5) errors.push("Free transfers must be a whole number from 0 to 5.");
   for (const player of players) if (!Number.isInteger(sellingPrices[player.id]) || sellingPrices[player.id] <= 0) errors.push(`Enter a valid selling price for ${player.name}.`);
   return errors;
+}
+
+function formatBankInput(bankTenths: number): string {
+  return (bankTenths / 10).toFixed(1);
+}
+
+function parseBankInput(value: string): number | null {
+  if (!/^\d+(?:\.\d)?$/.test(value)) return null;
+  const bankTenths = Number(value) * 10;
+  return Number.isSafeInteger(bankTenths) && bankTenths >= 0 ? bankTenths : null;
+}
+
+function validateBankInput(value: string): string | null {
+  if (value === "") return "Enter a non-negative bank amount in £0.1m increments.";
+  return parseBankInput(value) === null ? "Bank must be a non-negative amount in £0.1m increments." : null;
 }
 
 function validateContract(data: FrontendData): { valid: boolean; error: string; players: OptimizerPlayer[]; identity: ForecastIdentity | null } {

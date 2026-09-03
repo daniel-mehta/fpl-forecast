@@ -1067,6 +1067,16 @@ footer {
   background: #fff;
 }
 
+.team-entry-controls [aria-invalid="true"] {
+  border-color: #a33a32;
+}
+
+.team-entry-field .field-error {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: 0.72rem;
+}
+
 .transfer-mode-control {
   display: grid;
   grid-template-columns: auto auto minmax(0, 1fr);
