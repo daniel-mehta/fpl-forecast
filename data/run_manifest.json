@@ -1,18 +1,19 @@
 {
   "code_revision": "620e9d9",
-  "completed_at": "2026-09-09T22:21:45.626682Z",
+  "completed_at": "2026-09-11T11:14:39.940517Z",
   "completion_stage": "published",
-  "created_at": "2026-09-09T22:21:45.626682Z",
+  "created_at": "2026-09-11T11:14:39.940517Z",
   "dirty_worktree": false,
   "fall_back_flags": [
+    "cold_start_new_player",
     "neutral_promoted_team"
   ],
   "frontend_schema_version": "phase9_frontend_v1",
   "inferred_official_season": "2026-27",
-  "input_fingerprint": "c5887673313b4d8631d45c5aa74fcc1746f9a44913c7322e32a19a38411642f7",
+  "input_fingerprint": "e6c52c2174cd3ccf9039757806adb751c42466c29298e888e50f55c5e6f92e37",
   "launch_state": "READY_TO_REFRESH",
   "model_lineage": {
-    "cold_start_count": 0,
+    "cold_start_count": 1,
     "completed_player_fixture_rows_used": 1890,
     "completed_team_fixture_rows_used": 30,
     "conservation_rows": 60,
@@ -24,7 +25,7 @@
     "decision_candidate_count": 2775,
     "decision_optimizer": "D2_EXPECTED_REALIZED_POINTS",
     "decision_optimizer_scope": "D1 globally optimal full-candidate MILP seed, then deterministic full-pool one-swap local search scored by exact expected realized points; termination=configured_iteration_bound_reached; final fixed-squad lineup refined to a single-change local optimum; not a global proof for D2.",
-    "decision_run_id": "official_2026-27_34410864046_1_decision_current",
+    "decision_run_id": "official_2026-27_34592272522_1_decision_current",
     "deferred_historical_fixture_ids": [],
     "element_summary_player_ids": [
       28,
@@ -56,7 +57,7 @@
       "teams_total": 20,
       "teams_with_stable_uid": 20
     },
-    "max_completed_source_available_time": "2026-09-09T22:12:27.506800+00:00",
+    "max_completed_source_available_time": "2026-09-11T11:07:09.671816+00:00",
     "minutes_diagnostics": [
       {
         "details": {
@@ -105,7 +106,7 @@
         "training_rows": 115150
       }
     ],
-    "minutes_model_run_id": "official_2026-27_34410864046_1_minutes_current",
+    "minutes_model_run_id": "official_2026-27_34592272522_1_minutes_current",
     "minutes_models": [
       "M3_EWMA_MINUTES",
       "M5_REGULARIZED_STATE_SOFTMAX",
@@ -116,159 +117,160 @@
     "official_deadline": "2026-09-12T12:30:00+00:00",
     "official_snapshots": {
       "bootstrap_static": {
-        "raw_snapshot_file": "fpl_api/2026-27/bootstrap_static/20260909T221217282273Z.json",
-        "retrieved_at": "2026-09-09T22:12:17.282273Z",
-        "sha256": "41e432fea4b76387f67abbd9897aad70fbf068cbeb7d32257b8e31cb2e77463d",
+        "raw_snapshot_file": "fpl_api/2026-27/bootstrap_static/20260911T110700112874Z.json",
+        "retrieved_at": "2026-09-11T11:07:00.112874Z",
+        "sha256": "8c6f287a865277e1ab70b8751ced7a54963b1dd18e12630ff8d944b927a614c5",
         "source_url": "https://fantasy.premierleague.com/api/bootstrap-static/"
       },
       "element_summary_131": {
         "element_id": 131,
-        "raw_snapshot_file": "fpl_api/2026-27/element_summary_131/20260909T221218138965Z.json",
-        "retrieved_at": "2026-09-09T22:12:18.138965Z",
-        "sha256": "22f763a301421e3582837f59cb09eb0fa63b14a4a8c01ba6820968c4b6cc918d",
+        "raw_snapshot_file": "fpl_api/2026-27/element_summary_131/20260911T110700832206Z.json",
+        "retrieved_at": "2026-09-11T11:07:00.832206Z",
+        "sha256": "fd29b00aaf1b3759abdd95fa434549b85465b82ee147bbb711f28052d7fe40b6",
         "source_url": "https://fantasy.premierleague.com/api/element-summary/131/"
       },
       "element_summary_147": {
         "element_id": 147,
-        "raw_snapshot_file": "fpl_api/2026-27/element_summary_147/20260909T221218258113Z.json",
-        "retrieved_at": "2026-09-09T22:12:18.258113Z",
-        "sha256": "92f2716ede00004e004ccc04f4b0bb86505f5598249e4b4bf9f95ae23482890d",
+        "raw_snapshot_file": "fpl_api/2026-27/element_summary_147/20260911T110700941020Z.json",
+        "retrieved_at": "2026-09-11T11:07:00.941020Z",
+        "sha256": "1363dd3f82b08c92811dd9884104e91da592ee8e026ddd24235a46d619513da2",
         "source_url": "https://fantasy.premierleague.com/api/element-summary/147/"
       },
       "element_summary_153": {
         "element_id": 153,
-        "raw_snapshot_file": "fpl_api/2026-27/element_summary_153/20260909T221218369015Z.json",
-        "retrieved_at": "2026-09-09T22:12:18.369015Z",
-        "sha256": "4f1a72fbaee50a94253e14a32366ba207dba3dfbdc8f8d147e7899adccdab649",
+        "raw_snapshot_file": "fpl_api/2026-27/element_summary_153/20260911T110701044487Z.json",
+        "retrieved_at": "2026-09-11T11:07:01.044487Z",
+        "sha256": "8666d853203a60a32aaaa38e9b407130b444bcf19d7b849878754439cb216338",
         "source_url": "https://fantasy.premierleague.com/api/element-summary/153/"
       },
       "element_summary_155": {
         "element_id": 155,
-        "raw_snapshot_file": "fpl_api/2026-27/element_summary_155/20260909T221218462095Z.json",
-        "retrieved_at": "2026-09-09T22:12:18.462095Z",
-        "sha256": "827a5fccda7574bc92ed7d9687df7726b181d58989548821964a8ab08d001fc0",
+        "raw_snapshot_file": "fpl_api/2026-27/element_summary_155/20260911T110701147226Z.json",
+        "retrieved_at": "2026-09-11T11:07:01.147226Z",
+        "sha256": "c0a58c848d3a74e54c8084317910e6d6cb47837632e1d118541d0b8ec4d483c3",
         "source_url": "https://fantasy.premierleague.com/api/element-summary/155/"
       },
       "element_summary_166": {
         "element_id": 166,
-        "raw_snapshot_file": "fpl_api/2026-27/element_summary_166/20260909T221218564078Z.json",
-        "retrieved_at": "2026-09-09T22:12:18.564078Z",
-        "sha256": "c0f6f9a555d350125f4302683781c0c19a593d4b4911b826e509d9d1c259302a",
+        "raw_snapshot_file": "fpl_api/2026-27/element_summary_166/20260911T110701855981Z.json",
+        "retrieved_at": "2026-09-11T11:07:01.855981Z",
+        "sha256": "b7ba9d59fb95b18bb9706763ab3ca8c80b115dee293a4d92b865b0bcfab71190",
         "source_url": "https://fantasy.premierleague.com/api/element-summary/166/"
       },
       "element_summary_167": {
         "element_id": 167,
-        "raw_snapshot_file": "fpl_api/2026-27/element_summary_167/20260909T221218667406Z.json",
-        "retrieved_at": "2026-09-09T22:12:18.667406Z",
-        "sha256": "a34831b4b1a3780bc4f0ca4e828b3f8f3d502699eb1ac0dc5eceb8930e5264c3",
+        "raw_snapshot_file": "fpl_api/2026-27/element_summary_167/20260911T110702048753Z.json",
+        "retrieved_at": "2026-09-11T11:07:02.048753Z",
+        "sha256": "3573e3523457e5f14be00c4caab2baf6414923981f61dea5d99f5cc819dd3284",
         "source_url": "https://fantasy.premierleague.com/api/element-summary/167/"
       },
       "element_summary_201": {
         "element_id": 201,
-        "raw_snapshot_file": "fpl_api/2026-27/element_summary_201/20260909T221218778067Z.json",
-        "retrieved_at": "2026-09-09T22:12:18.778067Z",
-        "sha256": "cae5bc71eee5ec99a2f2855b7456afa4f4f289a273df66a51dd3a5ef5804676c",
+        "raw_snapshot_file": "fpl_api/2026-27/element_summary_201/20260911T110702168243Z.json",
+        "retrieved_at": "2026-09-11T11:07:02.168243Z",
+        "sha256": "0b2d3af995161eeb6a409fb8df6a2c729e84942d51fd5c9a7d006ab3703d832b",
         "source_url": "https://fantasy.premierleague.com/api/element-summary/201/"
       },
       "element_summary_237": {
         "element_id": 237,
-        "raw_snapshot_file": "fpl_api/2026-27/element_summary_237/20260909T221218881554Z.json",
-        "retrieved_at": "2026-09-09T22:12:18.881554Z",
-        "sha256": "80b4ef2ff36dfd89c4d10aeacb8adc5414b852f9b51a70aceba8d6e6f421fd99",
+        "raw_snapshot_file": "fpl_api/2026-27/element_summary_237/20260911T110702285098Z.json",
+        "retrieved_at": "2026-09-11T11:07:02.285098Z",
+        "sha256": "b0c057eaa31839694d93f524f49c08fe7d2e3693ddcbdc9278c39b98db748cd7",
         "source_url": "https://fantasy.premierleague.com/api/element-summary/237/"
       },
       "element_summary_238": {
         "element_id": 238,
-        "raw_snapshot_file": "fpl_api/2026-27/element_summary_238/20260909T221218976771Z.json",
-        "retrieved_at": "2026-09-09T22:12:18.976771Z",
-        "sha256": "79a05a1e5e96ce50aa4f6b839a9383102b61f4de3187a28480430a1e420ea0a5",
+        "raw_snapshot_file": "fpl_api/2026-27/element_summary_238/20260911T110702387165Z.json",
+        "retrieved_at": "2026-09-11T11:07:02.387165Z",
+        "sha256": "c553813e4d4686d9a828fea5f7e6faa85e29a633530a05671d354464caca2b70",
         "source_url": "https://fantasy.premierleague.com/api/element-summary/238/"
       },
       "element_summary_240": {
         "element_id": 240,
-        "raw_snapshot_file": "fpl_api/2026-27/element_summary_240/20260909T221219062615Z.json",
-        "retrieved_at": "2026-09-09T22:12:19.062615Z",
-        "sha256": "fabbdb3127eb8161ffc596b5f09f25d13f4d3275f08a769267bce972c6b40b16",
+        "raw_snapshot_file": "fpl_api/2026-27/element_summary_240/20260911T110702488108Z.json",
+        "retrieved_at": "2026-09-11T11:07:02.488108Z",
+        "sha256": "807de7f52d01a452ad8b2f649b3519c2b4c18dead0230421d2a93e51f7c8f8c7",
         "source_url": "https://fantasy.premierleague.com/api/element-summary/240/"
       },
       "element_summary_28": {
         "element_id": 28,
-        "raw_snapshot_file": "fpl_api/2026-27/element_summary_28/20260909T221217780350Z.json",
-        "retrieved_at": "2026-09-09T22:12:17.780350Z",
-        "sha256": "acee8dc269c122c00054730892adb841c4e1608df437fbf7f0a28f7eb68b8c65",
+        "raw_snapshot_file": "fpl_api/2026-27/element_summary_28/20260911T110700590254Z.json",
+        "retrieved_at": "2026-09-11T11:07:00.590254Z",
+        "sha256": "3cc3f6ddbb3ca69a7a277cd77d235ad82aff58cc6c1b0adc4c25db4bf527bfa3",
         "source_url": "https://fantasy.premierleague.com/api/element-summary/28/"
       },
       "element_summary_401": {
         "element_id": 401,
-        "raw_snapshot_file": "fpl_api/2026-27/element_summary_401/20260909T221219252462Z.json",
-        "retrieved_at": "2026-09-09T22:12:19.252462Z",
-        "sha256": "ddd5b607f60b9b04cb21f8aa2214fbdad439fdff98f3c99733e4f078806018b3",
+        "raw_snapshot_file": "fpl_api/2026-27/element_summary_401/20260911T110702670503Z.json",
+        "retrieved_at": "2026-09-11T11:07:02.670503Z",
+        "sha256": "21390c3be7c1f88bcd938f5b18599fc5175093958ff46fac98faba5ea935d32f",
         "source_url": "https://fantasy.premierleague.com/api/element-summary/401/"
       },
       "element_summary_403": {
         "element_id": 403,
-        "raw_snapshot_file": "fpl_api/2026-27/element_summary_403/20260909T221219443065Z.json",
-        "retrieved_at": "2026-09-09T22:12:19.443065Z",
-        "sha256": "2a64558b6456366719319be0a1126f942d85299086e6e532ea21d82003ca8453",
+        "raw_snapshot_file": "fpl_api/2026-27/element_summary_403/20260911T110702754511Z.json",
+        "retrieved_at": "2026-09-11T11:07:02.754511Z",
+        "sha256": "a2d8dbb8baf97c3ba89f6264ed434c2dc7f2c4427c8de248e2db669e3c7c0328",
         "source_url": "https://fantasy.premierleague.com/api/element-summary/403/"
       },
       "element_summary_405": {
         "element_id": 405,
-        "raw_snapshot_file": "fpl_api/2026-27/element_summary_405/20260909T221219543755Z.json",
-        "retrieved_at": "2026-09-09T22:12:19.543755Z",
-        "sha256": "21b73003fc024e98d2c70ee4bfe6dc49c502a9145b765d5d34483d8ecac51240",
+        "raw_snapshot_file": "fpl_api/2026-27/element_summary_405/20260911T110702968531Z.json",
+        "retrieved_at": "2026-09-11T11:07:02.968531Z",
+        "sha256": "1816b256811f6d47769a32f7dd2b5b0d426114e45fbfdb351f6b23db734a775b",
         "source_url": "https://fantasy.premierleague.com/api/element-summary/405/"
       },
       "element_summary_501": {
         "element_id": 501,
-        "raw_snapshot_file": "fpl_api/2026-27/element_summary_501/20260909T221219697458Z.json",
-        "retrieved_at": "2026-09-09T22:12:19.697458Z",
-        "sha256": "5b0dc2bbb971ff8c0f6b1798297b89d5b20dbf8b2fc909bff698197c4e9085c5",
+        "raw_snapshot_file": "fpl_api/2026-27/element_summary_501/20260911T110703120464Z.json",
+        "retrieved_at": "2026-09-11T11:07:03.120464Z",
+        "sha256": "6e66de48122256f455ff800a1c4b9235af7ed88c1947293e4bf68fc11b81c0f6",
         "source_url": "https://fantasy.premierleague.com/api/element-summary/501/"
       },
       "element_summary_578": {
         "element_id": 578,
-        "raw_snapshot_file": "fpl_api/2026-27/element_summary_578/20260909T221219848645Z.json",
-        "retrieved_at": "2026-09-09T22:12:19.848645Z",
-        "sha256": "64567a33c1fcac90cff394be49789f453cacb14eca4ccc21b3837732c5838cab",
+        "raw_snapshot_file": "fpl_api/2026-27/element_summary_578/20260911T110703251518Z.json",
+        "retrieved_at": "2026-09-11T11:07:03.251518Z",
+        "sha256": "e8884ecfa00581ace602ffb70b3a9d921afdf6f842992b6191344ee511baa5b2",
         "source_url": "https://fantasy.premierleague.com/api/element-summary/578/"
       },
       "element_summary_91": {
         "element_id": 91,
-        "raw_snapshot_file": "fpl_api/2026-27/element_summary_91/20260909T221217917889Z.json",
-        "retrieved_at": "2026-09-09T22:12:17.917889Z",
-        "sha256": "63e287278de825b4cebbcaa4546b033d6fc02eb1151185d763ee4242b2c8f655",
+        "raw_snapshot_file": "fpl_api/2026-27/element_summary_91/20260911T110700724622Z.json",
+        "retrieved_at": "2026-09-11T11:07:00.724622Z",
+        "sha256": "0ad2ecf82a94c1d80f5c1b5d2a7469877030883b64605df8426eb1862240c796",
         "source_url": "https://fantasy.premierleague.com/api/element-summary/91/"
       },
       "event_live_1": {
-        "raw_snapshot_file": "fpl_api/2026-27/event_live_1/20260909T221217673715Z.json",
-        "retrieved_at": "2026-09-09T22:12:17.673715Z",
+        "raw_snapshot_file": "fpl_api/2026-27/event_live_1/20260911T110700472306Z.json",
+        "retrieved_at": "2026-09-11T11:07:00.472306Z",
         "sha256": "0974be7e805ad6b65b3345bee327fee541c4e445837b2871473ed9ba1d794d87",
         "source_url": "https://fantasy.premierleague.com/api/event/1/live/"
       },
       "event_live_2": {
-        "raw_snapshot_file": "fpl_api/2026-27/event_live_2/20260909T221223429805Z.json",
-        "retrieved_at": "2026-09-09T22:12:23.429805Z",
+        "raw_snapshot_file": "fpl_api/2026-27/event_live_2/20260911T110706265396Z.json",
+        "retrieved_at": "2026-09-11T11:07:06.265396Z",
         "sha256": "2bc0e5b3ca2035f0f0cce42a4c77d699d6c316bc290342cddf562b1a317f5715",
         "source_url": "https://fantasy.premierleague.com/api/event/2/live/"
       },
       "event_live_3": {
-        "raw_snapshot_file": "fpl_api/2026-27/event_live_3/20260909T221227506800Z.json",
-        "retrieved_at": "2026-09-09T22:12:27.506800Z",
+        "raw_snapshot_file": "fpl_api/2026-27/event_live_3/20260911T110709671816Z.json",
+        "retrieved_at": "2026-09-11T11:07:09.671816Z",
         "sha256": "c33c2af4674b0a9d4276b412a441ebae8b87e01a3d093cd113446e7ef6a02482",
         "source_url": "https://fantasy.premierleague.com/api/event/3/live/"
       },
       "fixtures": {
-        "raw_snapshot_file": "fpl_api/2026-27/fixtures/20260909T221217284525Z.json",
-        "retrieved_at": "2026-09-09T22:12:17.284525Z",
-        "sha256": "16e20093b7ae8462ac5da8c5a34725576096814651162b1dfd5d10e053610f36",
+        "raw_snapshot_file": "fpl_api/2026-27/fixtures/20260911T110700114807Z.json",
+        "retrieved_at": "2026-09-11T11:07:00.114807Z",
+        "sha256": "78a6eb9299b4c6b832d5dc3c37b8a106873c2af92508d37c3df8a6f0c4d31a45",
         "source_url": "https://fantasy.premierleague.com/api/fixtures/"
       }
     },
     "player_lineage_note_counts": {
       "current_season_history_only": 121,
+      "new_player_cold_start": 1,
       "position_change": 13,
-      "returning_player": 347,
+      "returning_player": 346,
       "transferred_player": 74
     },
     "price_source": "official_bootstrap_static.now_cost",
@@ -286,15 +288,15 @@
         "converged": true,
         "home_lambda_clipped": 0,
         "iterations": 4,
-        "max_abs_gradient": 6.195385759966143e-9,
+        "max_abs_gradient": 6.213008774125228e-9,
         "minimum_tau": null,
         "model_name": "T2_REGULARIZED_ATTACK_DEFENCE",
-        "objective": 1398.990130016251,
+        "objective": 1399.23173230955,
         "rho": null,
         "rho_lower_bound": null,
         "rho_upper_bound": null,
         "solver": "deterministic_newton_line_search",
-        "status": "converged iterations=4 max_abs_gradient=6.2e-09",
+        "status": "converged iterations=4 max_abs_gradient=6.21e-09",
         "training_fixtures": 1550,
         "unseen_attack_effect": -0.29319577248148593,
         "unseen_defence_effect": 0.30526068717436555,
@@ -308,7 +310,7 @@
       "historical": 18
     },
     "team_model": "T2_REGULARIZED_ATTACK_DEFENCE",
-    "team_model_run_id": "official_2026-27_34410864046_1_team_current",
+    "team_model_run_id": "official_2026-27_34592272522_1_team_current",
     "team_ratings_rows": 27,
     "training_seasons": [
       "2022-23",
@@ -316,7 +318,7 @@
       "2024-25",
       "2025-26"
     ],
-    "xpoints_model_run_id": "official_2026-27_34410864046_1_xpoints_current",
+    "xpoints_model_run_id": "official_2026-27_34592272522_1_xpoints_current",
     "xpoints_models": [
       "X2_TEAM_CONSTRAINED_SIM_M3",
       "X2_TEAM_CONSTRAINED_SIM_M5",
@@ -368,7 +370,7 @@
   },
   "previous_latest_successful_run_id": null,
   "run_class": "authoritative_publication",
-  "run_id": "official_2026-27_34410864046_1",
+  "run_id": "official_2026-27_34592272522_1",
   "schema_version": "phase8_operational_v1",
   "source_state": {
     "commit": "620e9d977dcc8031cfc5029e42c71de4b60aa221",
