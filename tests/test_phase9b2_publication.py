@@ -299,6 +299,39 @@ def test_publication_candidate_accepts_legal_official_contract(tmp_path) -> None
     assert audit["target_gameweek_resolution"]["gameweek"] == 1
 
 
+def test_publication_candidate_accepts_machine_precision_appearance_inversion(tmp_path) -> None:
+    run_dir, preparation = _publication_candidate(tmp_path)
+    projections = pd.read_csv(run_dir / "player_gameweek_projections.csv")
+    projections.loc[0, "p_start"] = 0.9000000000000001
+    projections.to_csv(run_dir / "player_gameweek_projections.csv", index=False)
+    round_tripped = pd.read_csv(run_dir / "player_gameweek_projections.csv")
+    assert round_tripped.loc[0, "p_start"] > round_tripped.loc[0, "p_appearance"]
+
+    result = validate_publication_candidate(
+        run_dir=run_dir,
+        preparation=preparation,
+        audit_dir=tmp_path / "audit",
+        now=NOW,
+    )
+
+    assert result.gates["appearance_at_least_start"] == "passed"
+
+
+def test_publication_candidate_rejects_genuine_appearance_inversion(tmp_path) -> None:
+    run_dir, preparation = _publication_candidate(tmp_path)
+    projections = pd.read_csv(run_dir / "player_gameweek_projections.csv")
+    projections.loc[0, "p_start"] = 0.91
+    projections.to_csv(run_dir / "player_gameweek_projections.csv", index=False)
+
+    with pytest.raises(PublicationError, match="appearance_at_least_start"):
+        validate_publication_candidate(
+            run_dir=run_dir,
+            preparation=preparation,
+            audit_dir=tmp_path / "audit",
+            now=NOW,
+        )
+
+
 def test_official_publication_requires_authoritative_clean_run_class(
     monkeypatch, tmp_path
 ) -> None:

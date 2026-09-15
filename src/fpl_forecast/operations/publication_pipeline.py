@@ -404,6 +404,7 @@ def validate_publication_candidate(
         gates,
         "appearance_at_least_start",
         pd.to_numeric(projections["p_appearance"], errors="coerce")
+        .add(1e-12)
         .ge(pd.to_numeric(projections["p_start"], errors="coerce"))
         .all(),
     )
