@@ -1,11 +1,11 @@
 {
   "schema_version": "frozen_official_forecast_v1",
   "forecast_identity": {
-    "run_id": "official_2026-27_35288833466_1",
+    "run_id": "official_2026-27_35324669361_1",
     "season": "2026-27",
     "gameweek": 5,
-    "published_at": "2026-09-18T00:04:21.024315Z",
-    "generated_at": "2026-09-18T00:04:21.017932Z",
+    "published_at": "2026-09-18T08:43:55.131531Z",
+    "generated_at": "2026-09-18T08:43:55.124746Z",
     "simulator_version": "preseason_hybrid_fixture_v1",
     "output_contract_version": "xpoints_hybrid_v1",
     "player_count": 554
@@ -13,31 +13,31 @@
   "files": {
     "operational_status.json": {
       "bytes": 419,
-      "sha256": "c045196c79c0477397de3914aac18295946b3caead75cacf18babb9b4b09b138"
+      "sha256": "d10b95a6c3582c00686527fd9ff97f3db9f9e33072fe0b4c3244c81cb0e6d7d9"
     },
     "player_gameweek_projections.csv": {
-      "bytes": 314935,
-      "sha256": "d7f59bed92bcc400af61e111308074d6716e177d6dcebb8abef92fd5a3c41b77"
+      "bytes": 314941,
+      "sha256": "8b2ff33dd69cc4957208bf02686937885c412ae1f3cf4e28764ce5d9cf8873b8"
     },
     "optimized_squad.csv": {
-      "bytes": 8458,
-      "sha256": "42e1cff57284d8c4c8babea1f24bbdc1dcb9dff5a378c210812c7c36708a27f7"
+      "bytes": 8443,
+      "sha256": "2bc7191aff3a3b6d38308369cafadaee74e10007e96970012267515c3c7b6a2e"
     },
     "optimized_lineup.csv": {
-      "bytes": 3800,
-      "sha256": "508946584db09e3cbc65aef0fbcd6af12db54e3425617ca445d06bdbf3fd8ca8"
+      "bytes": 3801,
+      "sha256": "5132cb820552f2e24ef947d59beace652c4fc8b8c13d50db76d6b20ddf23871b"
     },
     "model_comparison.csv": {
       "bytes": 376,
-      "sha256": "a241ed708a01c6b2e2ed63c3769c95d9e02db623a6ffb38d0746cb63982e032a"
+      "sha256": "c5d21b17a7a1b7b08e657395d1f92ca9a5d0fc66ea28a7f4ebee2d55e4bfd07b"
     },
     "data_freshness.json": {
       "bytes": 9360,
-      "sha256": "6c4bdad961b950c7fa51f893abdb1963a75673a193a9ac56234b888891959a10"
+      "sha256": "dd41e4db2c23b78b44d5eada3bc24c3e866518af68e30f3ff4c9e2f2bd78c5e0"
     },
     "run_manifest.json": {
-      "bytes": 17147,
-      "sha256": "0ad1410e05f8c7b9024984cef6de7a30049071988cbddbf8b1c09a321d38a481"
+      "bytes": 17148,
+      "sha256": "ae3d44ecfe4dd155727296e16047a9b6047bc63000839fd26ab26f47a410192e"
     }
   }
 }
