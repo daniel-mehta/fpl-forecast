@@ -14,4 +14,4 @@ to the editable source when available, then verify the rendered pages.
 
 No other prospective downgrade is supported by the GitHub Actions record. In particular, retain
 the p. 23 rule that missed deadlines and operational failures are recorded rather than backfilled.
-The six successful publication runs establish timely publication, not scored predictive accuracy.
+The six registered GW1-GW6 publication runs establish timely publication, not scored predictive accuracy.
