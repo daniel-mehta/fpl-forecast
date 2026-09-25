@@ -5,30 +5,31 @@ the evidence registry because they are source inputs to manuscript-facing tables
 belong in the same reviewed code revision as the model and decision code.
 
 The clean replay from committed revision `034830b041c1` established numerical equivalence and
-promoted new immutable successors. The `paper/` directory remains ignored only while the regenerated
-bundle is verified by two identical generator runs.
-
-After that comparison, the smallest reviewable repository bundle should track:
+promoted new immutable successors. The reviewed `paper/` directory is now visible to Git. It tracks:
 
 - `paper/evidence_manifest.csv` and `paper/evidence_supersession.csv`;
-- `paper/tables/*.csv`;
-- `paper/figures/*.svg`; and
+- aggregate `paper/tables/*.csv` through Table 7 and the calibration bins;
+- `paper/figures/*.svg` through Figure 7, plus the exact embedded PNG used as Figure 1 in v7;
+- `paper/source_input_manifest.csv`, `paper/research_schema.csv`, `paper/manuscript_value_map.csv`,
+  `paper/output_hashes.csv`, and `paper/prospective_publication_registry.csv`; and
 - `paper/FIGURE_NOTES.md`.
 
-The corresponding PNG renderings should be generated from the same clean revision and attached to
-the release in a checksummed publication-support archive. A release archive should also contain the
-generator command and stdout, the clean replay manifests, and a SHA-256 inventory. Duplicate PNG
-files do not need to be committed when the SVG source and deterministic generator are tracked.
+The author-supplied v7 PDF is not tracked or altered. Figure 1's tracked PNG is byte-identical to
+embedded image `X47.png` on PDF page 12; the PDF and image hashes and re-extraction procedure are
+in `paper/FIGURE_NOTES.md`. The separate `figure1_system_architecture.svg` is an auxiliary
+repository diagram, not the v7 image. Figure 4's rolling panel has 114 folds across three seasons;
+v7's 76-fold xPoints claim is mapped separately to the Phase 6 run as E-M01.
 
-The manuscript PDF, DOCX or other editing copy, operating-system metadata, temporary render files,
-and superseded generated assets should remain excluded. Raw or normalized third-party FPL data and
-row-level research evidence must not be added under this policy. Their availability,
-redistribution rights, data dictionary, attribution, licensing and clean-clone packaging are a
-separate research-dataset task.
+The manuscript PDF, DOCX or other editing copy, operating-system metadata, duplicate PNG renders,
+and superseded generated assets remain excluded. Raw or normalized third-party FPL data and
+row-level research evidence must not be added under this policy. Prospective player-level Table 8
+and Figure 8 have been removed from the current tracked bundle pending rights review; the paper
+generator no longer creates them. This does not erase their earlier Git history.
 
-Until that legally publishable evidence bundle exists, a clean clone can inspect and run the
-generator only after the required hashed input artifacts are supplied. Documentation must not claim
-that the public repository alone reproduces every manuscript table or figure.
+The clean clone can inspect aggregate assets and run publication validation without restricted
+inputs. Rebuilding every result requires the hashed excluded inputs and the source availability
+record described in `README_SLOAN.md`; the public repository alone does not reproduce every table
+or figure. No release/archive work is part of the Oct. 1 readiness pass.
 
 ## Clean replay record
 

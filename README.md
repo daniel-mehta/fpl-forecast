@@ -11,18 +11,14 @@ Unofficial project. Not affiliated with, endorsed by, or associated with the Pre
 Fantasy Premier League.
 
 ## Status
-The first official-data 2026-27 GW1 forecast is published through the manually triggered,
-clean-runner workflow. The reviewed implementation now reconstructs completed current-season
-results for manual GW2-and-later publication. An isolated local rehearsal against actual GW2 data
-passed preparation, forecast, publication validation, sanitization, and the production frontend
-build; no GW2 forecast has been publicly published or deployed. Launch verification covers the
-public artifacts and operational lineage, not predictive superiority: live-season forecast
-performance has not yet been established and scheduling remains disabled. The promoted preseason
-implementation is commit `365f0009a4e12397555c71cc950c7b4ef80c3ca4`.
-
-The currently deployed dashboard contains the first verified official-data GW1 publication. The
-promoted preseason hybrid simulator is implemented at commit `365f0009`, but will not appear on the
-public dashboard until the official publication workflow is run again.
+The manually triggered official workflow published validated, frozen 2026-27 forecasts for
+Gameweeks 1 through 6 before their recorded deadlines. Its successful GitHub Actions runs include
+the forecast chain, mandatory publication gates, frozen bundle, and deployment; the run IDs,
+timestamps, code revisions, and frozen-branch commits are in
+[`paper/prospective_publication_registry.csv`](paper/prospective_publication_registry.csv).
+This is operational publication evidence, not a prospective accuracy result. The season-long
+evaluation is underway, and missed deadlines must be recorded rather than backfilled. Automatic
+scheduling remains disabled.
 
 ## What The System Does
 
@@ -93,7 +89,7 @@ Default model chain used by the current operational adapter:
 
 - `T2_REGULARIZED_ATTACK_DEFENCE`: weighted ridge-penalized independent Poisson team model.
 - `M7_HIERARCHICAL_AVAILABILITY_STATE`: explicit DNP, substitute, start-under-60, start-60-to-89,
-  and start-90 state model used for official GW1 operation because it gives coherent GW1
+  and start-90 state model used for official current-season operation because it gives coherent
   appearance/start/reached-60 probabilities.
 - `X2_TEAM_CONSTRAINED_SIM_M7`: promoted hybrid xPoints model using M7 minutes, hierarchical
   attacking-rate shrinkage, and current-squad share allocation. Simulator
@@ -170,7 +166,7 @@ untouched final holdout.
 | xPoints | `2023-24`, `2024-25`; rolling; all observed player rows | Season-aware default X2-M3 MAE `0.9065`, RMSE `1.9546`, Spearman `0.7044`; Phase 3 B5 reference MAE `0.9824`, RMSE `2.0295`, Spearman `0.6501`. |
 | xPoints distribution | `2023-24`, `2024-25`; rolling; player rows | X2-M3 conserved expected team goals with max absolute error `4.44e-16`; X2-M5 had better 5+ point Brier and zero-rate calibration but was not selected as the default MAE frontier. |
 | Decision optimization | `2023-24`, `2024-25`; corrected rolling weekly-reset benchmark | 380 D1 MILP decisions solved with status `optimal` and reported gap exactly `0` in every case; season-aware X2-M3 mean runtime was `0.1690s`, and all squads passed the complete legality audit. X2-M3 had the highest realized rolling weekly-reset score in this pass. |
-| Operations | Official-data 2026-27 GW1 publication | The clean-runner chain published the frozen GW1 forecast successfully. This is operational evidence only; no 2026-27 accuracy result exists. |
+| Operations | Official-data 2026-27 GW1-GW6 publication | The clean-runner chain froze and deployed each target before its recorded deadline. This is operational evidence, not a scored accuracy comparison. |
 | Phase 9B1.2 GW1 hardening | `2023-24`-`2025-26`; GW1 folds; 1,964 rows | M7 was selected for coherent operational probabilities, not as a universal rolling winner. Its legacy 80-draw evidence is compared with the promoted hybrid below. |
 | Phase 9B1.3 optimizer hardening | `2023-24`-`2025-26`; three GW1 weekly-reset decisions | After the captaincy and season-aware goalkeeper-scoring corrections, D2's realized advantage over D1 remained `+1.33` points (fold differences `+2`, `0`, `+2`). Mean expected-realised points were `48.7583` for D1 and `49.4873` for D2. This descriptive result is not proof of season-level superiority. |
 
@@ -217,14 +213,13 @@ Mean xPoints and component expectations are calculated analytically and therefor
 draw count. The 10,000 joint-fixture draws estimate discrete outcome distributions, prediction
 intervals, zero-point probabilities, and tail probabilities such as P(5+).
 
-### Prospective 2026-27 GW1 Example
+### Prospective 2026-27 Publication
 
-**Prospective preseason example, not an accuracy result.** The non-published season-aware validation
-successor contains 554 eligible player projections across 10 fixtures. D2 retains the `3-5-2`
-formation, Saka as captain, and B.Fernandes as vice-captain, with expected-realized objective
-`55.5161`, squad cost `£100.0m`, bank `£0.0m`, and optimizer status `heuristic_feasible`. It replaces
-two bench squad members and changes the bench order while retaining the starting XI; no corrected
-forecast has been published.
+The public publication record now covers GW1-GW6. The earlier GW1 validation successor is a
+non-published rehearsal and must not replace any frozen official run. Named player-level rehearsal
+tables and figures are excluded from the Sloan research bundle pending redistribution-rights review.
+See the prospective publication registry for the authoritative run identifiers; outcome scoring is
+a separate evaluation.
 
 ## Frontend And Dashboard
 
@@ -350,6 +345,7 @@ tests/                   Offline tests and fixtures
 data/manual/             Versioned manual identity templates
 frontend/                Static Vite frontend
 docs/deployment/         GitHub Pages setup notes
+paper/                   Aggregate manuscript evidence and provenance
 PHASE*_REPORT.md         Phase evidence and limitations
 PHASE1_AUDIT.md          Phase 1 audit evidence
 outputs/synthetic_demo/  Quarantined pre-real-data synthetic demo artifacts
@@ -357,16 +353,18 @@ outputs/synthetic_demo/  Quarantined pre-real-data synthetic demo artifacts
 
 Generated real-data artifacts live under ignored directories such as `data/raw/`,
 `data/normalized/`, `reports/`, `outputs/operational/`, and `logs/operational/`.
-The tracked publication generator and the policy for manuscript-facing tables, figures, manifests,
-and release attachments are documented in
-[`docs/research/publication-artifacts.md`](docs/research/publication-artifacts.md). The current
-repository does not yet claim clean-clone reproduction of those assets because the required
-research evidence bundle and redistribution review are separate pending work.
+The tracked publication generator and the policy for manuscript-facing tables, figures, and
+manifests are documented in
+[`docs/research/publication-artifacts.md`](docs/research/publication-artifacts.md). For the v7
+claim-to-artifact index, source/input hashes, schema, and legally bounded reproduction procedure,
+start with [`README_SLOAN.md`](README_SLOAN.md). A clean clone can inspect the committed aggregate
+evidence but cannot regenerate every result from the repository alone: restricted input and
+row-level research artifacts are excluded.
 
 ## Known Limitations
 
-- The verified public forecast covers 2026-27 GW1 only; no sustained live-season accuracy evidence
-  exists yet.
+- Verified public pre-deadline forecast publication covers 2026-27 GW1-GW6; the published runs do
+  not by themselves establish live-season accuracy or decision superiority.
 - D2 exactly enumerates independent appearance states for ordinary bench and captain contingency,
   but player absences can be correlated in reality. Its full-pool one-swap search is bounded after
   the exact D1 seed and is not a transfer-aware season optimizer. Its corrected observed
@@ -402,7 +400,8 @@ This repository uses or supports ingestion from:
 - Vaastav's Fantasy Premier League historical dataset repository for historical FPL CSV files.
 
 Raw and normalized third-party data are intentionally excluded from Git. See [DATA_NOTICE.md](DATA_NOTICE.md)
-for data-rights boundaries. No Premier League, Fantasy Premier League, or club logos, crests, or
+for data-rights boundaries and [`README_SLOAN.md`](README_SLOAN.md) for the research input inventory
+and reproduction limits. No Premier League, Fantasy Premier League, or club logos, crests, or
 copied visual identity are included in the tracked source tree.
 
 ## References
