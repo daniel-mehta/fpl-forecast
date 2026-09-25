@@ -617,7 +617,9 @@ def test_publication_generator_and_policy_are_repository_inputs() -> None:
     assert Path("scripts/build_paper_evidence.py").is_file()
     assert Path("scripts/replay_clean_prospective_evidence.py").is_file()
     assert "!scripts/build_paper_evidence.py" in ignore_policy
-    assert "/paper" in ignore_policy
+    assert "/paper\n" not in ignore_policy
+    assert "/paper/*.docx" in ignore_policy
+    assert "!/paper/figures/figure1_v7_player_points_pipeline.png" in ignore_policy
     assert "The completed replay" in artifact_policy
     assert "Raw or normalized third-party FPL data" in artifact_policy
     assert "/tmp" in artifact_policy

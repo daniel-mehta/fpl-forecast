@@ -1,0 +1,83 @@
+table,column,parquet_type,description,distribution
+fact_player_fixture,player_id,int64,Season-specific source FPL element ID,schema only; row-level data excluded
+fact_player_fixture,player_code,int64,Source FPL cross-season player code,schema only; row-level data excluded
+fact_player_fixture,fixture_id,int64,Season-specific source fixture ID,schema only; row-level data excluded
+fact_player_fixture,gameweek,int64,Official FPL event number,schema only; row-level data excluded
+fact_player_fixture,player_name,large_string,Source display name,schema only; row-level data excluded
+fact_player_fixture,team_name,string,Source team display name,schema only; row-level data excluded
+fact_player_fixture,source_position,large_string,Source position label,schema only; row-level data excluded
+fact_player_fixture,element_type,int64,Source FPL element type,schema only; row-level data excluded
+fact_player_fixture,fpl_position,large_string,Normalized FPL position including AM,schema only; row-level data excluded
+fact_player_fixture,kickoff_time,"timestamp[us, tz=UTC]",Scheduled kickoff timestamp in UTC,schema only; row-level data excluded
+fact_player_fixture,minutes,int64,Minutes credited in fixture,schema only; row-level data excluded
+fact_player_fixture,total_points,int64,Source FPL points for fixture,schema only; row-level data excluded
+fact_player_fixture,price_tenths,int64,Price in tenths of a million pounds,schema only; row-level data excluded
+fact_player_fixture,was_home,bool,Whether entity team was home,schema only; row-level data excluded
+fact_player_fixture,opponent_team,int64,Season-specific source opponent team ID,schema only; row-level data excluded
+fact_player_fixture,assists,int64,Credited assists,schema only; row-level data excluded
+fact_player_fixture,bonus,int64,FPL bonus points,schema only; row-level data excluded
+fact_player_fixture,bps,int64,FPL bonus-points-system score,schema only; row-level data excluded
+fact_player_fixture,clean_sheets,int64,Credited clean-sheet count,schema only; row-level data excluded
+fact_player_fixture,goals_conceded,int64,Credited goals conceded,schema only; row-level data excluded
+fact_player_fixture,goals_scored,int64,Credited goals scored,schema only; row-level data excluded
+fact_player_fixture,own_goals,int64,Credited own goals,schema only; row-level data excluded
+fact_player_fixture,penalties_missed,int64,Missed penalty count,schema only; row-level data excluded
+fact_player_fixture,penalties_saved,int64,Saved penalty count,schema only; row-level data excluded
+fact_player_fixture,red_cards,int64,Red card count,schema only; row-level data excluded
+fact_player_fixture,saves,int64,Goalkeeper save count,schema only; row-level data excluded
+fact_player_fixture,starts,int64,Source start indicator/count,schema only; row-level data excluded
+fact_player_fixture,team_a_score,int64,Away team final goals,schema only; row-level data excluded
+fact_player_fixture,team_h_score,int64,Home team final goals,schema only; row-level data excluded
+fact_player_fixture,yellow_cards,int64,Yellow card count,schema only; row-level data excluded
+fact_player_fixture,expected_goals,double,Source expected-goals statistic,schema only; row-level data excluded
+fact_player_fixture,expected_assists,double,Source expected-assists statistic,schema only; row-level data excluded
+fact_player_fixture,expected_goal_involvements,double,Source expected-goal-involvement statistic,schema only; row-level data excluded
+fact_player_fixture,expected_goals_conceded,double,Source expected-goals-conceded statistic,schema only; row-level data excluded
+fact_player_fixture,source,large_string,Source provider identifier,schema only; row-level data excluded
+fact_player_fixture,source_version,large_string,Pinned source revision or version,schema only; row-level data excluded
+fact_player_fixture,retrieved_at,large_string,Raw snapshot retrieval time in UTC,schema only; row-level data excluded
+fact_player_fixture,season,large_string,Season label YYYY-YY,schema only; row-level data excluded
+fact_player_fixture,raw_snapshot_path,large_string,Local raw snapshot lineage path,schema only; row-level data excluded
+fact_player_fixture,mng_clean_sheets,double,Assistant Manager clean-sheet statistic,schema only; row-level data excluded
+fact_player_fixture,mng_draw,double,Assistant Manager draw statistic,schema only; row-level data excluded
+fact_player_fixture,mng_goals_scored,double,Assistant Manager goals-scored statistic,schema only; row-level data excluded
+fact_player_fixture,mng_loss,double,Assistant Manager loss statistic,schema only; row-level data excluded
+fact_player_fixture,mng_underdog_draw,double,Assistant Manager underdog-draw statistic,schema only; row-level data excluded
+fact_player_fixture,mng_underdog_win,double,Assistant Manager underdog-win statistic,schema only; row-level data excluded
+fact_player_fixture,mng_win,double,Assistant Manager win statistic,schema only; row-level data excluded
+fact_player_fixture,defensive_contribution,double,Source defensive-contribution statistic,schema only; row-level data excluded
+fact_player_fixture,clearances_blocks_interceptions,double,"Source combined clearance, block and interception count",schema only; row-level data excluded
+fact_player_fixture,recoveries,double,Source ball-recovery count,schema only; row-level data excluded
+fact_player_fixture,tackles,double,Source tackle count,schema only; row-level data excluded
+fact_player_fixture,player_uid,large_string,Project stable player identity,schema only; row-level data excluded
+fact_player_fixture,match_method,large_string,Identity-matching method,schema only; row-level data excluded
+fact_player_fixture,manual_review_status,large_string,Identity-review status,schema only; row-level data excluded
+fact_player_fixture,player_team_uid,large_string,Project stable team identity for entity,schema only; row-level data excluded
+fact_player_fixture,fixture_key,large_string,Project stable fixture key,schema only; row-level data excluded
+fact_player_fixture,home_team_uid,large_string,Project stable home-team identity,schema only; row-level data excluded
+fact_player_fixture,away_team_uid,large_string,Project stable away-team identity,schema only; row-level data excluded
+fact_player_fixture,opponent_team_uid,large_string,Project stable opponent-team identity,schema only; row-level data excluded
+fact_player_fixture,information_cutoff,"timestamp[us, tz=UTC]",Forecast information cutoff timestamp,schema only; row-level data excluded
+fact_player_fixture,cutoff_method,large_string,Method used to assign cutoff,schema only; row-level data excluded
+fact_player_fixture,cutoff_source,large_string,Source used to assign cutoff,schema only; row-level data excluded
+fact_player_fixture,cutoff_is_exact,bool,Whether cutoff is source-exact rather than inferred,schema only; row-level data excluded
+fact_player_fixture,source_available_time,"timestamp[us, tz=UTC]",Conservative input availability timestamp,schema only; row-level data excluded
+fact_player_fixture,source_available_method,large_string,Method used to assign availability,schema only; row-level data excluded
+fact_player_fixture,entity_type,large_string,football_player or assistant_manager,schema only; row-level data excluded
+fact_player_fixture,target_total_points,int64,Season-aware FPL scoring target,schema only; row-level data excluded
+dim_fixture,season,large_string,Season label YYYY-YY,schema only; row-level data excluded
+dim_fixture,source_fixture_id,int64,Source fixture ID,schema only; row-level data excluded
+dim_fixture,fixture_key,large_string,Project stable fixture key,schema only; row-level data excluded
+dim_fixture,gameweek,int64,Official FPL event number,schema only; row-level data excluded
+dim_fixture,home_team_uid,large_string,Project stable home-team identity,schema only; row-level data excluded
+dim_fixture,away_team_uid,large_string,Project stable away-team identity,schema only; row-level data excluded
+dim_fixture,home_team_name,large_string,Source home-team name,schema only; row-level data excluded
+dim_fixture,away_team_name,large_string,Source away-team name,schema only; row-level data excluded
+dim_fixture,kickoff_time,"timestamp[us, tz=UTC]",Scheduled kickoff timestamp in UTC,schema only; row-level data excluded
+dim_fixture,source_available_time,"timestamp[us, tz=UTC]",Conservative input availability timestamp,schema only; row-level data excluded
+dim_fixture,source_available_method,large_string,Method used to assign availability,schema only; row-level data excluded
+dim_fixture,finished,bool,Source fixture completion flag,schema only; row-level data excluded
+dim_fixture,home_goals,double,Home team final goals,schema only; row-level data excluded
+dim_fixture,away_goals,double,Away team final goals,schema only; row-level data excluded
+dim_fixture,source_version,large_string,Pinned source revision or version,schema only; row-level data excluded
+dim_fixture,raw_snapshot_path,large_string,Local raw snapshot lineage path,schema only; row-level data excluded

@@ -54,7 +54,13 @@ frontend/public/data/*
 !data/**/.gitkeep
 !frontend/public/data/README.md
 scripts/build_paper_evidence.py
-/paper
+# Track reviewed research evidence. Keep manuscript editing files and duplicate renders local.
+/paper/*.pdf
+/paper/*.docx
+/paper/*.doc
+/paper/*.pptx
+/paper/figures/*.png
+!/paper/figures/figure1_v7_player_points_pipeline.png
 /phase reports
 reports/goalkeeper_scoring_fix/v4_to_v5_manuscript_change_ledger.md
 !reports/decision_backtests/

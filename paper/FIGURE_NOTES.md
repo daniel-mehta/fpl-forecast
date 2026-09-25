@@ -1,16 +1,17 @@
 # Figure and Table Notes
 
-This file supplies proposed captions and interpretation boundaries for the preseason technical
-paper. All paths are repository-relative. Historical and prospective evidence must remain visually
-and narratively separate.
+This file records provenance, proposed captions, and interpretation boundaries for manuscript v7
+and auxiliary aggregate assets. All paths are repository-relative. Historical and prospective
+evidence must remain visually and narratively separate.
 
 ## Table 1 — Historical data coverage
 
-- **Caption:** Leakage-safe historical player-fixture panel coverage and integrity checks by season.
+- **Caption:** Leakage-safe historical entity-fixture panel coverage and integrity checks by season.
 - **Exact source:** `data/normalized/phase2/fact_player_fixture.parquet`; GW1 population counts, where
   available, come from the promoted-hybrid three-fold scored artifact.
 - **Population and grain:** All normalized football-player and assistant-manager fixture rows;
-  player-fixture grain.
+  entity-fixture grain. The three principal seasons contain 83,835 rows, including 322 Assistant
+  Manager rows excluded from player models.
 - **Supports:** The scale, identity completeness, positional composition and duplicate-key status of
   the historical evidence base.
 - **Does not support:** Forecast accuracy or completeness of players absent from the source.
@@ -54,6 +55,9 @@ and narratively separate.
 - **Does not support:** Direct comparison of rolling legacy metrics with a hybrid simulator that was
   rerun only on GW1 folds.
 - **Limitation:** No promoted-hybrid rolling backtest was run for this evidence pack.
+- **Manuscript scope:** The v7 p18 76-fold, 57,008-observation comparison uses
+  `phase6_xpoints_rolling_goalkeeper_corrected_exact` (manifest row E-M01), not this table's later
+  114-fold rolling series.
 - **Suggested placement:** xPoints results section.
 
 ## Table 5 — Simulation convergence
@@ -98,31 +102,20 @@ and narratively separate.
   authoritative mapping and reasons are in `paper/evidence_supersession.csv`.
 - **Suggested placement:** Decision-layer validation section.
 
-## Table 8 — Current official GW1 prospective snapshot
+## Figure 1 — Player-points pipeline in manuscript v7
 
-- **Caption:** Prospective example, not an accuracy result: frozen 2026-27 GW1 model and decision
-  snapshot.
-- **Exact source:** `outputs/operational/validation_runs/
-  preseason_sim_hybrid_10000_goalkeeper_corrected_validation_clean_034830b041c1/`.
-- **Population and grain:** Officially selectable current players; player-gameweek projections and
-  one squad decision.
-- **Supports:** A concrete example of forecast outputs, lineage and the recommended decision.
-- **Does not support:** Any accuracy, calibration or realized-points claim.
-- **Limitation:** This is a non-published validation successor. The frozen published predecessor
-  remains immutable; the corrected run changes two bench squad members and the bench order while
-  retaining the starting XI, formation, captain and vice-captain.
-- **Suggested placement:** Prospective example box near the conclusion.
-
-## Figure 1 — System architecture
-
-- **Caption:** Leakage-safe data flow from official and historical inputs through T2 team state, M7
-  availability, X2 hybrid player outcomes, D2 decisions and validated publication.
-- **Exact source:** Model contracts and the season-aware validation successor's `model_lineage.json`.
-- **Population and grain:** Conceptual system diagram.
-- **Supports:** Separation of team, player-availability, player-outcome and decision layers.
-- **Does not support:** Accuracy or causal attribution.
-- **Limitation:** It omits lower-level feature engineering and fallback branches for readability.
-- **Suggested placement:** Methods overview.
+- **Caption:** Team state, minutes and availability, player events, and point distribution.
+- **Exact source:** Page 12 of `Forecasts to Decisions v7.pdf`, SHA-256
+  `7d3a20909755ba69707fca8ce453e2e83e0b4ee422950115723a8233acf860dc`, embedded image
+  `X47.png`. Its bytes are tracked as `paper/figures/figure1_v7_player_points_pipeline.png`, SHA-256
+  `06c05fdd4bacb9301dedda1f3f59d1f00ae933d6dde062467e85b2811c9df896`.
+- **Re-extraction:** With the author-supplied PDF and `pypdf`, use
+  `PdfReader(pdf_path).pages[11].images` and select `X47.png`; the byte hash above must match.
+- **Population and grain:** Conceptual schematic; no row-level data.
+- **Supports:** The broad player-points modelling sequence.
+- **Does not support:** Accuracy, causal attribution, or a decision-optimizer architecture claim.
+- **Limitation:** `figure1_system_architecture.svg` is a separate repository schematic produced by
+  `scripts/build_paper_evidence.py`; it is not the image in v7.
 
 ## Figure 2 — Chronological evaluation design
 
@@ -199,14 +192,8 @@ and narratively separate.
 - **Limitation:** High-probability bins contain few rows and should not be overinterpreted.
 - **Suggested placement:** Simulator calibration subsection.
 
-## Figure 8 — Prospective GW1 price versus xPoints
+## v7 p19 rolling D1 optimality
 
-- **Caption:** Prospective 2026-27 GW1 snapshot, not evaluated against outcomes: official price versus
-  frozen expected points, coloured by position with appearance probability encoded by opacity.
-- **Exact source:** Corrected non-published validation-successor
-  `player_gameweek_projections.csv`.
-- **Population and grain:** 554 current player-gameweek projections.
-- **Supports:** Descriptive structure of the released forecast and price/value landscape.
-- **Does not support:** Accuracy, value realization or superiority to external forecasts.
-- **Limitation:** Labels identify only a small set of top-ranked players to preserve readability.
-- **Suggested placement:** Prospective example or appendix.
+- **Exact source:** `phase7_goalkeeper_scoring_corrected_decisions_rolling_real_clean_034830b041c1`
+  `scored_decisions.csv` (manifest row E-M02): 380 decisions, all with `solver_status=optimal` and
+  recorded `objective_gap=0`. This does not certify D2 or season-long global optimality.

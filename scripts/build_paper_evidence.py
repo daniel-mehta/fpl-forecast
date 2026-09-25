@@ -4,9 +4,10 @@
 The script reads existing repository artifacts only. It does not run models,
 backtests, operational forecasts, or outcome ingestion.
 
-PNG rendering uses the Node ``sharp`` package. Set ``NODE_PATH`` to a Node
-module directory containing sharp when it is not installed in the active Node
-environment.
+Optional duplicate PNG rendering uses the Node ``sharp`` package. Set
+``FPL_PAPER_RENDER_PNG=1`` and provide ``sharp`` through ``NODE_PATH`` to create
+these ignored preview renders. The tracked figures are SVG except for the
+exact v7-embedded Figure 1 PNG.
 """
 
 from __future__ import annotations
@@ -237,7 +238,7 @@ def table1_coverage() -> pd.DataFrame:
         rows.append(
             {
                 "season": season,
-                "player_fixture_rows": len(group),
+                "entity_fixture_rows": len(group),
                 "unique_players": group["player_uid"].nunique(),
                 "unique_fixtures": group["fixture_key"].nunique(),
                 "teams": group["player_team_uid"].nunique(),
@@ -515,73 +516,6 @@ def table7_decisions() -> pd.DataFrame:
     return build_decision_evidence_table(base, DECISION_RUN)
 
 
-def table8_snapshot() -> pd.DataFrame:
-    base = PROSPECTIVE_BASE
-    projections = pd.read_csv(base / "player_gameweek_projections.csv")
-    squad = pd.read_csv(base / "optimized_squad.csv")
-    lineup = pd.read_csv(base / "optimized_lineup.csv").iloc[0]
-    freshness = read_json(base / "data_freshness.json")
-    lineage = read_json(base / "model_lineage.json")
-    top = projections.sort_values(
-        ["expected_points", "stable_player_id"], ascending=[False, True]
-    ).head(15)
-    selected_names = squad.sort_values(
-        ["selected_role", "bench_order", "player_name"], na_position="last"
-    )["player_name"].tolist()
-    summary = {
-        "record_type": "snapshot_summary",
-        "rank": "",
-        "player": "",
-        "team": "",
-        "position": "",
-        "price_tenths": "",
-        "expected_points": "",
-        "appearance_probability": "",
-        "run_id": PROSPECTIVE_RUN,
-        "forecast_timestamp": freshness["generated_at"],
-        "official_retrieval_timestamp": max(
-            item["retrieved_at"] for item in freshness["official_snapshots"].values()
-        ),
-        "projection_rows": len(projections),
-        "players": projections["stable_player_id"].nunique(),
-        "fixtures": freshness["target_fixture_count"],
-        "team_model": lineage["team_model"],
-        "minutes_model": "M7_HIERARCHICAL_AVAILABILITY_STATE",
-        "xpoints_model": "X2_TEAM_CONSTRAINED_SIM_M7",
-        "simulator_version": lineage["xpoints_simulator"]["version"],
-        "draw_count": lineage["xpoints_simulator"]["production_draw_count"],
-        "optimizer": lineage["decision_optimizer"],
-        "formation": lineup["formation"],
-        "captain": squad.loc[squad["selected_role"].eq("captain"), "player_name"].iloc[0],
-        "vice_captain": squad.loc[squad["selected_role"].eq("vice_captain"), "player_name"].iloc[0],
-        "expected_realized_value": lineup["expected_realized_total"],
-        "solver_status": lineup["solver_status"],
-        "total_cost_tenths": lineup["cost_tenths"],
-        "bank_tenths": lineup["bank_tenths"],
-        "recommended_squad": "; ".join(selected_names),
-        "label": "Prospective example, not an accuracy result",
-    }
-    rows = [summary]
-    for rank, player in enumerate(top.itertuples(index=False), start=1):
-        row = {key: "" for key in summary}
-        row.update(
-            {
-                "record_type": "top15_expected_points",
-                "rank": rank,
-                "player": player.player,
-                "team": player.team,
-                "position": player.position,
-                "price_tenths": player.price_tenths,
-                "expected_points": player.expected_points,
-                "appearance_probability": player.p_appearance,
-                "run_id": PROSPECTIVE_RUN,
-                "label": "Prospective example, not an accuracy result",
-            }
-        )
-        rows.append(row)
-    return pd.DataFrame(rows)
-
-
 def publication_evidence_supersession_table() -> pd.DataFrame:
     columns = [
         "evidence_scope",
@@ -636,7 +570,7 @@ def publication_evidence_supersession_table() -> pd.DataFrame:
             },
             *[
                 {
-                    "evidence_scope": "table8_prospective_validation",
+                    "evidence_scope": "prospective_validation_not_public",
                     "authoritative_run_id": PROSPECTIVE_RUN,
                     "superseded_run_id": item["run_id"],
                     "superseded_status": "immutable_historical_record",
@@ -1221,67 +1155,9 @@ def figure7_calibration(old: pd.DataFrame, new: pd.DataFrame) -> str:
     )
 
 
-def figure8_price_xpoints() -> str:
-    path = PROSPECTIVE_BASE / "player_gameweek_projections.csv"
-    data = pd.read_csv(path)
-    svg = Svg(1200, 780)
-    svg.title(
-        "Figure 8. Prospective 2026-27 GW1 snapshot, not evaluated against outcomes",
-        "Official price versus frozen expected points; opacity reflects appearance probability.",
-    )
-    x, y, w, h = 110, 120, 930, 540
-    axes(svg, x, y, w, h, "Expected points")
-    xmin, xmax = data["price_tenths"].min() / 10, data["price_tenths"].max() / 10
-    ymax = max(7.0, data["expected_points"].max() * 1.08)
-    position_colors = {
-        "GKP": COLORS["orange"],
-        "DEF": COLORS["blue"],
-        "MID": COLORS["green"],
-        "FWD": COLORS["magenta"],
-    }
-    for tick in np.arange(math.floor(xmin), math.ceil(xmax) + 1, 2):
-        xx = x + (tick - xmin) / (xmax - xmin) * w
-        svg.text(xx, y + h + 25, f"£{tick:.0f}m", 13, "middle")
-    for tick in range(0, int(math.ceil(ymax)) + 1):
-        yy = y + h - tick / ymax * h
-        svg.line(x, yy, x + w, yy, COLORS["light"], 1)
-        svg.text(x - 10, yy + 5, str(tick), 13, "end")
-    for row in data.itertuples(index=False):
-        xx = x + (row.price_tenths / 10 - xmin) / (xmax - xmin) * w
-        yy = y + h - row.expected_points / ymax * h
-        svg.circle(
-            xx,
-            yy,
-            3.5 + 3 * float(row.p_appearance),
-            position_colors.get(row.position, COLORS["gray"]),
-            opacity=0.18 + 0.72 * float(row.p_appearance),
-        )
-    labels = data.nlargest(7, "expected_points")
-    label_offsets = {
-        "B.Fernandes": (8, -13),
-        "Watkins": (8, -25),
-        "Mbeumo": (8, -25),
-        "Saka": (8, -13),
-        "Haaland": (8, 24),
-        "Gabriel": (8, -13),
-        "Eze": (8, 24),
-    }
-    for row in labels.itertuples(index=False):
-        xx = x + (row.price_tenths / 10 - xmin) / (xmax - xmin) * w
-        yy = y + h - row.expected_points / ymax * h
-        dx, dy = label_offsets.get(row.player, (8, -12))
-        svg.text(xx + dx, yy + dy, row.player, 12, weight=700)
-    for i, (position, color) in enumerate(position_colors.items()):
-        svg.circle(1075, 165 + i * 34, 7, color)
-        svg.text(1092, 171 + i * 34, position, 14)
-    svg.text(x + w / 2, y + h + 62, "Official price", 16, "middle", 700)
-    svg.text(52, y + h / 2, "Expected points", 16, "middle", 700, rotate=-90)
-    return svg.render(
-        "Prospective price versus expected points scatter by position and appearance probability."
-    )
-
-
 def render_png(svg_path: Path, png_path: Path) -> None:
+    if os.environ.get("FPL_PAPER_RENDER_PNG") != "1":
+        return
     script = """
 const sharp = require('sharp');
 const [src, dst] = process.argv.slice(1);
@@ -1425,17 +1301,6 @@ def evidence_rows(
             combined_manifest_inputs(decision_manifest),
             "historical",
         ),
-        "Table 8": (
-            f"{rel(PROSPECTIVE_BASE / 'player_gameweek_projections.csv')};"
-            f"{rel(PROSPECTIVE_BASE / 'optimized_squad.csv')};"
-            f"{rel(PROSPECTIVE_BASE / 'optimized_lineup.csv')};"
-            f"{rel(PROSPECTIVE_BASE / 'data_freshness.json')};"
-            f"{rel(PROSPECTIVE_BASE / 'model_lineage.json')}",
-            PROSPECTIVE_RUN,
-            prospective_code_identity,
-            combined_manifest_inputs(prospective_manifest),
-            "prospective",
-        ),
     }
     table_metrics = {
         "Table 1": "coverage and integrity counts",
@@ -1445,7 +1310,6 @@ def evidence_rows(
         "Table 5": "simulation convergence, runtime, memory and reproducibility",
         "Table 6": "old versus hybrid three-fold GW1 metrics",
         "Table 7": "D1/D2 expected-realized and realized decision evidence",
-        "Table 8": "prospective GW1 aggregate and top-ranked snapshot",
     }
     for idx, table_id in enumerate(table_sources, start=1):
         source, run, sha, upstream_inputs, evidence_type = table_sources[table_id]
@@ -1458,11 +1322,9 @@ def evidence_rows(
             code_sha=sha,
             upstream_input_sha256=upstream_inputs,
             source_output_sha256=source_hashes(source),
-            model="multiple; see table" if idx != 8 else "T2/M7/X2 hybrid/D2",
-            seasons="multiple; see table" if idx != 8 else "2026-27",
-            mode="multiple; see comparison_block"
-            if idx in {3, 4}
-            else ("prospective_gw1" if idx == 8 else "historical"),
+            model="multiple; see table",
+            seasons="multiple; see table",
+            mode="multiple; see comparison_block" if idx in {3, 4} else "historical",
             population="explicit in table",
             grain="explicit in table",
             rows=len(frame),
@@ -1470,33 +1332,27 @@ def evidence_rows(
             metric=table_metrics[table_id],
             direction="metric-specific; explicit in figures/notes",
             prospective_or_historical=evidence_type,
-            notes_and_limitations=(
-                "Prospective example, not an accuracy result."
-                if idx == 8
-                else "No population or evaluation-mode pooling beyond explicitly labelled blocks."
-            ),
+            notes_and_limitations="No population or evaluation-mode pooling beyond explicitly labelled blocks.",
         )
 
     figure_series = [
         (
             "Figure 1",
-            "architecture",
-            rel(PROSPECTIVE_BASE / "model_lineage.json"),
-            PROSPECTIVE_RUN,
-            prospective_code_identity,
-            combined_manifest_inputs(prospective_manifest),
+            "v7 player-points pipeline (PDF page 12, image X47.png)",
+            "paper/figures/figure1_v7_player_points_pipeline.png",
+            "v7_manuscript_pdf_image_X47",
+            "not applicable: exact embedded manuscript image",
+            "v7_pdf_sha256=7d3a20909755ba69707fca8ce453e2e83e0b4ee422950115723a8233acf860dc",
             "conceptual",
             "neither",
-            "historical+prospective",
+            "manuscript diagram",
         ),
         (
             "Figure 2",
             "evaluation chronology",
             f"{rel(xpoints_rolling_manifest)};{rel(hybrid_manifest)};{rel(CONVERGENCE_EVIDENCE)};{rel(CLOSURE_EVIDENCE)}",
             f"{XPOINTS_ROLLING_RUN};{HYBRID_GW1_RUN};preseason_simulation_convergence_goalkeeper_corrected;preseason_simulation_closure_goalkeeper_corrected",
-            combined_code_identities(
-                "6877097", hybrid_code_identity, prospective_code_identity
-            ),
+            combined_code_identities("6877097", hybrid_code_identity, prospective_code_identity),
             combined_manifest_inputs(
                 xpoints_rolling_manifest, hybrid_manifest, prospective_manifest
             ),
@@ -1636,17 +1492,6 @@ def evidence_rows(
             "closer-to-diagonal",
             "historical",
         ),
-        (
-            "Figure 8",
-            "prospective price/xPoints by position",
-            rel(PROSPECTIVE_BASE / "player_gameweek_projections.csv"),
-            PROSPECTIVE_RUN,
-            prospective_code_identity,
-            combined_manifest_inputs(prospective_manifest),
-            "price and expected points",
-            "descriptive",
-            "prospective",
-        ),
     ]
     for index, (
         fig,
@@ -1659,6 +1504,35 @@ def evidence_rows(
         direction,
         evidence_type,
     ) in enumerate(figure_series, start=1):
+        if fig == "Figure 1":
+            if sha256_file(ROOT / source) != (
+                "06c05fdd4bacb9301dedda1f3f59d1f00ae933d6dde062467e85b2811c9df896"
+            ):
+                raise AssertionError("The embedded v7 Figure 1 image hash changed.")
+            add(
+                evidence_id="E-F01",
+                figure_or_table_id=fig,
+                source_path=source,
+                source_run_id=run,
+                code_sha=sha,
+                upstream_input_sha256=upstream_inputs,
+                source_output_sha256=source_hashes(source),
+                model="v7 player-points pipeline; four-stage conceptual diagram",
+                seasons="not applicable",
+                mode="conceptual",
+                population="not applicable",
+                grain="conceptual diagram",
+                rows="not applicable",
+                folds="not applicable",
+                metric="not applicable",
+                direction="not applicable",
+                prospective_or_historical="neither",
+                notes_and_limitations=(
+                    "Exact image X47.png from v7 PDF page 12; separate from the repository "
+                    "architecture SVG."
+                ),
+            )
+            continue
         add(
             evidence_id=f"E-F{index:02d}",
             figure_or_table_id=fig,
@@ -1683,23 +1557,83 @@ def evidence_rows(
                 else "Traceable full-precision source; limitations in FIGURE_NOTES.md."
             ),
         )
+    manuscript_xpoints_run = "phase6_xpoints_rolling_goalkeeper_corrected_exact"
+    manuscript_xpoints_source = (
+        f"reports/xpoints_backtests/{manuscript_xpoints_run}/metrics_overall.csv"
+    )
+    manuscript_xpoints_manifest = (
+        ROOT / "reports/xpoints_backtests" / manuscript_xpoints_run / "manifest.json"
+    )
+    add(
+        evidence_id="E-M01",
+        figure_or_table_id="v7 p18 rolling xPoints claim",
+        source_path=manuscript_xpoints_source,
+        source_run_id=manuscript_xpoints_run,
+        code_sha="not recorded in the Phase 6 run manifest",
+        upstream_input_sha256=combined_manifest_inputs(manuscript_xpoints_manifest),
+        source_output_sha256=source_hashes(manuscript_xpoints_source),
+        model="X0_PHASE3_B5_EB_POINTS_PER90;X2_TEAM_CONSTRAINED_SIM_M3",
+        seasons="2023-24,2024-25",
+        mode="rolling",
+        population="all_observed_players",
+        grain="player_gameweek",
+        rows=57008,
+        folds=76,
+        metric="MAE 0.982353 to 0.906532; Spearman 0.650053 to 0.704410",
+        direction="lower MAE; higher Spearman",
+        prospective_or_historical="historical",
+        notes_and_limitations=(
+            "Distinct from the later 114-fold rolling series in Figure 4; source commit "
+            "unavailable in original Phase 6 manifest."
+        ),
+    )
+    manuscript_decision_run = (
+        "phase7_goalkeeper_scoring_corrected_decisions_rolling_real_clean_034830b041c1"
+    )
+    manuscript_decision_source = (
+        f"reports/decision_backtests/{manuscript_decision_run}/scored_decisions.csv"
+    )
+    manuscript_decision_manifest = (
+        ROOT / "reports/decision_backtests" / manuscript_decision_run / "manifest.json"
+    )
+    add(
+        evidence_id="E-M02",
+        figure_or_table_id="v7 p19 D1 rolling optimality claim",
+        source_path=manuscript_decision_source,
+        source_run_id=manuscript_decision_run,
+        code_sha=manifest_code_identity(manuscript_decision_manifest),
+        upstream_input_sha256=combined_manifest_inputs(manuscript_decision_manifest),
+        source_output_sha256=source_hashes(manuscript_decision_source),
+        model="D1_MEAN_ONLY_MILP",
+        seasons="2023-24,2024-25",
+        mode="rolling weekly resets",
+        population="one decision per gameweek and model",
+        grain="decision",
+        rows=380,
+        folds=76,
+        metric="380 optimal statuses; 380 recorded objective gaps of 0",
+        direction="descriptive solver certificate",
+        prospective_or_historical="historical",
+        notes_and_limitations="D1 solver scope only; no D2 or season-long optimality claim.",
+    )
     return pd.DataFrame(rows, columns=columns)
 
 
 def figure_notes() -> str:
     return f"""# Figure and Table Notes
 
-This file supplies proposed captions and interpretation boundaries for the preseason technical
-paper. All paths are repository-relative. Historical and prospective evidence must remain visually
-and narratively separate.
+This file records provenance, proposed captions, and interpretation boundaries for manuscript v7
+and auxiliary aggregate assets. All paths are repository-relative. Historical and prospective
+evidence must remain visually and narratively separate.
 
 ## Table 1 — Historical data coverage
 
-- **Caption:** Leakage-safe historical player-fixture panel coverage and integrity checks by season.
+- **Caption:** Leakage-safe historical entity-fixture panel coverage and integrity checks by season.
 - **Exact source:** `data/normalized/phase2/fact_player_fixture.parquet`; GW1 population counts, where
   available, come from the promoted-hybrid three-fold scored artifact.
 - **Population and grain:** All normalized football-player and assistant-manager fixture rows;
-  player-fixture grain.
+  entity-fixture grain. The three principal seasons contain 83,835 rows, including 322 Assistant
+  Manager rows excluded from player models.
 - **Supports:** The scale, identity completeness, positional composition and duplicate-key status of
   the historical evidence base.
 - **Does not support:** Forecast accuracy or completeness of players absent from the source.
@@ -1743,6 +1677,9 @@ and narratively separate.
 - **Does not support:** Direct comparison of rolling legacy metrics with a hybrid simulator that was
   rerun only on GW1 folds.
 - **Limitation:** No promoted-hybrid rolling backtest was run for this evidence pack.
+- **Manuscript scope:** The v7 p18 76-fold, 57,008-observation comparison uses
+  `phase6_xpoints_rolling_goalkeeper_corrected_exact` (manifest row E-M01), not this table's later
+  114-fold rolling series.
 - **Suggested placement:** xPoints results section.
 
 ## Table 5 — Simulation convergence
@@ -1787,31 +1724,20 @@ and narratively separate.
   authoritative mapping and reasons are in `paper/evidence_supersession.csv`.
 - **Suggested placement:** Decision-layer validation section.
 
-## Table 8 — Current official GW1 prospective snapshot
+## Figure 1 — Player-points pipeline in manuscript v7
 
-- **Caption:** Prospective example, not an accuracy result: frozen 2026-27 GW1 model and decision
-  snapshot.
-- **Exact source:** `outputs/operational/validation_runs/
-  {PROSPECTIVE_RUN}/`.
-- **Population and grain:** Officially selectable current players; player-gameweek projections and
-  one squad decision.
-- **Supports:** A concrete example of forecast outputs, lineage and the recommended decision.
-- **Does not support:** Any accuracy, calibration or realized-points claim.
-- **Limitation:** This is a non-published validation successor. The frozen published predecessor
-  remains immutable; the corrected run changes two bench squad members and the bench order while
-  retaining the starting XI, formation, captain and vice-captain.
-- **Suggested placement:** Prospective example box near the conclusion.
-
-## Figure 1 — System architecture
-
-- **Caption:** Leakage-safe data flow from official and historical inputs through T2 team state, M7
-  availability, X2 hybrid player outcomes, D2 decisions and validated publication.
-- **Exact source:** Model contracts and the season-aware validation successor's `model_lineage.json`.
-- **Population and grain:** Conceptual system diagram.
-- **Supports:** Separation of team, player-availability, player-outcome and decision layers.
-- **Does not support:** Accuracy or causal attribution.
-- **Limitation:** It omits lower-level feature engineering and fallback branches for readability.
-- **Suggested placement:** Methods overview.
+- **Caption:** Team state, minutes and availability, player events, and point distribution.
+- **Exact source:** Page 12 of `Forecasts to Decisions v7.pdf`, SHA-256
+  `7d3a20909755ba69707fca8ce453e2e83e0b4ee422950115723a8233acf860dc`, embedded image
+  `X47.png`. Its bytes are tracked as `paper/figures/figure1_v7_player_points_pipeline.png`, SHA-256
+  `06c05fdd4bacb9301dedda1f3f59d1f00ae933d6dde062467e85b2811c9df896`.
+- **Re-extraction:** With the author-supplied PDF and `pypdf`, use
+  `PdfReader(pdf_path).pages[11].images` and select `X47.png`; the byte hash above must match.
+- **Population and grain:** Conceptual schematic; no row-level data.
+- **Supports:** The broad player-points modelling sequence.
+- **Does not support:** Accuracy, causal attribution, or a decision-optimizer architecture claim.
+- **Limitation:** `figure1_system_architecture.svg` is a separate repository schematic produced by
+  `scripts/build_paper_evidence.py`; it is not the image in v7.
 
 ## Figure 2 — Chronological evaluation design
 
@@ -1888,22 +1814,16 @@ and narratively separate.
 - **Limitation:** High-probability bins contain few rows and should not be overinterpreted.
 - **Suggested placement:** Simulator calibration subsection.
 
-## Figure 8 — Prospective GW1 price versus xPoints
+## v7 p19 rolling D1 optimality
 
-- **Caption:** Prospective 2026-27 GW1 snapshot, not evaluated against outcomes: official price versus
-  frozen expected points, coloured by position with appearance probability encoded by opacity.
-- **Exact source:** Corrected non-published validation-successor
-  `player_gameweek_projections.csv`.
-- **Population and grain:** 554 current player-gameweek projections.
-- **Supports:** Descriptive structure of the released forecast and price/value landscape.
-- **Does not support:** Accuracy, value realization or superiority to external forecasts.
-- **Limitation:** Labels identify only a small set of top-ranked players to preserve readability.
-- **Suggested placement:** Prospective example or appendix.
+- **Exact source:** `phase7_goalkeeper_scoring_corrected_decisions_rolling_real_clean_034830b041c1`
+  `scored_decisions.csv` (manifest row E-M02): 380 decisions, all with `solver_status=optimal` and
+  recorded `objective_gap=0`. This does not certify D2 or season-long global optimality.
 """
 
 
 def validate_tables(tables: dict[str, pd.DataFrame]) -> None:
-    expected_nonempty = {f"table{i}" for i in range(1, 9)}
+    expected_nonempty = {f"table{i}" for i in range(1, 8)}
     if set(tables) != expected_nonempty:
         raise AssertionError("Unexpected table set.")
     for name, frame in tables.items():
@@ -1943,8 +1863,6 @@ def validate_tables(tables: dict[str, pd.DataFrame]) -> None:
         raise AssertionError(
             "Decision evidence does not contain the corrected rounded mean difference."
         )
-    if set(tables["table8"]["label"]) != {"Prospective example, not an accuracy result"}:
-        raise AssertionError("Prospective table label is missing.")
 
 
 def main() -> None:
@@ -1953,7 +1871,7 @@ def main() -> None:
         "--goalkeeper-scoring-refresh",
         action="store_true",
         help=(
-            "Regenerate only Tables/Figures 4-8 and shared provenance files from the "
+            "Regenerate only Tables/Figures 4-7 and shared provenance files from the "
             "season-aware successor evidence."
         ),
     )
@@ -1969,7 +1887,6 @@ def main() -> None:
         "table5": table5_convergence(),
         "table6": table6_old_hybrid(),
         "table7": table7_decisions(),
-        "table8": table8_snapshot(),
     }
     validate_tables(tables)
     table_slugs = {
@@ -1980,12 +1897,9 @@ def main() -> None:
         "table5": "hybrid_simulation_convergence",
         "table6": "old_vs_hybrid_gw1_folds",
         "table7": "decision_system_evidence",
-        "table8": "prospective_gw1_snapshot",
     }
     table_keys = (
-        {"table4", "table5", "table6", "table7", "table8"}
-        if args.goalkeeper_scoring_refresh
-        else set(tables)
+        {"table4", "table5", "table6", "table7"} if args.goalkeeper_scoring_refresh else set(tables)
     )
     for key, frame in tables.items():
         if key not in table_keys:
@@ -2028,7 +1942,6 @@ def main() -> None:
         ),
         "Figure 6": write_figure(6, "simulator_tradeoffs", figure6_tradeoffs(tables["table6"])),
         "Figure 7": write_figure(7, "p5_calibration", figure7_calibration(old_cal, new_cal)),
-        "Figure 8": write_figure(8, "prospective_price_xpoints", figure8_price_xpoints()),
     }
     if not args.goalkeeper_scoring_refresh:
         figures.update(
@@ -2047,9 +1960,10 @@ def main() -> None:
     write_csv(PAPER / "evidence_supersession.csv", publication_evidence_supersession_table())
 
     output_paths = [
-        *sorted(TABLES.glob("*.csv")),
-        *sorted(FIGURES.glob("*.svg")),
-        *sorted(FIGURES.glob("*.png")),
+        *sorted(TABLES.glob("table[1-7]_*.csv")),
+        TABLES / "figure7_p5_calibration_bins.csv",
+        *sorted(FIGURES.glob("figure[1-7]_*.svg")),
+        FIGURES / "figure1_v7_player_points_pipeline.png",
         PAPER / "FIGURE_NOTES.md",
         PAPER / "evidence_manifest.csv",
         PAPER / "evidence_supersession.csv",
@@ -2063,7 +1977,7 @@ def main() -> None:
             {
                 "tables": len(list(TABLES.glob("table*.csv"))),
                 "figures_svg": len(list(FIGURES.glob("*.svg"))),
-                "figures_png": len(list(FIGURES.glob("*.png"))),
+                "manuscript_png": 1,
                 "manifest_rows": len(evidence),
                 "output_sha256": digest.hexdigest(),
             },
