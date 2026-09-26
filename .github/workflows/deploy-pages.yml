@@ -186,7 +186,6 @@ jobs:
           name: publication-audit-${{ steps.inputs.outputs.run_id }}
           path: |
             reports/operational/
-            data/raw/fpl_api/${{ inputs.season }}/
             data/normalized/${{ inputs.season }}/current_season_reconstruction.json
             outputs/operational/failed/
           if-no-files-found: warn

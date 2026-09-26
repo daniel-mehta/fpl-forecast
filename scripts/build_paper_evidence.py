@@ -365,7 +365,7 @@ def table4_xpoints_models() -> pd.DataFrame:
                     "seasons": meta["seasons"],
                     "mode": meta["mode"],
                     "population": "all_observed_players",
-                    "grain": "player_gameweek",
+                    "grain": "player_fixture",
                     "rows": int(metric.rows),
                     "folds": meta["folds"],
                     "mae": metric.mae,
@@ -1576,7 +1576,7 @@ def evidence_rows(
         seasons="2023-24,2024-25",
         mode="rolling",
         population="all_observed_players",
-        grain="player_gameweek",
+        grain="player_fixture",
         rows=57008,
         folds=76,
         metric="MAE 0.982353 to 0.906532; Spearman 0.650053 to 0.704410",
@@ -1672,7 +1672,7 @@ evidence must remain visually and narratively separate.
   hybrid GW1 blocks.
 - **Exact source:** The three season-aware goalkeeper-scoring xPoints run directories listed in the
   table. Their immutable predecessors are classified in `paper/evidence_supersession.csv`.
-- **Population and grain:** All observed player-gameweeks.
+- **Population and grain:** All observed player-fixture rows.
 - **Supports:** Historical model trade-offs and the scope of available hybrid evidence.
 - **Does not support:** Direct comparison of rolling legacy metrics with a hybrid simulator that was
   rerun only on GW1 folds.
@@ -1772,7 +1772,7 @@ evidence must remain visually and narratively separate.
 - **Exact source:** `phase9b12_xpoints_rolling_goalkeeper_corrected_exact`,
   `phase9b12_xpoints_gw1_goalkeeper_corrected_exact`, and
   `{HYBRID_GW1_RUN}`.
-- **Population and grain:** All observed player-gameweeks.
+- **Population and grain:** All observed player-fixture rows.
 - **Supports:** Model trade-offs under each registered evaluation mode.
 - **Does not support:** Comparing the hybrid GW1 annotation as if it were a rolling result.
 - **Limitation:** No uncertainty interval was available consistently across all plotted series.
