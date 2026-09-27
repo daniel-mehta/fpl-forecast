@@ -355,7 +355,7 @@ Generated real-data artifacts live under ignored directories such as `data/raw/`
 `data/normalized/`, `reports/`, `outputs/operational/`, and `logs/operational/`.
 The tracked publication generator and the policy for manuscript-facing tables, figures, and
 manifests are documented in
-[`docs/research/publication-artifacts.md`](docs/research/publication-artifacts.md). For the v7
+[`docs/research/publication-artifacts.md`](docs/research/publication-artifacts.md). For the final manuscript's
 claim-to-artifact index, source/input hashes, schema, and legally bounded reproduction procedure,
 start with [`README_SLOAN.md`](README_SLOAN.md). A clean clone can inspect the committed aggregate
 evidence but cannot regenerate every result from the repository alone: restricted input and

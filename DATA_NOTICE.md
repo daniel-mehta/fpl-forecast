@@ -14,7 +14,7 @@ Raw and normalized third-party data are intentionally excluded from the `main` r
 ignores retrieved official API payloads, Vaastav historical CSVs, normalized Parquet tables,
 operational outputs, generated frontend data, reports, and logs. The tracked `paper/` assets are
 aggregate research summaries, provenance metadata, a data dictionary, and the conceptual image
-embedded in manuscript v7. They are not a release of the underlying player-fixture research panel.
+embedded in the final manuscript. They are not a release of the underlying player-fixture research panel.
 
 The separate `official-forecast-data` branch and public dashboard contain sanitized operational
 forecasts. Their existence does not establish permission to redistribute raw, normalized, or

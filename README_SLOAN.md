@@ -1,9 +1,9 @@
-# SSAC27 research repository guide (manuscript v7)
+# SSAC27 research repository guide (final manuscript)
 
-This guide describes the public evidence for *From Forecasts to Decisions*, v7, as prepared for the
+This guide describes the public evidence for the final manuscript, *From Forecasts to Decisions*, as prepared for the
 October 1 abstract submission. It is a research audit guide, not a claim that the public repository
-contains every input row. The author-supplied v7 PDF is the wording authority and is not tracked.
-The exact material wording handoff is in
+contains every input row. The author-supplied final manuscript PDF is the wording authority and is not tracked.
+The historical material wording handoff from v7 is in
 [`docs/research/v7-material-corrections.md`](docs/research/v7-material-corrections.md); no manuscript
 file has been silently edited.
 
@@ -11,7 +11,7 @@ file has been silently edited.
 
 | Item | Location and meaning |
 | --- | --- |
-| Claim-to-evidence index | [`paper/manuscript_value_map.csv`](paper/manuscript_value_map.csv): v7 page, value, authoritative run, source hash, and scope. |
+| Claim-to-evidence index | [`paper/manuscript_value_map.csv`](paper/manuscript_value_map.csv): original v7 page reference, value, authoritative run, source hash, and scope. |
 | Evidence provenance | [`paper/evidence_manifest.csv`](paper/evidence_manifest.csv) and [`paper/evidence_supersession.csv`](paper/evidence_supersession.csv): source artifacts and superseded run IDs. |
 | Inputs and schema | [`paper/source_input_manifest.csv`](paper/source_input_manifest.csv) and [`paper/research_schema.csv`](paper/research_schema.csv): source URLs, revisions, retrieval times, SHA-256 hashes, roles, and normalized-column descriptions. |
 | Aggregate assets and hashes | [`paper/tables/`](paper/tables), [`paper/figures/`](paper/figures), [`paper/FIGURE_NOTES.md`](paper/FIGURE_NOTES.md), and [`paper/output_hashes.csv`](paper/output_hashes.csv). |
@@ -19,10 +19,10 @@ file has been silently edited.
 
 The 83,835 historical observations across 2022-23 to 2024-25 are **entity-fixture rows**. They
 include 322 Assistant Manager records excluded from football-player models; thus 83,513 of these
-rows are football-player rows. The v7 76-fold xPoints result uses
+rows are football-player rows. The manuscript's 76-fold xPoints result uses
 `phase6_xpoints_rolling_goalkeeper_corrected_exact` (E-M01). The later Figure 4 rolling panels use
-114 folds across three seasons and must not be cited as the source for the 76-fold v7 result. The
-v7 D1 count uses the corrected 380-decision run (E-M02). Figure 1 in v7 is the tracked embedded
+114 folds across three seasons and must not be cited as the source for the 76-fold manuscript result. The
+manuscript's D1 count uses the corrected 380-decision run (E-M02). Figure 1 in the manuscript is the tracked embedded
 PNG from PDF page 12, not the separate repository architecture SVG.
 
 ## Data and rights boundary
