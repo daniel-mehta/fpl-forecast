@@ -1,5 +1,7 @@
 # FPL Forecast
 
+**MIT Sloan reviewers:** Please start with [`README_SLOAN.md`](README_SLOAN.md) for the research audit, evidence map, data boundaries, and rights-bounded reproduction guide.
+
 FPL Forecast is an end-to-end, time-aware Fantasy Premier League forecasting and
 decision system. It combines data engineering, statistical football modelling,
 probabilistic FPL point simulation, backtesting, operational publication, and squad
