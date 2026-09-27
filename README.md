@@ -416,8 +416,9 @@ copied visual identity are included in the tracked source tree.
 - [HiGHS documentation](https://highs.dev/)
 - [GNU Affero General Public License version 3](https://www.gnu.org/licenses/agpl-3.0.en.html)
 - [Vaastav repository licence](https://github.com/vaastav/Fantasy-Premier-League/blob/master/LICENSE)
-- Graham, Ian (2024), *How to Win the Premier League*; included here as conceptual inspiration, not
-  as a technical specification or a reproduced proprietary model.
+- Graham, Ian (2024), [*How to Win the Premier League*](https://www.penguin.co.uk/books/462193/how-to-win-the-premier-league-by-graham-ian/9781804951453);
+  included here as conceptual inspiration, not as a technical specification or a reproduced
+  proprietary model.
 
 ## Licence
 
