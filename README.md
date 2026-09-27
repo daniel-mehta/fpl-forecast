@@ -7,7 +7,7 @@ decision system. It combines data engineering, statistical football modelling,
 probabilistic FPL point simulation, backtesting, operational publication, and squad
 optimization in one reproducible `uv` workspace.
 
-**Public dashboard:** [daniel-mehta.github.io/fpl-forecast](https://daniel-mehta.github.io/fpl-forecast/)
+**Public dashboard:** [danielmehta.com/fpl-forecast](https://danielmehta.com/fpl-forecast/)
 
 Unofficial project. Not affiliated with, endorsed by, or associated with the Premier League or
 Fantasy Premier League.
